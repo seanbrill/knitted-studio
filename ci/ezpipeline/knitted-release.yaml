@@ -56,6 +56,11 @@ steps:
   - name: Build the desktop app
     description: Builds the installers for the system this host runs.
     shell: /bin/bash
+    # EZPIPELINE's host runs with NODE_ENV=development. Next.js builds in that mode fail
+    # on the error pages ("<Html> should not be imported outside of pages/_document"),
+    # so builds say production themselves. Installs are left alone: they need dev tools.
+    env:
+      NODE_ENV: production
     cwd: ./knitted
     run: |
       set -euo pipefail
@@ -86,6 +91,8 @@ steps:
       The build asks FileFreak, with the read-only key, which versions exist and
       writes the Download page from the answer.
     shell: /bin/bash
+    env:
+      NODE_ENV: production
     cwd: ./knitted
     run: |
       set -euo pipefail

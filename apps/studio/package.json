@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev -p 4100",
-    "build": "next build",
+    "build": "node ../../scripts/next-build.mjs",
     "start": "next start -p 4100",
     "desktop:dev": "node electron/launch.mjs",
     "desktop:smoke": "node electron/launch.mjs --prod --smoke",

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev -p 4101",
-    "build": "npm run releases && next build",
+    "build": "npm run releases && node ../../scripts/next-build.mjs",
     "releases": "node --env-file-if-exists=../../.env scripts/fetch-releases.mjs"
   },
   "dependencies": {
