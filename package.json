@@ -1,0 +1,33 @@
+{
+  "name": "knitted-studio",
+  "version": "0.1.0",
+  "private": false,
+  "license": "MIT",
+  "description": "An open-source studio where people and their models knit social posts, ads and web graphics from reusable brand patterns.",
+  "homepage": "https://knitted.studio",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev -p 4100",
+    "build": "next build",
+    "start": "next start -p 4100",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test test/*.test.mjs",
+    "knit": "node engine/cli.mjs",
+    "mcp": "node mcp/server.mjs"
+  },
+  "dependencies": {
+    "next": "15.5.4",
+    "react": "19.1.1",
+    "react-dom": "19.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "@types/react": "19.0.2",
+    "@types/react-dom": "19.0.2",
+    "typescript": "5.7.2"
+  },
+  "optionalDependencies": {
+    "playwright": "1.49.1"
+  }
+}

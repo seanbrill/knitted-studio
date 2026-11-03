@@ -1,0 +1,15 @@
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+.env*.local
+
+# Knitted output and working files. Frames are pure intermediate: a 20-second
+# story at 30fps is 600 PNGs, and keeping them is how notch.fm's media folder
+# reached 285MB.
+.frames-*/
+/projects/
+*.mp4
+!docs/**/*.mp4
