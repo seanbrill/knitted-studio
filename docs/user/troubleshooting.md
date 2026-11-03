@@ -1,0 +1,36 @@
+---
+title: Troubleshooting
+order: 15
+summary: Fixes for the problems people hit first.
+status: shipped
+---
+# Troubleshooting
+
+## "Knitting needs Playwright"
+
+Knitting uses a browser engine. Install it:
+
+```bash
+npm install playwright
+npx playwright install chromium
+```
+
+## A knit finishes with no video
+
+Video needs ffmpeg. Check that `ffmpeg -version` prints a version in your terminal. If it does not, install ffmpeg and open a new terminal.
+
+## My model cannot see the tools
+
+Restart the model's app after editing its MCP settings. Check that the path points at `packages/mcp/src/server.mjs` inside your clone, and that Node 22.13 or newer is installed.
+
+## My model says a slot was refused
+
+That slot is locked by the Pattern. This is the brand lock working. Unlock it in the studio if you really mean to change it.
+
+## The desktop installer shows a warning
+
+Early installers are unsigned previews. See the [install guide](/download/install/).
+
+## Still stuck
+
+Open an issue on GitHub with what you ran and what you saw.

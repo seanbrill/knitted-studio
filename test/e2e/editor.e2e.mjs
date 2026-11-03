@@ -1,0 +1,219 @@
+import assert from "node:assert/strict";
+import test, { after, before } from "node:test";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import sharp from "sharp";
+import { axeProblems, launchBrowser, startStudio } from "./harness.mjs";
+
+let studio, browser, page, projectId, patternId, W, H;
+const j = async (method, path, body) => {
+  const res = await fetch(studio.url + path, { method, headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  return { status: res.status, body: await res.json() };
+};
+const getPattern = async () => (await j("GET", `/api/patterns/${patternId}`)).body;
+const stitch = async (slot) => (await getPattern()).stitches.find((s) => s.slot === slot);
+const url = () => `${studio.url}/projects/${projectId}/patterns/${patternId}`;
+
+/** Where the canvas overlay is on screen, and how big the frame is drawn. */
+async function geo() {
+  const b = await page.getByTestId("canvas-overlay").boundingBox();
+  return { ...b, scale: b.width / W };
+}
+/** Screen point at the centre of a stitch (fractions of the frame). */
+async function at(s, fx = 0.5, fy = 0.5) {
+  const g = await geo();
+  return { x: g.x + (s.x + s.w * fx) * W * g.scale, y: g.y + (s.y + s.h * fy) * H * g.scale };
+}
+const frameText = () => page.frameLocator('iframe[title="Pattern canvas"]').locator("body").innerText();
+async function openEditor() { await page.goto(url()); await page.getByRole("application", { name: "Pattern canvas" }).waitFor(); await page.frameLocator('iframe[title="Pattern canvas"]').locator("[data-stitch-id]").first().waitFor(); }
+
+before(async () => {
+  studio = await startStudio();
+  browser = await launchBrowser();
+  page = await (await browser.newContext({ viewport: { width: 1600, height: 1000 } })).newPage();
+  projectId = (await j("POST", "/api/projects", { name: "Editor e2e", starter: "social" })).body.id;
+  const [story] = (await j("GET", `/api/projects/${projectId}/patterns`)).body;
+  patternId = story.id; W = story.size.w; H = story.size.h;
+  await openEditor();
+});
+after(async () => { await browser?.close(); await studio?.stop(); });
+
+test("the canvas shows the real pattern, rendered by the same page the engine uses", async () => {
+  assert.match(await frameText(), /Make it knitted\./);
+  const stitches = (await getPattern()).stitches;
+  const f = page.frameLocator('iframe[title="Pattern canvas"]');
+  for (const s of stitches) assert.equal(await f.locator(`[data-stitch-id="${s.id}"]`).count(), 1, `${s.slot} is on the canvas`);
+  // The headline is drawn at its saved position in the frame, in frame pixels.
+  const head = stitches.find((s) => s.slot === "headline");
+  const box = await f.locator(`[data-stitch-id="${head.id}"]`).boundingBox();
+  assert.ok(Math.abs((box.x - (await page.locator("iframe").boundingBox()).x) / (await geo()).scale - head.x * W) < 2);
+});
+
+test("a click selects, and the inspector names the stitch and its slot", async () => {
+  const head = await stitch("headline");
+  const p = await at(head);
+  await page.mouse.click(p.x, p.y);
+  await page.getByRole("complementary", { name: "Inspector" }).getByText("headline").first().waitFor();
+  assert.equal(await page.getByLabel("Slot name").inputValue(), "headline");
+  await page.mouse.click(5, 5); // empty space deselects
+});
+
+test("dragging moves a stitch by the right amount, and undo and redo restore it exactly", async () => {
+  const before = await stitch("headline");
+  const p = await at(before);
+  await page.mouse.move(p.x, p.y); await page.mouse.down();
+  await page.mouse.move(p.x + 30, p.y + 20, { steps: 4 }); await page.mouse.move(p.x + 80, p.y + 50, { steps: 4 });
+  await page.mouse.up();
+  await page.getByText("Saved").first().waitFor();
+  const moved = await stitch("headline");
+  assert.ok(moved.x > before.x && moved.y > before.y, "it moved");
+  const g = await geo();
+  assert.ok(Math.abs((moved.x - before.x) * W * g.scale - 80) < 14, `moved about 80 screen px, got ${(moved.x - before.x) * W * g.scale}`);
+  await page.keyboard.press("Control+z");
+  await page.getByText("Saved").first().waitFor();
+  await page.waitForFunction(async ({ id, x }) => (await (await fetch(`/api/patterns/${id}`)).json()).stitches.find((s) => s.slot === "headline").x === x, { id: patternId, x: before.x });
+  assert.deepEqual([(await stitch("headline")).x, (await stitch("headline")).y], [before.x, before.y], "undo is exact");
+  await page.keyboard.press("Control+Shift+z");
+  await page.waitForFunction(async ({ id, x }) => (await (await fetch(`/api/patterns/${id}`)).json()).stitches.find((s) => s.slot === "headline").x === x, { id: patternId, x: moved.x });
+});
+
+test("dragging a resize handle grows the stitch, anchored on the opposite corner", async () => {
+  const before = await stitch("headline");
+  await page.mouse.click(...Object.values(await at(before)));
+  const handle = page.locator('[data-handle="se"]');
+  await handle.waitFor();
+  const hb = await handle.boundingBox();
+  const sx = hb.x + hb.width / 2, sy = hb.y + hb.height / 2;
+  await page.mouse.move(sx, sy); await page.mouse.down(); await page.mouse.move(sx + 40, sy + 20, { steps: 5 }); await page.mouse.up();
+  await page.getByText("Saved").first().waitFor();
+  const after = await stitch("headline");
+  assert.ok(after.w > before.w && after.h > before.h);
+  assert.equal(after.x, before.x, "the top-left corner is the anchor");
+  assert.equal(after.y, before.y);
+});
+
+test("double-clicking text edits it in place, and Escape cancels", async () => {
+  const head = await stitch("headline");
+  const p = await at(head);
+  await page.mouse.dblclick(p.x, p.y);
+  const ta = page.getByLabel("Edit text");
+  await ta.fill("Spring *sale*");
+  await ta.press("Control+Enter");
+  await page.waitForFunction(async ({ id }) => (await (await fetch(`/api/patterns/${id}`)).json()).stitches.find((s) => s.slot === "headline").content === "Spring *sale*", { id: patternId });
+  assert.match(await frameText(), /Spring sale/);
+  assert.equal(await page.frameLocator('iframe[title="Pattern canvas"]').locator("em.accent").innerText(), "sale", "the starred word is the serif accent");
+  await page.mouse.dblclick(p.x, p.y);
+  await page.getByLabel("Edit text").fill("never saved");
+  await page.getByLabel("Edit text").press("Escape");
+  assert.equal((await stitch("headline")).content, "Spring *sale*");
+});
+
+test("the position fields in the inspector change the stitch, in frame pixels", async () => {
+  const head = await stitch("headline");
+  await page.mouse.click(...Object.values(await at(head)));
+  await page.getByLabel("X position").fill("100");
+  await page.getByLabel("X position").press("Enter");
+  await page.waitForFunction(async ({ id, W }) => Math.abs((await (await fetch(`/api/patterns/${id}`)).json()).stitches.find((s) => s.slot === "headline").x * W - 100) < 0.5, { id: patternId, W });
+});
+
+test("keyboard: arrows nudge, Delete removes, duplicate adds, and undo brings the deleted one back", async () => {
+  const eyebrow = await stitch("eyebrow");
+  await page.mouse.click(...Object.values(await at(eyebrow)));
+  await page.keyboard.press("ArrowRight");
+  await page.waitForFunction(async ({ id, x }) => (await (await fetch(`/api/patterns/${id}`)).json()).stitches.find((s) => s.slot === "eyebrow").x > x, { id: patternId, x: eyebrow.x });
+  const count = (await getPattern()).stitches.length;
+  await page.keyboard.press("Control+d");
+  await page.waitForFunction(async ({ id, n }) => (await (await fetch(`/api/patterns/${id}`)).json()).stitches.length === n + 1, { id: patternId, n: count });
+  await page.keyboard.press("Delete");
+  await page.waitForFunction(async ({ id, n }) => (await (await fetch(`/api/patterns/${id}`)).json()).stitches.length === n, { id: patternId, n: count });
+  await page.keyboard.press("Control+z");
+  await page.waitForFunction(async ({ id, n }) => (await (await fetch(`/api/patterns/${id}`)).json()).stitches.length === n + 1, { id: patternId, n: count });
+});
+
+test("Fill mode: locked stitches are inert, free slots are a form, and what is typed is saved", async () => {
+  await page.getByRole("radio", { name: "Fill" }).click();
+  const form = page.getByRole("complementary", { name: "Fill" });
+  await form.getByText("What changes each time").waitFor();
+  assert.equal(await form.getByLabel("eyebrow").count(), 0, "a locked slot is not on offer");
+  const eyebrow = await stitch("eyebrow");
+  await page.mouse.click(...Object.values(await at(eyebrow)));
+  // The free full-bleed backdrop is underneath, so something may be selected; the locked eyebrow must not be.
+  const selected = await page.locator("output.sr-only").innerText();
+  assert.doesNotMatch(selected, /eyebrow/, `a locked stitch must be inert in Fill mode, got: ${selected}`);
+  await form.getByLabel("headline").fill("Filled by a person");
+  await form.getByLabel("headline").blur();
+  await page.waitForFunction(async ({ id }) => (await (await fetch(`/api/patterns/${id}`)).json()).stitches.find((s) => s.slot === "headline").content === "Filled by a person", { id: patternId });
+  assert.match(await frameText(), /Filled by a person/);
+});
+
+test("back in Pattern mode the locked stitch is selectable again", async () => {
+  // Fill mode first: even the layers list must not let a locked stitch be selected.
+  await page.getByRole("radio", { name: "Fill" }).click();
+  const layers = page.getByRole("list", { name: "Layers" });
+  await layers.getByRole("button", { name: /^eyebrow/ }).click();
+  assert.doesNotMatch(await page.locator("output.sr-only").innerText(), /eyebrow/, "locked stitches cannot be selected from the layers list in Fill mode");
+  await page.getByRole("radio", { name: "Pattern" }).click();
+  await layers.getByRole("button", { name: /^eyebrow/ }).click();
+  await page.waitForFunction(() => /eyebrow/.test(document.querySelector("output.sr-only")?.textContent ?? ""));
+});
+
+test("a model editing from another process shows up on the open canvas without a reload", async () => {
+  const r = spawnSync(process.execPath, [fileURLToPath(new URL("./fixtures/model-edit.mjs", import.meta.url)), patternId, "headline", "Written by your model"], { env: { ...process.env, KNITTED_HOME: studio.home }, encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+  await page.frameLocator('iframe[title="Pattern canvas"]').getByText("Written by your model").waitFor({ timeout: 10000 });
+});
+
+test("layers: hide, lock, and select from the list", async () => {
+  const layers = page.getByRole("list", { name: "Layers" });
+  await layers.waitFor();
+  await layers.getByRole("button", { name: "Hide logo" }).click();
+  await page.waitForFunction(async ({ id }) => !!(await (await fetch(`/api/patterns/${id}`)).json()).stitches.find((s) => s.slot === "logo").style?.hidden, { id: patternId });
+  await layers.getByRole("button", { name: "Show logo" }).click();
+  await layers.getByRole("button", { name: /^headline/ }).click();
+  await page.getByLabel("Slot name").waitFor();
+});
+
+test("yarn: upload from the panel, click to place it, and the heat grade changes the render", async () => {
+  const f = join(mkdtempSync(join(tmpdir(), "knitted-ed-")), "photo.png");
+  writeFileSync(f, await sharp({ create: { width: 1200, height: 800, channels: 3, background: { r: 30, g: 120, b: 200 } } }).png().toBuffer());
+  await page.getByRole("button", { name: "Yarn", exact: true }).click();
+  await page.getByLabel("Upload Yarn").setInputFiles(f);
+  const use = page.getByRole("button", { name: "Use photo" });
+  await use.waitFor();
+  await use.click();
+  const frame = page.frameLocator('iframe[title="Pattern canvas"]');
+  await frame.locator("img").first().waitFor();
+  // The canvas shows it before autosave lands, so wait for the saved pattern rather than racing it.
+  let placed;
+  for (let i = 0; i < 40 && !placed; i++) { placed = (await getPattern()).stitches.find((s) => s.yarnId); if (!placed) await new Promise((r) => setTimeout(r, 250)); }
+  assert.ok(placed, "an image stitch was added with that yarn");
+  await page.getByText("Heat grade").waitFor();
+  await page.getByRole("radio", { name: "Ember" }).click();
+  await frame.locator(".heat").first().waitFor();
+});
+
+test("history lists the changes and restores an earlier one", async () => {
+  await page.getByRole("button", { name: "History" }).click();
+  const drawer = page.getByRole("dialog");
+  await drawer.getByText("Current").waitFor();
+  await drawer.getByRole("button", { name: "Restore" }).last().click();
+  await page.getByText(/Restored/).first().waitFor();
+});
+
+test("reload keeps everything: the editor autosaves, nothing is lost", async () => {
+  await openEditor();
+  assert.ok((await getPattern()).stitches.length >= 4);
+});
+
+for (const theme of ["day", "night"]) {
+  test(`no serious accessibility violations in the editor in ${theme}`, async () => {
+    await openEditor();
+    await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
+    await page.waitForTimeout(500);
+    const problems = (await axeProblems(page)).filter((p) => !p.startsWith("scrollable-region-focusable"));
+    assert.deepEqual(problems, []);
+  });
+}

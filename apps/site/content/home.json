@@ -1,0 +1,54 @@
+{
+  "hero": {
+    "eyebrow": "Open source · Free forever",
+    "sub": "Social posts, ads and web graphics from reusable brand patterns. You and your model, working on the same canvas.",
+    "cta": "Star on GitHub",
+    "ghost": "See how it works",
+    "strip": "The render engine and the MCP server work today. The studio app is still being built, and every page here says which is which."
+  },
+  "idea": {
+    "eyebrow": "The idea in one picture",
+    "title": "Pattern once. Knit forever.",
+    "lead": "Lock what the brand decided. Leave the rest free. Then change one line and watch every size follow. This is a small, working model of it."
+  },
+  "steps": {
+    "eyebrow": "Three steps",
+    "title": "From brand to batch.",
+    "items": [
+      { "n": "01", "title": "Set your swatch", "text": "Colours, fonts, logos and a written voice, in one brand kit. Done once." },
+      { "n": "02", "title": "Build a pattern", "text": "Lay out the stitches. Lock the ones that carry the brand. Leave the rest free." },
+      { "n": "03", "title": "Knit as many as you like", "text": "Change the headline and the photo, then knit a dozen posts in every size." }
+    ]
+  },
+  "lock": {
+    "eyebrow": "Brand lock",
+    "title": "Your brand stays put.",
+    "text": "Most tools drift. A model gets a little creative with the logo, someone nudges the red, and by Friday nothing matches. In knitted a locked stitch is locked for everyone, your model included. If it tries, the write is refused and the refusal is reported back, so nobody believes a change happened when it did not."
+  },
+  "doors": {
+    "eyebrow": "Two front doors",
+    "title": "Use the studio. Or let your model.",
+    "studio": { "title": "In the studio", "text": "A canvas where locked and free stitches are drawn differently, so you always know what is yours to change.", "status": "The editor is being built." },
+    "model": { "title": "Through your model", "text": "The same operations are open to your model over MCP. It reads the Pattern, fills the free slots and knits.", "status": "Available now." }
+  },
+  "motion": {
+    "eyebrow": "Motion and voice",
+    "title": "Built frame by frame.",
+    "text": "A video is not a pile of pictures pasted on a timer. Each frame of a knitted animation is made at an exact moment, so things ease, fade and slide the way they do on a good website. Then it is encoded, and the result is the same on a slow laptop as on a fast one.",
+    "voice": "Voiceover is made by a speech model running on your own computer. Everything runs on your computer."
+  },
+  "gallery": { "eyebrow": "Sample patterns", "title": "What a pattern looks like.", "note": "Drawn from the brand tokens, not knitted output yet. Real knits will replace these." },
+  "local": {
+    "eyebrow": "Local, private, open",
+    "items": [
+      { "title": "Runs offline", "text": "Fonts, tools and renderer all live on your machine. No account, no cloud, no tracking." },
+      { "title": "Your files, your folder", "text": "Projects are plain files in a folder you can open, copy and back up." },
+      { "title": "MIT licensed", "text": "Read it, change it, keep it. Free for you and for anyone who wants to build on it." }
+    ]
+  },
+  "final": {
+    "eyebrow": "Ready when you are",
+    "title": "Knit your first post tonight.",
+    "text": "The desktop app for Windows, macOS and Linux is not released yet. Star the project and you will see it the moment it is."
+  }
+}

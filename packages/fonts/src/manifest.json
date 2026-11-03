@@ -1,0 +1,200 @@
+[
+  {
+    "family": "Bricolage Grotesque",
+    "category": "display",
+    "file": "bricolage-grotesque-latin-wght-normal.woff2",
+    "style": "normal",
+    "weight": [
+      200,
+      800
+    ],
+    "license": "OFL-1.1"
+  },
+  {
+    "family": "Geist",
+    "category": "sans",
+    "file": "geist-latin-wght-normal.woff2",
+    "style": "normal",
+    "weight": [
+      100,
+      900
+    ],
+    "license": "OFL-1.1"
+  },
+  {
+    "family": "Geist Mono",
+    "category": "mono",
+    "file": "geist-mono-latin-wght-normal.woff2",
+    "style": "normal",
+    "weight": [
+      100,
+      900
+    ],
+    "license": "OFL-1.1"
+  },
+  {
+    "family": "Instrument Serif",
+    "category": "serif",
+    "file": "instrument-serif-latin-400-italic.woff2",
+    "style": "italic",
+    "weight": [
+      400,
+      400
+    ],
+    "license": "OFL-1.1"
+  },
+  {
+    "family": "Inter",
+    "category": "sans",
+    "file": "inter-latin-wght-normal.woff2",
+    "style": "normal",
+    "weight": [
+      100,
+      900
+    ],
+    "license": "OFL-1.1"
+  },
+  {
+    "family": "DM Sans",
+    "category": "sans",
+    "file": "dm-sans-latin-wght-normal.woff2",
+    "style": "normal",
+    "weight": [
+      100,
+      1000
+    ],
+    "license": "OFL-1.1"
+  },
+  {
+    "family": "Space Grotesk",
+    "category": "display",
+    "file": "space-grotesk-latin-wght-normal.woff2",
+    "style": "normal",
+    "weight": [
+      300,
+      700
+    ],
+    "license": "OFL-1.1"
+  },
+  {
+    "family": "Outfit",
+    "category": "display",
+    "file": "outfit-latin-wght-normal.woff2",
+    "style": "normal",
+    "weight": [
+      100,
+      900
+    ],
+    "license": "OFL-1.1"
+  },
+  {
+    "family": "Plus Jakarta Sans",
+    "category": "sans",
+    "file": "plus-jakarta-sans-latin-wght-normal.woff2",
+    "style": "normal",
+    "weight": [
+      200,
+      800
+    ],
+    "license": "OFL-1.1"
+  },
+  {
+    "family": "Sora",
+    "category": "display",
+    "file": "sora-latin-wght-normal.woff2",
+    "style": "normal",
+    "weight": [
+      100,
+      800
+    ],
+    "license": "OFL-1.1"
+  },
+  {
+    "family": "Manrope",
+    "category": "sans",
+    "file": "manrope-latin-wght-normal.woff2",
+    "style": "normal",
+    "weight": [
+      200,
+      800
+    ],
+    "license": "OFL-1.1"
+  },
+  {
+    "family": "Archivo",
+    "category": "sans",
+    "file": "archivo-latin-wght-normal.woff2",
+    "style": "normal",
+    "weight": [
+      100,
+      900
+    ],
+    "license": "OFL-1.1"
+  },
+  {
+    "family": "Playfair Display",
+    "category": "serif",
+    "file": "playfair-display-latin-wght-normal.woff2",
+    "style": "normal",
+    "weight": [
+      400,
+      900
+    ],
+    "license": "OFL-1.1"
+  },
+  {
+    "family": "Fraunces",
+    "category": "serif",
+    "file": "fraunces-latin-wght-normal.woff2",
+    "style": "normal",
+    "weight": [
+      100,
+      900
+    ],
+    "license": "OFL-1.1"
+  },
+  {
+    "family": "Lora",
+    "category": "serif",
+    "file": "lora-latin-wght-normal.woff2",
+    "style": "normal",
+    "weight": [
+      400,
+      700
+    ],
+    "license": "OFL-1.1"
+  },
+  {
+    "family": "DM Serif Display",
+    "category": "serif",
+    "file": "dm-serif-display-latin-400-normal.woff2",
+    "style": "normal",
+    "weight": [
+      400,
+      400
+    ],
+    "license": "OFL-1.1"
+  },
+  {
+    "family": "Bebas Neue",
+    "category": "display",
+    "file": "bebas-neue-latin-400-normal.woff2",
+    "style": "normal",
+    "weight": [
+      400,
+      400
+    ],
+    "license": "OFL-1.1"
+  },
+  {
+    "family": "JetBrains Mono",
+    "category": "mono",
+    "file": "jetbrains-mono-latin-wght-normal.woff2",
+    "style": "normal",
+    "weight": [
+      100,
+      800
+    ],
+    "license": "OFL-1.1"
+  }
+]

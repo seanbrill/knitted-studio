@@ -1,0 +1,295 @@
+/* Fonts are bundled, never fetched from a CDN: the desktop app must work offline
+ * and the site must not leak a visit to a third party. */
+@import "@fontsource-variable/bricolage-grotesque/wght.css";
+@import "@fontsource-variable/geist/wght.css";
+@import "@fontsource-variable/geist-mono/wght.css";
+@import "@fontsource/instrument-serif/400-italic.css";
+@import "./components.css";
+
+/* knitted.studio - the whole design system, as tokens.
+ *
+ * Every rule in KNITTED-THEME.md that can live in CSS lives here, so a
+ * component never picks a colour or a size.
+ *
+ * ── COLOUR ROLES (changed 2026-11-03) ──────────────────────────────────────
+ *
+ * RED AND ORANGE ARE THE PRIMARY COLOURS. White and black are secondary: they
+ * are the ground the brand colours sit on, and the ink that sets type on it.
+ * The first iteration had this backwards (black as the primary, orange as a
+ * hairline), which is why the app read as a dark slab with no brand in it.
+ *
+ * DAY IS THE DEFAULT. A warm white workspace, a warm black rail, and ember and
+ * red carrying the brand. Night is an option (`data-theme="night"`), not the
+ * starting point.
+ */
+
+:root {
+  /* ── Colour ───────────────────────────────────────────────────────────────
+   *
+   * Four brand colours and no more: orange, red, black, white. `glow` is a
+   * rare amber highlight. `success` and `danger` are states, not brand.
+   *
+   * EMBER IS MEASURED, NOT PICKED. The theme document asserts that white on
+   * ember fails contrast at 3.7:1, and that is a real constraint rather than a
+   * remark: #DF5A0F puts white at 3.75:1 and on-ember at 5.06:1, so the rule
+   * "never white on ember, always on-ember" is true of this exact value. Change
+   * the hex and that sentence stops being true.
+   */
+  --ember: #df5a0f;
+  --ember-hover: #c84f0d; /* 8% darker, per the button spec */
+  --on-ember: #1a0e05; /* warm black. 5.06:1 on ember */
+  --ember-ink: #a64009; /* orange TEXT on Day, also on the orange tint. Night overrides it lighter */
+
+  --red: #d92414;
+  --oxblood: #5c1410;
+  --on-red: #ffffff; /* 4.98:1 on red */
+  --glow: #ffb347;
+
+  /* Night. Neutrals carry a slight warm bias toward ember, so they read as
+   * chosen rather than inherited: a pure grey next to this orange looks like a
+   * different design. */
+  /* Day (default). Neutrals lean warm toward ember so they read as chosen: a
+   * pure grey beside this orange looks like a different design. Every pair
+   * below is checked by scripts/check-contrast.mjs. */
+  --surface: #fffbf6;
+  --surface-raised: #ffffff;
+  --surface-sunken: #f5ece2; /* the canvas surround */
+  --ink: #17110b;
+  --ink-muted: #6a5d50;
+  --line: #ebdfd2;
+  --line-strong: #d2c1ae;
+  --tint: rgba(223, 90, 15, 0.1); /* selection and hover ground */
+
+  /* The tool rail: warm black in both themes. Black is the secondary colour
+   * and this is where it is most present, so the orange beside it has
+   * something to push against. */
+  --rail: #17110b;
+  --on-rail: #f6f3ef;
+  --on-rail-muted: #a89c8e;
+  --rail-active: rgba(223, 90, 15, 0.28);
+  --rail-active-ink: #ff9254;
+
+  --success: #2b7a4b;
+  --danger: #c8102e; /* a cooler crimson than brand red: red is a brand colour now */
+
+  /* The one gradient allowed: glow -> ember -> red at 135 degrees. Hero
+   * backgrounds, the logo tile, and the shimmer while a model works. Never
+   * behind body text, never on a button. */
+  --heat: linear-gradient(135deg, var(--glow) 0%, var(--ember) 48%, var(--red) 100%);
+
+  /* ── Type ─────────────────────────────────────────────────────────────── */
+  --font-display: "Bricolage Grotesque Variable", "Bricolage Grotesque", "Arial Black", system-ui, sans-serif;
+  --font-ui: "Geist Variable", "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-accent: "Instrument Serif", Georgia, serif;
+
+  /* ── Space: a 4px base grid ───────────────────────────────────────────── */
+  --space-1: 4px;   --space-2: 8px;   --space-3: 12px;  --space-4: 16px;
+  --space-5: 20px;  --space-6: 24px;  --space-8: 32px;  --space-10: 40px;
+  --space-12: 48px; --space-16: 64px; --space-20: 80px; --space-24: 96px;
+
+  /* ── Shape ────────────────────────────────────────────────────────────── */
+  --radius-sm: 6px;   /* chips, inputs */
+  --radius-md: 10px;  /* buttons, cards, thumbnails */
+  --radius-lg: 16px;  /* panels, modals */
+  --radius-pill: 999px;
+  --shadow-lift: 0 12px 32px -8px rgba(23, 17, 11, 0.22), 0 2px 8px -2px rgba(23, 17, 11, 0.12);
+
+  /* ── The app's fixed frame ────────────────────────────────────────────── */
+  --rail-w: 56px;
+  --inspector-w: 300px;
+  --topbar-h: 48px;
+
+  /* ── Motion: 160ms for UI, 320ms for panels ───────────────────────────── */
+  --t-ui: 160ms;
+  --t-panel: 320ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+
+  color-scheme: light;
+}
+
+/* Night. Optional. The surfaces are stepped well apart (the first iteration's
+ * were near-identical blacks, so panels and canvas dissolved into one slab) and
+ * ember reads as colour rather than as a hairline. */
+:root[data-theme="night"] {
+  --surface: #17130f;
+  --surface-raised: #231e18;
+  --surface-sunken: #0e0b08;
+  --ink: #f6f3ef;
+  --ink-muted: #a39b90;
+  --line: #2f2820;
+  --line-strong: #4a4034;
+  --tint: rgba(223, 90, 15, 0.16);
+  --ember-ink: #ff9254;
+  --success: #3fa66b;
+  --danger: #ff6b70;
+  --rail: #0e0b08;
+  --shadow-lift: 0 12px 32px -8px rgba(0, 0, 0, 0.7), 0 2px 8px -2px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  /* Explicit, always. A transparent body borrows whatever ground it is
+   * composited over, which is how a dark app renders light text on white. */
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Links inherit their colour and carry no underline by default: a browser-blue
+ * underlined link inside a branded surface reads as a bug. Prose links opt in
+ * with .link. */
+a { color: inherit; text-decoration: none; }
+a.link { color: var(--ember-ink); text-decoration: underline; text-underline-offset: 3px; }
+
+/* ── Type scale ─────────────────────────────────────────────────────────────
+ *
+ * "Heavy type, few words." The contrast in size IS the design, so the display
+ * sizes are much larger than the body sizes rather than a little larger.
+ * Headlines keep to 2-4 words and are tracked tight.
+ */
+.display-xl, .display, .h1, .h2, .h3 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 0.95;
+  text-wrap: balance;
+  margin: 0;
+}
+.display-xl { font-size: clamp(48px, 9vw, 112px); }
+.display    { font-size: clamp(36px, 6vw, 72px); }
+.h1 { font-size: 32px; line-height: 1.05; }
+.h2 { font-size: 24px; line-height: 1.1; letter-spacing: -0.02em; }
+.h3 { font-size: 18px; line-height: 1.2; letter-spacing: -0.01em; font-weight: 700; }
+
+.body-lg { font-size: 16px; line-height: 1.6; }
+.body    { font-size: 14px; line-height: 1.55; }
+.body-sm { font-size: 12px; line-height: 1.5; }
+.label   { font-size: 13px; font-weight: 600; letter-spacing: -0.005em; }
+
+/* The only uppercase in the system. Always mono, always wide-tracked. */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--ink-muted);
+}
+.eyebrow-ember { color: var(--ember-ink); }
+
+/* One word swapped into a display headline. Never more than one per screen. */
+.accent { font-family: var(--font-accent); font-style: italic; font-weight: 400; }
+
+.code, .mono { font-family: var(--font-mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+/* Running text stays near 65 characters. */
+.prose { max-width: 65ch; }
+
+/* ── Buttons ───────────────────────────────────────────────────────────────
+ * One primary per view. That is a design rule, and it is why `ember` is not
+ * available as a general background.
+ */
+.btn {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 600;
+  height: 40px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  transition: background var(--t-ui) var(--ease), border-color var(--t-ui) var(--ease),
+              color var(--t-ui) var(--ease);
+  white-space: nowrap;
+}
+.btn-primary { background: var(--ember); color: var(--on-ember); }
+.btn-primary:hover { background: var(--ember-hover); }
+.btn-primary:active { background: var(--red); color: var(--on-red); }
+.btn-secondary { background: transparent; border-color: var(--line-strong); color: var(--ink); }
+.btn-secondary:hover { background: var(--tint); }
+.btn-ghost { background: transparent; color: var(--ink-muted); }
+.btn-ghost:hover { color: var(--ink); }
+.btn-danger { background: transparent; border-color: var(--danger); color: var(--danger); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Focus: 2px solid ember, 2px offset, at least 3:1 on every surface. */
+:focus-visible {
+  outline: 2px solid var(--ember);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ── The stitch outline, which is the product's visual language ─────────────
+ *
+ * Dashed ember = locked by the brand pattern. Solid line-strong = free to
+ * edit. That one difference is how a person reads a Pattern at a glance, so it
+ * is a token rather than a component's private style.
+ */
+.stitch-locked {
+  border: 1.5px dashed var(--ember);
+  border-radius: var(--radius-sm);
+}
+.stitch-free {
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+}
+
+/* ── Surfaces ─────────────────────────────────────────────────────────────
+ * Cards are FLAT: raised ground plus a hairline. Only floating things get the
+ * shadow, so elevation keeps meaning something.
+ */
+.card {
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+.panel {
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+.floating { box-shadow: var(--shadow-lift); }
+
+.heat { background: var(--heat); }
+
+/* ── Motion ────────────────────────────────────────────────────────────────
+ * The signature is "stitching in": new outputs reveal top to bottom in rows,
+ * like rows being knit.
+ */
+@keyframes stitch-in {
+  from { clip-path: inset(0 0 100% 0); opacity: 0.4; }
+  to   { clip-path: inset(0 0 0 0);    opacity: 1; }
+}
+.stitching-in { animation: stitch-in 320ms var(--ease) both; }
+
+@keyframes heat-shimmer {
+  0%   { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+.working {
+  background: var(--heat);
+  background-size: 200% 100%;
+  animation: heat-shimmer 1.6s linear infinite;
+}
+
+/* Reduced motion becomes a plain fade, per the theme document. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .stitching-in { animation: none; opacity: 1; clip-path: none; }
+}

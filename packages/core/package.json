@@ -1,0 +1,16 @@
+{
+  "name": "@knitted/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./node": "./src/node.ts",
+    "./client": "./src/client.ts"
+  },
+  "dependencies": {
+    "@knitted/fonts": "*",
+    "sharp": "^0.35.5",
+    "zod": "^4.6.7"
+  }
+}

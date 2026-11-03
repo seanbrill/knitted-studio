@@ -1,0 +1,30 @@
+{
+  "note": "The single source of truth for what the site may claim. Every feature is shipped or soon; the page labels the soon ones. Change a status here and every page follows.",
+  "groups": [
+    { "id": "patterns", "name": "Patterns", "line": "Set the layout once. Lock what the brand decided." },
+    { "id": "swatches", "name": "Swatches", "line": "One brand kit, shared by every Pattern." },
+    { "id": "yarn", "name": "Yarn", "line": "Your photos, logos, video and copy, kept per project." },
+    { "id": "parts", "name": "Parts", "line": "Small reusable pieces that drop into many Patterns." },
+    { "id": "motion", "name": "Motion", "line": "Animation that is built frame by frame, so it eases like real motion." },
+    { "id": "voice", "name": "Voice", "line": "Voiceover that is made on your own computer." },
+    { "id": "model", "name": "Your model", "line": "The same tools for you and for your model." },
+    { "id": "studio", "name": "The studio", "line": "Projects, the desktop app, and the look of it all." }
+  ],
+  "features": [
+    { "id": "locked-stitches", "group": "patterns", "status": "shipped", "name": "Locked and free stitches", "summary": "A locked stitch cannot be changed by whoever uses the Pattern, and that includes your model. The attempt is refused and reported." },
+    { "id": "pattern-editor", "group": "patterns", "status": "soon", "name": "The Pattern editor", "summary": "Draw, move and style stitches on a canvas, with the locked and free outlines always visible." },
+    { "id": "fill-mode", "group": "patterns", "status": "soon", "name": "Fill mode", "summary": "Open a Pattern, change only the free stitches, and knit. Built for people who are not designers." },
+    { "id": "batch-knit", "group": "patterns", "status": "soon", "name": "Batch knitting in the studio", "summary": "Knit twelve posts from one Pattern in one go. Your model can already ask for variants through the MCP server." },
+    { "id": "swatch-editor", "group": "swatches", "status": "soon", "name": "The Swatch editor", "summary": "Colours, fonts, logos and a written voice for one brand, in one place." },
+    { "id": "yarn-uploads", "group": "yarn", "status": "soon", "name": "Yarn uploads", "summary": "Drop in photos, logos, video and copy. Every file lives in a folder you can open." },
+    { "id": "parts", "group": "parts", "status": "soon", "name": "Parts", "summary": "A lower-third, a logo sting or a quote block, made once and dropped into many Patterns." },
+    { "id": "render-engine", "group": "motion", "status": "shipped", "name": "The frame-by-frame render engine", "summary": "A Pattern is a page with a timeline. The engine sets the time, takes a picture of each frame and lets ffmpeg do the encoding. Needs Playwright and ffmpeg installed." },
+    { "id": "motion-editor", "group": "motion", "status": "soon", "name": "Motion in the editor", "summary": "Set timing and easing on a timeline, then scrub through it before you knit." },
+    { "id": "local-voiceover", "group": "voice", "status": "soon", "name": "Local voiceover", "summary": "Point the studio at a speech model running on your own computer and add a voice to a reel." },
+    { "id": "mcp-server", "group": "model", "status": "shipped", "name": "A four-tool MCP server", "summary": "list_projects, get_pattern, fill_slots and knit_pattern, against the same store the studio uses." },
+    { "id": "in-app-model", "group": "model", "status": "soon", "name": "Your model inside the studio", "summary": "Bring your own key and ask for changes from a prompt bar next to the canvas." },
+    { "id": "design-tokens", "group": "studio", "status": "shipped", "name": "A design system built as tokens", "summary": "Colour, type, spacing and the stitch outline are defined once and shared by the studio and this site." },
+    { "id": "projects", "group": "studio", "status": "soon", "name": "Projects", "summary": "Several brands, each with its own Swatch, Yarn and Patterns." },
+    { "id": "installers", "group": "studio", "status": "soon", "name": "Desktop installers", "summary": "An app for Windows, macOS and Linux, with a first-launch guide. Early builds will be unsigned previews." }
+  ]
+}

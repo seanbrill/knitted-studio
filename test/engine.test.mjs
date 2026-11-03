@@ -6,7 +6,8 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { FPS, frameTimes, pageFor } from "../engine/knit.mjs";
+import { FPS, frameTimes } from "@knitted/engine";
+import { pageFor } from "@knitted/render";
 
 test("a still is one frame, at time zero", () => {
   assert.deepEqual(frameTimes(0), [0]);
@@ -63,4 +64,17 @@ test("a hand-written pattern keeps its own html and still gets the stage", () =>
   assert.ok(html.includes("<main id='mine'>custom</main>"));
   assert.ok(html.includes(".x{color:red}"));
   assert.ok(html.includes("window.__stage"), "a code pattern renders through the same engine");
+});
+
+test("every style a stitch declares survives into the page, including after a font name", () => {
+  // The regression this pins: a quoted font name inside style="..." ended the
+  // attribute and silently dropped font-size, colour and everything after it.
+  const html = pageFor({ id: "p", size: { name: "S", w: 1000, h: 1000 }, durationMs: 0, stitches: [
+    { id: "t", kind: "text", slot: "headline", x: 0, y: 0, w: 1, h: 0.2, locked: false, content: "Hi", style: { fontFamily: "Playfair Display", fontSize: 0.1, color: "#112233", fontWeight: 800 } },
+  ] });
+  const style = html.match(/data-stitch-id="t"[^>]*style="([^"]*)"/)[1];
+  assert.match(style, /font-family:'Playfair Display'/);
+  assert.match(style, /font-size:100px/);
+  assert.match(style, /color:#112233/);
+  assert.match(style, /font-weight:800/);
 });

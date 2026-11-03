@@ -1,0 +1,8 @@
+{
+  "name": "@knitted/agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.mjs" },
+  "dependencies": { "@knitted/core": "*", "@knitted/mcp": "*", "@knitted/engine": "*" }
+}

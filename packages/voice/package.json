@@ -1,0 +1,13 @@
+{
+  "name": "@knitted/voice",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.mjs",
+    "./download": "./src/download.mjs"
+  },
+  "dependencies": {
+    "@knitted/core": "*"
+  }
+}

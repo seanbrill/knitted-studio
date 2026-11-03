@@ -1,0 +1,56 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# One run per branch; a newer push cancels the older one.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    env:
+      # Linux runners have no setuid chrome-sandbox. Used only by the Electron smoke test.
+      KNITTED_NO_SANDBOX: ${{ matrix.os == 'ubuntu-latest' && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # Playwright is an optional dependency of the product but is what
+      # verify-builds uses to look at the built site in a real browser.
+      - name: Install Chromium for the build check
+        run: npx playwright install --with-deps chromium
+
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run check:contrast
+      - run: npm test
+
+      - run: npm run build
+
+      # The check must be able to fail before its pass means anything.
+      - run: node scripts/verify-builds.mjs --self-test
+      - run: npm run verify:builds
+
+      # Window -> server -> SQLite, in the packaged-style build, on each OS.
+      - name: Electron smoke test (Linux, virtual display)
+        if: matrix.os == 'ubuntu-latest'
+        run: xvfb-run -a npm run desktop:smoke -w @knitted/studio
+      - name: Electron smoke test
+        if: matrix.os != 'ubuntu-latest'
+        run: npm run desktop:smoke -w @knitted/studio

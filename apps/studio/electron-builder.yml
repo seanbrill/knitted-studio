@@ -1,0 +1,34 @@
+# Desktop packaging. Unsigned for now: builds run and install, and the OS warns on
+# first launch (see docs/INSTALL.md). Signing is added here when certificates exist.
+appId: studio.knitted.app
+productName: knitted
+copyright: Copyright (c) knitted.studio contributors, MIT
+electronVersion: 45.2.1
+directories:
+  output: ../../dist/desktop
+npmRebuild: false      # no native modules: SQLite is node:sqlite
+asar: true
+afterPack: ../../scripts/after-pack.mjs
+# Only the shell goes in the asar. The server and the tools are extra resources, run as plain files.
+files:
+  - electron/main.mjs
+  - package.json
+  - "!**/node_modules/**"
+extraResources:
+  - { from: ../../dist/app, to: app-server, filter: ["**/*"] }
+  - { from: ../../build/bin, to: bin }
+mac:
+  category: public.app-category.graphics-design
+  target: [dmg, zip]
+  identity: null        # unsigned
+win:
+  target: [nsis]
+  signAndEditExecutable: false
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false   # uninstalling never deletes someone's library
+linux:
+  category: Graphics
+  target: [AppImage, deb]
+artifactName: knitted-${version}-${os}-${arch}.${ext}

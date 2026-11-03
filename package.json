@@ -1,33 +1,50 @@
 {
   "name": "knitted-studio",
   "version": "0.1.0",
-  "private": false,
+  "private": true,
   "license": "MIT",
   "description": "An open-source studio where people and their models knit social posts, ads and web graphics from reusable brand patterns.",
   "homepage": "https://knitted.studio",
   "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "next dev -p 4100",
-    "build": "next build",
-    "start": "next start -p 4100",
-    "lint": "next lint",
-    "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test test/*.test.mjs",
-    "knit": "node engine/cli.mjs",
-    "mcp": "node mcp/server.mjs"
-  },
-  "dependencies": {
-    "next": "15.5.4",
-    "react": "19.1.1",
-    "react-dom": "19.1.1"
+    "dev": "node scripts/dev.mjs",
+    "dev:studio": "npm run dev -w @knitted/studio",
+    "dev:site": "npm run dev -w @knitted/site",
+    "desktop:dev": "npm run desktop:dev -w @knitted/studio",
+    "build": "npm run build:site && npm run build:app",
+    "build:site": "npm run build -w @knitted/site && node scripts/collect-site.mjs",
+    "build:app": "npm run build -w @knitted/studio && node scripts/collect-app.mjs",
+    "verify:builds": "node scripts/verify-builds.mjs",
+    "lint": "eslint .",
+    "typecheck": "tsc -b",
+    "test": "node --test test/*.test.mjs packages/*/test/*.test.mjs",
+    "mcp": "node packages/mcp/src/server.mjs",
+    "check:contrast": "node scripts/check-contrast.mjs",
+    "test:e2e": "node --test --test-concurrency=1 --test-timeout=90000 test/e2e/*.e2e.mjs",
+    "test:render": "node --test --test-concurrency=1 --test-timeout=120000 test/render/*.test.mjs",
+    "desktop:pack": "npm run build:app && npm run desktop:pack -w @knitted/studio",
+    "desktop:dist": "npm run build:app && npm run desktop:dist -w @knitted/studio"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "@next/eslint-plugin-next": "^16.4.4",
     "@types/node": "22.10.2",
     "@types/react": "19.0.2",
     "@types/react-dom": "19.0.2",
-    "typescript": "5.7.2"
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.14.0",
+    "typescript": "5.7.2",
+    "typescript-eslint": "^8.72.1"
   },
   "optionalDependencies": {
-    "playwright": "1.49.1"
+    "playwright": "1.64.1"
+  },
+  "engines": {
+    "node": ">=22.13"
   }
 }

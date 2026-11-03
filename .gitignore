@@ -13,3 +13,10 @@ next-env.d.ts
 /projects/
 *.mp4
 !docs/**/*.mp4
+/claude-workspace
+# Build outputs: dist/site (static), dist/app (studio server), dist/desktop (installers).
+/dist/
+build/
+
+# Secrets: never committed. .env.example lists the names.
+.env

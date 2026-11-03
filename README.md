@@ -41,21 +41,14 @@ you read is what you call it.
 
 ## What works today
 
-This is a first iteration and the honest state of it is:
+- **Projects, Yarn and Swatches.** Everything lives in a project: uploads (images, video, audio, fonts, copy, SVG), a brand Swatch with a contrast checker, bundled offline fonts, and a SQLite library with backups.
+- **The editor.** Drag, resize, snap, undo, locks, Fill mode for people who only fill in the copy, Parts (reusable pieces with locked and free slots), motion and a timeline, voiceover with captions.
+- **Knitting.** One renderer draws the editor and the export, so what you see is what you get. Stills, video and audio mixing are deterministic and checked before and after.
+- **A model, two ways in.** Ask your model from the editor (bring your own Anthropic key), or connect any MCP client. Both use the same 30 tools and the same lock rule.
+- **Desktop app.** Electron, with ffmpeg included and nothing downloaded until you ask. Unsigned for now: see [docs/INSTALL.md](docs/INSTALL.md).
+- **A landing site** (`apps/site`, static).
 
-- **The design system.** Every colour, size, radius and motion rule from the
-  theme document, as tokens in `app/globals.css`. Night is the default.
-- **The editor shell.** The 56px rail, the canvas, the 300px inspector, the
-  48px top bar with the Knit button, the floating prompt bar, the stitch
-  motif, and the locked/free outline language.
-- **The engine.** `engine/knit.mjs` renders a Pattern frame by frame and
-  encodes it. Stills and motion go through the same path.
-- **MCP.** `mcp/server.mjs` exposes the same operations the editor uses, so a
-  model can read a Pattern, fill its slots and knit it.
-
-**Not yet:** persistence beyond a JSON file, uploads, the local TTS voiceover,
-multi-project management in the UI, and the human/model co-editing loop. The
-data model and the MCP surface are shaped for all of them.
+**Not yet:** code signing, auto-update, a Content-Security-Policy for the app window, and a few notch.fm features listed as gaps in [docs/PARITY.md](docs/PARITY.md). Nothing has run on Windows or Linux yet; CI is written for them.
 
 ## The idea the engine rests on
 
@@ -90,12 +83,21 @@ captions that drift.
 
 ```bash
 npm install
-npm run dev        # the studio, on :4100
-npm test           # the engine and MCP tests; no browser needed
+npm run dev            # studio (:4100) and site (:4101) together
+npm run dev:studio     # the studio only
+npm run dev:site       # the site only
+npm run desktop:dev    # the studio as a desktop app
+npm test               # unit and guard tests; no browser needed
+npm run test:render    # needs Chromium and ffmpeg
+npm run test:e2e       # the real studio in a real browser
+npm run desktop:pack   # an unpacked desktop app for this machine, in dist/desktop
 ```
 
-Knitting needs two more things, kept optional so you can work on the editor
-without them:
+Two builds come out of one repo: `npm run build:site` makes `dist/site`
+(static files, deploy anywhere) and `npm run build:app` makes `dist/app` (the
+studio server). See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the layout.
+
+In development knitting needs two more things (the desktop app bundles both):
 
 ```bash
 npm i playwright && npx playwright install chromium
@@ -134,8 +136,10 @@ that catch people out:
 - **Never white on ember.** It fails contrast at 3.75:1. Use `--on-ember`.
   The ember hex is chosen so that sentence is true; changing it breaks the rule
   rather than the rule being wrong.
-- **One ember area outside the canvas.** The work is meant to be the brightest
-  thing on screen. If a screen has two, remove one.
+- **One primary button per view, one brand colour field per screen.** Red and
+  orange are the primary colours and carry the brand; white and black are
+  secondary. Everything else stays neutral. `npm run check:contrast` measures
+  every colour pair in both themes.
 
 ## Licence
 

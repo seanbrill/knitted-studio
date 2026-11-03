@@ -1,3 +1,15 @@
+> **Superseded rules (2026-11-03).** The colour roles changed after the first
+> iteration shipped as a dark slab. **Red and orange are the primary colours;
+> white and black are secondary.** The app defaults to Day (a light, warm
+> workspace with a warm black tool rail), and Night is an option. This retires
+> three rules below: "the work glows, the tool recedes", "if a screen has more
+> than one orange area outside the canvas, remove one", and "Night is the
+> default theme for the app". They are replaced by: one primary button per
+> view, one brand colour field per screen, everything else neutral. Tokens in
+> `packages/ui/src/globals.css` are already updated and are the source of truth;
+> this document is rewritten in full in Phase 1, pending the owner's approval.
+> Unchanged: the vocabulary, type, the stitch outline, motifs, voice, motion.
+
 knitted is an open-source studio where people and their AI models make social posts, ads and web graphics from reusable brand **patterns** (prefabs). The look is **warm heat on black and white**: big color fields of orange and red, heavy white headlines, and a quiet near-black workspace so the work is the brightest thing on screen. Domain: **knitted.studio**.
 
 ## Design philosophy

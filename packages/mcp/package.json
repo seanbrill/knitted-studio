@@ -1,0 +1,15 @@
+{
+  "name": "@knitted/mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/server.mjs",
+    "./tools": "./src/tools.mjs",
+    "./context": "./src/context.mjs"
+  },
+  "dependencies": {
+    "@knitted/core": "*",
+    "@knitted/engine": "*"
+  }
+}

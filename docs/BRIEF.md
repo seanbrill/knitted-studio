@@ -107,26 +107,52 @@ what you call it.
 
 ## What exists today, against the brief
 
-Honest state at first push (commit `50b6c05`). The repository is 18 files, all
-code.
+State at the end of the phased rebuild (see `claude-workspace/implementation-plans`). The first push (commit `50b6c05`) was a shell and an engine; the table below is the truth now.
 
 | Asked for | State |
 |---|---|
-| The design system | **Done.** Every rule from `KNITTED-THEME.md` that can live in CSS is a token in `app/globals.css`. Night is the default. |
-| Editor shell | **Shell only.** The 56px rail, canvas, 300px inspector, 48px top bar, prompt bar, and the locked/free outline language. It does not yet edit. |
-| The engine | **Done and proven.** `engine/knit.mjs` renders a Pattern frame by frame and encodes it. Stills and motion share one path. |
-| MCP | **Four tools.** `list_projects`, `get_pattern`, `fill_slots`, `knit_pattern`, against the same store the editor uses. |
-| Projects | **Data model only.** No multi-project management in the UI. |
-| Uploads | **Not built.** |
-| Prefabs | **Not built**, and see the open question below. |
-| Local TTS | **Not built.** The integration shape is known, see below. |
-| Human and model co-editing | **Not built.** The MCP surface is shaped for it. |
-| Persistence | **A JSON file** under `KNITTED_HOME`, default `~/.knitted-studio`. |
-
-The data model and the MCP surface were designed for all of the above. Nothing
-in the list requires a rewrite to add.
+| The design system | Done. Day default, Night optional, red and orange primary, white and black secondary. |
+| Editor | Done: drag, resize, snap, undo and redo, locks, Fill mode, history. Not done: grouping and per-size overrides. |
+| The engine | Done. One renderer for editor and export; deterministic frames; audio mix pinned by tests. |
+| MCP | 30 tools, shared with the in-app model. |
+| Projects, Yarn, Swatches | Done, with uploads, dedupe, SVG sanitising and a contrast checker. |
+| Prefabs | Done as **Parts**, including code Parts in a sandbox. |
+| Local TTS | Built-in voice, an OpenAI-compatible voice server, and Piper (downloaded on request). |
+| Human and model co-editing | Done: same document, locks enforced in one function, change sets with Keep or Undo all. |
+| Persistence | SQLite (`node:sqlite`), daily and pre-migration backups. |
+| Desktop app | Packaged and smoke-tested on macOS arm64. Unsigned. Windows and Linux are untested. |
+| Parity with `tools/media` | Inventoried in [PARITY.md](PARITY.md); gaps need decisions. Not yet compared byte for byte. |
 
 ---
+
+## Decisions changed since the first push
+
+Taken by Sean on 2026-11-03, after the first iteration was judged too dark and
+mostly non-functional. These supersede anything earlier in this file or in
+`KNITTED-THEME.md` that disagrees; the theme document is rewritten in Phase 1.
+
+| Decision | Detail |
+|---|---|
+| **Desktop app** | Production is an installable app for Windows, macOS and Linux, for non-technical users. `npm run dev` stays for development. Shell is Electron |
+| **Two builds** | The marketing site and the studio are separate: `dist/site` (static) and `dist/app` (server), plus installers |
+| **Colour roles** | **Red and orange are the primary colours; white and black are secondary.** The first iteration made black the primary and shipped Night as the default, which is the opposite of the intent. The app now defaults to a light, warm workspace with Night as an option. The old rules "the work glows, the tool recedes" and "one ember area outside the canvas" are retired |
+| **Models** | Bring your own key. The in-app model and MCP share one tool set |
+| **Prefabs** | New noun **Part**: a reusable fragment smaller than a Pattern. Pattern, then Part, then Stitch. Resolves the open question below |
+| **Storage** | SQLite via Node's built-in `node:sqlite` (no native module, so no per-platform or per-Electron-ABI rebuild), plus plain files for media |
+| **ffmpeg** | Bundled with the desktop app as a separate subprocess, with licence notices |
+| **Site hosting** | filefreak.io Static Sites |
+
+Found during Phase 0, worth knowing:
+
+- `dist/site` cannot be opened from `file://`. Next's export writes root-absolute
+  asset paths, which a static host serves and a double click does not. Making
+  them relative would break every page below the root.
+- `ELECTRON_RUN_AS_NODE=1` is exported by VS Code to its terminals and makes the
+  electron binary behave as plain Node. Use `npm run desktop:dev`.
+- `next` 15.5.4 carried a critical remote code execution advisory; the repo is
+  on 15.5.28. One moderate and one high advisory remain, both in the `postcss`
+  that ships inside Next, which only matters for attacker-controlled CSS. It
+  goes away with a move to Next 16.
 
 ## Decisions already taken
 

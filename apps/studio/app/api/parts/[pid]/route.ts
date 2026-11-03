@@ -1,0 +1,21 @@
+import { z } from "zod";
+import { deletePart, duplicatePart, exportPart, getPart, partUsage, setPartScope, updatePart } from "@knitted/core/node";
+import { body, ok, route, store } from "@/lib/server";
+
+export const dynamic = "force-dynamic";
+type Ctx = { params: Promise<{ pid: string }> };
+
+export const GET = route(async (_: Request, { params }: Ctx) => { const s = store(); const { pid } = await params; return ok({ part: getPart(s, pid), usage: partUsage(s, pid) }); });
+export const PATCH = route(async (req: Request, { params }: Ctx) => ok(updatePart(store(), (await params).pid, (await body(req, z.record(z.string(), z.unknown()))) as never)));
+export const DELETE = route(async (_: Request, { params }: Ctx) => ok(deletePart(store(), (await params).pid)));
+
+const Action = z.object({ action: z.enum(["duplicate", "to-library", "to-project", "export"]), projectId: z.string().optional() });
+export const POST = route(async (req: Request, { params }: Ctx) => {
+  const { pid } = await params;
+  const b = await body(req, Action);
+  const s = store();
+  if (b.action === "duplicate") return ok(duplicatePart(s, pid, b.projectId ?? undefined), 201);
+  if (b.action === "to-library") return ok(setPartScope(s, pid, null));
+  if (b.action === "to-project") return ok(setPartScope(s, pid, b.projectId ?? null));
+  return ok(exportPart(s, pid));
+});

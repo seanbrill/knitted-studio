@@ -1,0 +1,15 @@
+{
+  "note": "Sample patterns drawn from the brand tokens. They are not real knitted output yet; the gallery says so.",
+  "items": [
+    { "id": "launch-story", "title": "Launch story", "format": "Story, 9:16", "aspect": "9 / 16", "theme": "ember", "layout": "headline", "eyebrow": "New this week", "headline": "Make it knitted.", "tag": "Pattern: Launch story", "alt": "Sample Story post on an orange field with the headline Make it knitted." },
+    { "id": "quote-square", "title": "Quote card", "format": "Square, 1:1", "aspect": "1 / 1", "theme": "oxblood", "layout": "quote", "eyebrow": "Customer words", "headline": "It finally looks like us.", "tag": "Pattern: Quote card", "alt": "Sample square quote card on a deep red field." },
+    { "id": "stat-portrait", "title": "Big number", "format": "Portrait, 4:5", "aspect": "4 / 5", "theme": "cream", "layout": "stat", "eyebrow": "By the numbers", "headline": "12 posts", "tag": "One Pattern, one afternoon", "alt": "Sample portrait post with the number 12 posts on a warm white field." },
+    { "id": "wide-ad", "title": "Wide ad", "format": "Wide, 16:9", "aspect": "16 / 9", "theme": "ink", "layout": "headline", "eyebrow": "Ad", "headline": "Pattern once.", "tag": "Pattern: Wide ad", "alt": "Sample wide ad on a warm black field with the headline Pattern once." },
+    { "id": "chevron-square", "title": "Chevron field", "format": "Square, 1:1", "aspect": "1 / 1", "theme": "ember", "layout": "chevrons", "eyebrow": "Open source", "headline": "Free forever.", "tag": "Pattern: Chevron field", "alt": "Sample square post on orange with a chevron pattern in deep red." },
+    { "id": "red-story", "title": "Announcement", "format": "Story, 9:16", "aspect": "9 / 16", "theme": "red", "layout": "headline", "eyebrow": "Heads up", "headline": "We moved.", "tag": "Pattern: Announcement", "alt": "Sample Story post on a red field with the headline We moved." },
+    { "id": "tip-portrait", "title": "Quick tip", "format": "Portrait, 4:5", "aspect": "4 / 5", "theme": "ember", "layout": "quote", "eyebrow": "Tip 03", "headline": "Lock the logo.", "tag": "Pattern: Quick tip", "alt": "Sample portrait tip card on orange with the text Lock the logo." },
+    { "id": "banner-wide", "title": "Web banner", "format": "Wide, 16:9", "aspect": "16 / 9", "theme": "cream", "layout": "headline", "eyebrow": "On the site", "headline": "Knit your first post.", "tag": "Pattern: Web banner", "alt": "Sample web banner on warm white with the headline Knit your first post." },
+    { "id": "oxblood-square", "title": "Sale", "format": "Square, 1:1", "aspect": "1 / 1", "theme": "oxblood", "layout": "stat", "eyebrow": "This weekend", "headline": "40% off", "tag": "Pattern: Sale", "alt": "Sample square sale post on deep red with the text 40% off." },
+    { "id": "ink-story", "title": "Behind the scenes", "format": "Story, 9:16", "aspect": "9 / 16", "theme": "ink", "layout": "chevrons", "eyebrow": "Behind the scenes", "headline": "Row by row.", "tag": "Pattern: Behind the scenes", "alt": "Sample Story post on warm black with the headline Row by row." }
+  ]
+}
