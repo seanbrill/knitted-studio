@@ -28,7 +28,7 @@ steps:
       for tool in git node npm; do command -v "$tool" >/dev/null || { echo "MISSING program: $tool"; exit 1; }; done
       node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 22 ? 0 : 1)' || { echo "Node 22 or newer is needed, this is $(node -v)"; exit 1; }
       missing=0
-      for v in KNITTED_REPO_URL FILEFREAK_KEY KNITTED_RELEASE_FOLDER KNITTED_SITE_NAME KNITTED_RELEASE_DOWNLOAD_KEY; do
+      for v in KNITTED_REPO_URL FILEFREAK_KEY KNITTED_SITE_NAME KNITTED_RELEASE_DOWNLOAD_KEY; do
         [ -n "$(printenv "$v" || true)" ] || { echo "MISSING variable: $v"; missing=1; }
       done
       [ "$missing" = 0 ] || exit 1
@@ -80,7 +80,7 @@ steps:
 
   - name: Upload the versioned download
     description: >
-      Puts the installers and a SHA256SUMS.txt in <release folder>/v<version>,
+      Puts the installers and a SHA256SUMS.txt in v<version> in the release folder,
       through scripts/publish-release.mjs. It makes only write calls, so a key
       with files:write is enough. The folder must be public in FileFreak for the
       Download page to list the files.

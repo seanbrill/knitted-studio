@@ -3,11 +3,10 @@
 //
 //   node scripts/publish-release.mjs [dir]        dir defaults to dist/desktop
 //
-//   FILEFREAK_KEY            a key that may write files (files:write)
-//   KNITTED_RELEASE_FOLDER   the release folder: release, /release, ff:/release, or a/b
+//   FILEFREAK_KEY   a key that may write files (files:write), limited to the release folder
 //
-// The files go in <release folder>/v<version>, beside a SHA256SUMS.txt, and replace
-// same-named files, so running a version again is safe.
+// The files go in v<version> at the top of what the key can reach (the release folder),
+// beside a SHA256SUMS.txt, and replace same-named files, so running a version again is safe.
 //
 // Only WRITE calls are made. A folder is made with ifExists "use", which hands back
 // the folder already there, and each file is uploaded into that folder's id. So a CI
@@ -24,10 +23,8 @@ import { fromPath } from "@filefreak.io/sdk/node";
 const INSTALLER = /\.(dmg|zip|exe|msi|appimage|deb|rpm)$/i;
 const dir = resolve(process.argv[2] ?? "dist/desktop");
 const key = process.env.FILEFREAK_KEY;
-const folder = (process.env.KNITTED_RELEASE_FOLDER ?? "").replace(/^ff:/, "").replace(/^\/+|\/+$/g, "");
 const fail = (m) => { console.error(`publish: ${m}`); process.exit(1); };
 if (!key) fail("FILEFREAK_KEY is not set.");
-if (!folder) fail("KNITTED_RELEASE_FOLDER is not set.");
 
 const version = JSON.parse(await readFile(resolve("apps/studio/package.json"), "utf8")).version;
 const installers = (await readdir(dir)).filter((f) => INSTALLER.test(f)).sort();
@@ -44,12 +41,9 @@ await writeFile(join(dir, "SHA256SUMS.txt"), sums.join("\n") + "\n");
 
 const ff = new FileFreak({ apiKey: key });
 try {
-  let parentId = null;
-  for (const name of [...folder.split("/"), `v${version}`]) {
-    const { item } = await ff.folders.create({ name, parentId, ifExists: "use" });
-    parentId = item.id;
-  }
-  console.log(`publish: ff:/${folder}/v${version}`);
+  const { item: folder } = await ff.folders.create({ name: `v${version}`, ifExists: "use" });
+  const parentId = folder.id;
+  console.log(`publish: v${version} in the release folder`);
 
   let hidden = 0;
   for (const f of [...installers, "SHA256SUMS.txt"]) {
@@ -63,7 +57,7 @@ try {
     if (!item.publicUrl) hidden++;
     console.log(`  ${f}  ${mb(total)}  ${item.publicUrl ?? "(not public)"}`);
   }
-  if (hidden) console.warn(`publish: ${hidden} file(s) are not public. The Download page lists only public files: make ff:/${folder} public in FileFreak.`);
+  if (hidden) console.warn(`publish: ${hidden} file(s) are not public. The Download page lists only public files: make the release folder public in FileFreak.`);
 } catch (e) {
   if (e instanceof FileFreakError) fail(`FileFreak refused it (${e.status} ${e.code}): ${e.message}`);
   throw e;

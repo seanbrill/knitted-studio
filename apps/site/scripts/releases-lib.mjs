@@ -15,7 +15,14 @@ const cmp = (a, b) => { const p = (v) => v.replace(/^v/, "").split("-")[0].split
 
 /** @param items every item in the folder, files and folders, as the FileFreak tree gives them */
 export function buildReleases(items) {
-  const folders = new Map(items.filter((i) => i.kind === "folder" && VERSION.test(i.name)).map((i) => [i.id, i]));
+  // Only the version folders nearest the top count. A v1.2.3 folder that ended up
+  // inside another folder (a release uploaded one level too deep) would otherwise
+  // be listed as a second copy of that version.
+  const byId = new Map(items.map((i) => [i.id, i]));
+  const depth = (i) => { let d = 0; for (let x = byId.get(i.parentId); x; x = byId.get(x.parentId)) d++; return d; };
+  const versionFolders = items.filter((i) => i.kind === "folder" && VERSION.test(i.name));
+  const top = Math.min(...versionFolders.map(depth));
+  const folders = new Map(versionFolders.filter((i) => depth(i) === top).map((i) => [i.id, i]));
   const skipped = [];
   const byVersion = new Map();
   for (const f of items) {

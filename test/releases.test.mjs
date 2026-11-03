@@ -30,3 +30,26 @@ test("a file with no recorded checksum says so instead of inventing one", () => 
   const { releases } = buildReleases([dir("a", "v1.0.0"), file("1", "a", "k.dmg", { clientSha256: null })]);
   assert.equal(releases[0].files[0].sha256, "not recorded");
 });
+
+test("a version folder nested one level too deep is not listed a second time", () => {
+  // What a first upload did: v0.1.0 inside a folder called release, inside the release folder.
+  const { releases } = buildReleases([
+    dir("top", "v0.1.0"), { id: "stray", kind: "folder", name: "release", parentId: "outside" }, { id: "deep", kind: "folder", name: "v0.1.0", parentId: "stray" },
+    file("1", "top", "knitted-0.1.0-linux-arm64.AppImage"), file("2", "deep", "knitted-0.1.0-linux-arm64.AppImage"),
+  ].map((i) => (i.id === "top" ? { ...i, parentId: "outside" } : i)));
+  assert.equal(releases.length, 1);
+  assert.deepEqual(releases[0].files.map((f) => f.url), ["https://files.example/1"]);
+});
+
+test("the same holds when the listing includes the release folder itself", () => {
+  const { releases } = buildReleases([
+    { id: "root", kind: "folder", name: "release", parentId: null }, { ...dir("a", "v1.0.0"), parentId: "root" }, { ...dir("b", "v1.1.0"), parentId: "root" },
+    file("1", "a", "k-1.0.0.dmg"), file("2", "b", "k-1.1.0.dmg"),
+  ]);
+  assert.deepEqual(releases.map((r) => r.version), ["1.1.0", "1.0.0"]);
+});
+
+test("a folder with no versions in it lists nothing, and does not throw", () => {
+  assert.deepEqual(buildReleases([]).releases, []);
+  assert.deepEqual(buildReleases([dir("x", "drafts")]).releases, []);
+});
