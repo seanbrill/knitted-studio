@@ -27,7 +27,8 @@
     "test:e2e": "node --test --test-concurrency=1 --test-timeout=90000 test/e2e/*.e2e.mjs",
     "test:render": "node --test --test-concurrency=1 --test-timeout=120000 test/render/*.test.mjs",
     "desktop:pack": "npm run build:app && npm run desktop:pack -w @knitted/studio",
-    "desktop:dist": "npm run build:app && npm run desktop:dist -w @knitted/studio"
+    "desktop:dist": "npm run build:app && npm run desktop:dist -w @knitted/studio",
+    "release": "node --env-file-if-exists=.env scripts/release.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",

@@ -1,13 +1,13 @@
-# knitted.studio release: build the desktop app, publish it as a versioned download
-# on FileFreak, then build the site (which lists what was published) and deploy it.
+# knitted.studio site: check the code, build the landing site, deploy it.
 #
-# The order is deliberate. The site's Download page is built from the release folder,
-# so the installers go up BEFORE the site is built, or the new version would only
-# appear on the next deploy.
+# The desktop installers are NOT built here. Only a Mac can build all three systems'
+# (electron-builder builds macOS apps only on macOS), and this host is Linux, so
+# releases are built and uploaded from a Mac with `npm run release` (scripts/release.mjs).
+# This pipeline used to upload its own Linux build as well, and each run then replaced
+# the Mac's Linux file and cut SHA256SUMS.txt down to one line.
 #
-# EZPIPELINE runs these steps on its own host, so the installers built here are the
-# host's: a Linux host makes the Linux installers. macOS and Windows installers need
-# those systems; upload them into the same v<version> folder and the next run lists them.
+# The site's Download page is built from the release folder, so it lists whatever has
+# been published when the site is built. After a release, run this to show it.
 #
 # Variables live in EZPIPELINE, not here: see ci/ezpipeline/knitted-release.env.example.
 
@@ -15,8 +15,8 @@ id: "3b2eb956-3f9f-4901-bd45-cd0bb78b0f32"
 appName: "knitted release"
 version: 1.0.0
 description: >
-  Build knitted, upload the installers to the FileFreak release folder under
-  v<version>, build the landing site from that folder and deploy it.
+  Check knitted, build the landing site from the FileFreak release folder and
+  deploy it. Installers are published from a Mac with npm run release.
 group: "Knitted"
 
 steps:
@@ -28,7 +28,7 @@ steps:
       for tool in git node npm; do command -v "$tool" >/dev/null || { echo "MISSING program: $tool"; exit 1; }; done
       node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 22 ? 0 : 1)' || { echo "Node 22 or newer is needed, this is $(node -v)"; exit 1; }
       missing=0
-      for v in KNITTED_REPO_URL FILEFREAK_KEY KNITTED_SITE_NAME KNITTED_RELEASE_DOWNLOAD_KEY; do
+      for v in KNITTED_REPO_URL FILEFREAK_SITE_KEY KNITTED_SITE_NAME KNITTED_RELEASE_DOWNLOAD_KEY; do
         [ -n "$(printenv "$v" || true)" ] || { echo "MISSING variable: $v"; missing=1; }
       done
       [ "$missing" = 0 ] || exit 1
@@ -36,13 +36,12 @@ steps:
       command -v filefreak >/dev/null || { echo "MISSING program: filefreak. Install the FileFreak CLI plugin in EZPIPELINE: Settings, Plugins."; exit 1; }
       filefreak --version
 
-      # Can the site key deploy? Asked now, not after ten minutes of building. FileFreak lets
-      # only an app's own key deploy (made for the app, NOT limited to a folder, and allowed
+      # Can the site key deploy? Asked now, not after the build. FileFreak lets only an
+      # app's own key deploy (made for the app, NOT limited to a folder, and allowed
       # sites:deploy). A folder key, like the one that uploads releases, is refused.
-      if [ -n "${FILEFREAK_SITE_KEY:-}" ]; then site_key="$FILEFREAK_SITE_KEY"; which=FILEFREAK_SITE_KEY; else site_key="$FILEFREAK_KEY"; which=FILEFREAK_KEY; fi
-      if ! sites=$(FILEFREAK_KEY="$site_key" filefreak sites list 2>&1); then
-        echo "The site cannot be deployed with $which: $sites"
-        echo "Set FILEFREAK_SITE_KEY to a key made for the app that owns the site, not limited to a folder, allowed sites:deploy."
+      if ! sites=$(FILEFREAK_KEY="$FILEFREAK_SITE_KEY" filefreak sites list 2>&1); then
+        echo "The site cannot be deployed with FILEFREAK_SITE_KEY: $sites"
+        echo "Set it to a key made for the app that owns the site, not limited to a folder, allowed sites:deploy."
         exit 1
       fi
       echo "$sites" | grep -qw -- "$KNITTED_SITE_NAME" || { echo "That key's app has no site called $KNITTED_SITE_NAME. It has: $sites"; exit 1; }
@@ -53,7 +52,7 @@ steps:
       set -euo pipefail
       rm -rf knitted
       git clone --branch "${KNITTED_BRANCH:-main}" --depth 1 "$KNITTED_REPO_URL" knitted
-      git -C knitted --no-pager log -1 --format='releasing %H %s'
+      git -C knitted --no-pager log -1 --format='building %H %s'
 
   - name: Install and check
     shell: /bin/bash
@@ -64,37 +63,14 @@ steps:
       npm run typecheck
       npm test
 
-  - name: Build the desktop app
-    description: Builds the installers for the system this host runs.
-    shell: /bin/bash
-    # EZPIPELINE's host runs with NODE_ENV=development. Next.js builds in that mode fail
-    # on the error pages ("<Html> should not be imported outside of pages/_document"),
-    # so builds say production themselves. Installs are left alone: they need dev tools.
-    env:
-      NODE_ENV: production
-    cwd: ./knitted
-    run: |
-      set -euo pipefail
-      npm run desktop:dist
-      ls -lh dist/desktop
-
-  - name: Upload the versioned download
-    description: >
-      Puts the installers and a SHA256SUMS.txt in v<version> in the release folder,
-      through scripts/publish-release.mjs. It makes only write calls, so a key
-      with files:write is enough. The folder must be public in FileFreak for the
-      Download page to list the files.
-    shell: /bin/bash
-    cwd: ./knitted
-    run: |
-      set -euo pipefail
-      node scripts/publish-release.mjs dist/desktop
-
   - name: Build the site
     description: >
       The build asks FileFreak, with the read-only key, which versions exist and
       writes the Download page from the answer.
     shell: /bin/bash
+    # EZPIPELINE's host runs with NODE_ENV=development. Next.js builds in that mode fail
+    # on the error pages ("<Html> should not be imported outside of pages/_document"),
+    # so the build says production itself. Installs are left alone: they need dev tools.
     env:
       NODE_ENV: production
     cwd: ./knitted
@@ -108,4 +84,4 @@ steps:
     cwd: ./knitted
     run: |
       set -euo pipefail
-      FILEFREAK_KEY="${FILEFREAK_SITE_KEY:-$FILEFREAK_KEY}" filefreak sites deploy dist/site --site "$KNITTED_SITE_NAME"
+      FILEFREAK_KEY="$FILEFREAK_SITE_KEY" filefreak sites deploy dist/site --site "$KNITTED_SITE_NAME"

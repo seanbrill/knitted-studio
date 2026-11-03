@@ -2,11 +2,15 @@
 
 1. `npm run lint && npm run typecheck && npm test && npm run test:render && npm run test:e2e`
 2. Bump `version` in the root and `apps/studio/package.json`, update the changelog page (`apps/site/app/changelog`).
-3. `git tag vX.Y.Z && git push --tags`. The `release` workflow builds macOS, Windows and Linux installers and attaches them, with checksums, to a **draft** release.
-4. On a clean machine per system, install, go offline, and run the first journey: make a project, upload a photo, build a pattern, knit a PNG and an MP4. Note the time.
-5. Publish the draft. The site's download page reads the release list at build time.
+3. On a Mac, `npm run release`. It builds the installers for macOS (Apple silicon and Intel), Windows (x64) and Linux (x64 and ARM), and uploads them with a `SHA256SUMS.txt` to `v<version>` in the FileFreak release folder. It needs `FILEFREAK_KEY` in `.env`, the release folder's write key (see `.env.example`), and checks the key before it builds. Only a Mac can build all three, because electron-builder builds macOS apps only on macOS. Running a version again replaces its files.
+4. On a clean machine per system, install from the uploaded files, go offline, and run the first journey: make a project, upload a photo, build a pattern, knit a PNG and an MP4. Note the time.
+5. Push to main, or run the site pipeline in EZPIPELINE. The site's Download page lists the release folder when the site is built, so the new version appears with that deploy.
 
-Local build for this machine: `npm run desktop:dist`, output in `dist/desktop`. For a quick check without an installer, `npm run desktop:pack` and open the app in `dist/desktop/<platform>`.
+Each installer carries its own system's ffmpeg, ffprobe and sharp, fetched once into `node_modules/.cache` by `scripts/desktop-binaries.mjs` and checked to be built for that system. This machine's copies, the ones npm installed, fit no other system.
+
+Local build without uploading: `npm run desktop:dist` builds the installers for this machine's system, in `dist/desktop`. For a quick check without an installer, `npm run desktop:pack` and open the app in `dist/desktop/<platform>`.
+
+The `release` GitHub workflow (tag `v*`) builds the same installers on GitHub's runners, one per system, into a draft GitHub release. It does not upload to FileFreak.
 
 ## Signing (when certificates exist)
 

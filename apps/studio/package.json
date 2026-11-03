@@ -7,10 +7,10 @@
     "dev": "next dev -p 4100",
     "build": "node ../../scripts/next-build.mjs",
     "start": "next start -p 4100",
-    "desktop:dev": "node electron/launch.mjs",
-    "desktop:smoke": "node electron/launch.mjs --prod --smoke",
-    "desktop:pack": "node ../../scripts/stage-desktop.mjs && electron-builder --dir",
-    "desktop:dist": "node ../../scripts/stage-desktop.mjs && electron-builder"
+    "desktop:dev": "node ../../scripts/stage-desktop.mjs && node electron/launch.mjs",
+    "desktop:smoke": "node ../../scripts/stage-desktop.mjs && node electron/launch.mjs --prod --smoke",
+    "desktop:pack": "electron-builder --dir",
+    "desktop:dist": "electron-builder"
   },
   "dependencies": {
     "@knitted/agent": "*",

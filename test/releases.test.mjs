@@ -11,9 +11,19 @@ test("versions are newest first, files are labelled by platform, and the address
     file("1", "a", "knitted-0.1.0-mac-arm64.dmg"), file("2", "b", "knitted-0.10.0-linux-x64.AppImage"), file("3", "b", "knitted-0.10.0-win-x64.exe"),
   ]);
   assert.deepEqual(releases.map((r) => r.version), ["0.10.0", "0.1.0"], "0.10.0 sorts above 0.2.0 and 0.1.0, not as text");
-  assert.deepEqual(releases[0].files.map((f) => f.platform), ["Linux", "Windows"]);
+  assert.deepEqual(releases[0].files.map((f) => f.platform), ["Linux (x64)", "Windows"]);
   assert.equal(releases[1].files[0].url, "https://files.example/1");
   assert.equal(releases[1].files[0].size, "150 MB");
+});
+
+test("each download says which chip it is for, so nobody has to know what arm64 means", () => {
+  const names = ["knitted-1.0.0-mac-arm64.dmg", "knitted-1.0.0-mac-x64.zip", "knitted-1.0.0-mac-universal.dmg", "knitted-1.0.0-win-x64.exe", "knitted-1.0.0-win-arm64.exe", "knitted-1.0.0-linux-arm64.AppImage", "knitted-1.0.0-linux-x86_64.AppImage"];
+  const { releases } = buildReleases([dir("a", "v1.0.0"), ...names.map((n, i) => file(String(i), "a", n))]);
+  assert.deepEqual(Object.fromEntries(releases[0].files.map((f) => [f.name, f.platform])), {
+    "knitted-1.0.0-mac-arm64.dmg": "macOS (Apple silicon)", "knitted-1.0.0-mac-x64.zip": "macOS (Intel)", "knitted-1.0.0-mac-universal.dmg": "macOS",
+    "knitted-1.0.0-win-x64.exe": "Windows", "knitted-1.0.0-win-arm64.exe": "Windows (Arm)",
+    "knitted-1.0.0-linux-arm64.AppImage": "Linux (ARM64)", "knitted-1.0.0-linux-x86_64.AppImage": "Linux (x64)",
+  });
 });
 
 test("checksums, blockmaps, stray folders and loose files never become buttons", () => {

@@ -1,6 +1,8 @@
-// Collect what the installer carries beside the app: ffmpeg and ffprobe for this
-// platform, with their licences. They run as separate programs, so the app stays MIT
-// while the GPL ffmpeg build keeps its own terms (see docs/THIRD-PARTY.md).
+// Put this machine's ffmpeg and ffprobe, with their licences, in build/bin, where the
+// desktop app finds them when it runs from the repo (desktop:dev, desktop:smoke). An
+// installed app carries its own system's instead (desktop-binaries.mjs). They run as
+// separate programs, so the app stays MIT while the GPL ffmpeg build keeps its own
+// terms (see docs/THIRD-PARTY.md).
 
 import { copyFile, mkdir, rm, chmod } from "node:fs/promises";
 import { createRequire } from "node:module";

@@ -7,6 +7,12 @@ electronVersion: 45.2.1
 directories:
   output: ../../dist/desktop
 npmRebuild: false      # no native modules: SQLite is node:sqlite
+# The newer bundles of the tools that make the Linux AppImage and the Windows installer.
+# The defaults run Intel-only programs on a Mac, which an Apple silicon Mac cannot run
+# without Rosetta; these have Apple silicon builds, so one Mac builds all three systems.
+toolsets:
+  appimage: "1.0.3"
+  nsis: "1.2.1"
 asar: true
 afterPack: ../../scripts/after-pack.mjs
 # Only the shell goes in the asar. The server and the tools are extra resources, run as plain files.
@@ -14,15 +20,19 @@ files:
   - electron/main.mjs
   - package.json
   - "!**/node_modules/**"
+# ffmpeg, ffprobe and sharp are not here: after-pack.mjs puts in the ones for each app's system.
 extraResources:
   - { from: ../../dist/app, to: app-server, filter: ["**/*"] }
-  - { from: ../../build/bin, to: bin }
 mac:
   category: public.app-category.graphics-design
-  target: [dmg, zip]
+  target:
+    - { target: dmg, arch: [arm64, x64] }
+    - { target: zip, arch: [arm64, x64] }
   identity: null        # unsigned
 win:
-  target: [nsis]
+  # x64 only: ffmpeg and ffprobe have no Windows on Arm builds, and the x64 app runs there too.
+  target:
+    - { target: nsis, arch: [x64] }
   signAndEditExecutable: false
 nsis:
   oneClick: false
@@ -32,6 +42,8 @@ linux:
   category: Graphics
   executableName: knitted       # the default comes from the package name, "@knitted/studio", which is not a safe file name
   syncDesktopName: true
-  target: [AppImage]   # .deb needs a maintainer email; add one with the project contact address, then add deb here
-publish: null                    # builds never publish; the release pipeline uploads
+  # .deb needs a maintainer email; add one with the project contact address, then add deb here
+  target:
+    - { target: AppImage, arch: [x64, arm64] }
+publish: null                    # builds never publish; npm run release uploads (scripts/release.mjs)
 artifactName: knitted-${version}-${os}-${arch}.${ext}
