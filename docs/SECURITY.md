@@ -15,5 +15,5 @@ What protects a person using the desktop app, and what is honestly not done yet.
 ## Not done yet
 
 - **Content-Security-Policy for the app window.** Next's inline bootstrap scripts need a nonce-based policy; it is not set yet.
-- **Code signing and notarisation.** Builds are unsigned (see INSTALL.md).
+- **Code signing and notarisation.** No developer certificates yet: the Mac app is ad-hoc signed, which keeps it whole but names no developer, and Windows builds are unsigned (see INSTALL.md).
 - **Auto-update.** Not included; updating means installing the new release over the old one. The library is untouched.

@@ -120,7 +120,7 @@ State at the end of the phased rebuild (see `claude-workspace/implementation-pla
 | Local TTS | Built-in voice, an OpenAI-compatible voice server, and Piper (downloaded on request). |
 | Human and model co-editing | Done: same document, locks enforced in one function, change sets with Keep or Undo all. |
 | Persistence | SQLite (`node:sqlite`), daily and pre-migration backups. |
-| Desktop app | Packaged and smoke-tested on macOS arm64. Unsigned. Windows and Linux are untested. |
+| Desktop app | Built for macOS (Apple silicon, Intel), Windows x64 and Linux (x64, ARM64) from one Mac with `npm run release`. Smoke-tested on macOS arm64; the others are checked by what is inside them, not yet run on their systems. Ad-hoc signed on macOS, unsigned on Windows. |
 | Parity with `tools/media` | Inventoried in [PARITY.md](PARITY.md); gaps need decisions. Not yet compared byte for byte. |
 
 ---

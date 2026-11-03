@@ -29,7 +29,7 @@ That slot is locked by the Pattern. This is the brand lock working. Unlock it in
 
 ## The desktop installer shows a warning
 
-Early installers are unsigned previews. See the [install guide](/download/install/).
+Early installers have no developer certificate yet, so macOS says it could not verify knitted and Windows says it protected your PC. See the [install guide](/download/install/) for the one extra click.
 
 ## Still stuck
 

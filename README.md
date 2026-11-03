@@ -45,7 +45,7 @@ you read is what you call it.
 - **The editor.** Drag, resize, snap, undo, locks, Fill mode for people who only fill in the copy, Parts (reusable pieces with locked and free slots), motion and a timeline, voiceover with captions.
 - **Knitting.** One renderer draws the editor and the export, so what you see is what you get. Stills, video and audio mixing are deterministic and checked before and after.
 - **A model, two ways in.** Ask your model from the editor (bring your own Anthropic key), or connect any MCP client. Both use the same 30 tools and the same lock rule.
-- **Desktop app.** Electron, with ffmpeg included and nothing downloaded until you ask. Unsigned for now: see [docs/INSTALL.md](docs/INSTALL.md).
+- **Desktop app.** Electron, with ffmpeg included and nothing downloaded until you ask. No developer certificate yet, so the first launch asks for one extra click: see [docs/INSTALL.md](docs/INSTALL.md).
 - **A landing site** (`apps/site`, static).
 
 **Not yet:** code signing, auto-update, a Content-Security-Policy for the app window, and a few notch.fm features listed as gaps in [docs/PARITY.md](docs/PARITY.md). Nothing has run on Windows or Linux yet; CI is written for them.

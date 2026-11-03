@@ -14,7 +14,9 @@ The `release` GitHub workflow (tag `v*`) builds the same installers on GitHub's 
 
 ## Signing (when certificates exist)
 
-macOS: remove `identity: null`, add `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` secrets and `notarize: true`. Windows: `CSC_LINK`/`CSC_KEY_PASSWORD` for the NSIS target. Nothing else changes.
+Today the Mac app is ad-hoc signed (`identity: "-"` in `apps/studio/electron-builder.yml`): its signature is whole, so macOS does not call it damaged, but it names no developer, so a downloaded copy opens only after **Open Anyway** (docs/INSTALL.md). An Apple Developer ID and notarisation remove that step.
+
+macOS: delete `identity: "-"` and `hardenedRuntime: false` from `mac` (notarisation needs the hardened runtime, which is the default, and electron-builder's default entitlements allow what Electron needs), and add the Developer ID Application certificate to `.env` as `CSC_LINK` and `CSC_KEY_PASSWORD`. Notarisation runs when `APPLE_API_KEY`, `APPLE_API_KEY_ID` and `APPLE_API_ISSUER` are set, or `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID`. `npm run release` passes `.env` to electron-builder. Windows: `CSC_LINK`/`CSC_KEY_PASSWORD` for the NSIS target. Nothing else changes.
 
 ## Downgrading
 

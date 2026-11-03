@@ -1,5 +1,6 @@
-# Desktop packaging. Unsigned for now: builds run and install, and the OS warns on
-# first launch (see docs/INSTALL.md). Signing is added here when certificates exist.
+# Desktop packaging. No paid certificates yet: the Mac app is ad-hoc signed and the
+# Windows app is unsigned, so both warn on first launch (see docs/INSTALL.md).
+# docs/RELEASING.md says what changes here when certificates exist.
 appId: studio.knitted.app
 productName: knitted
 copyright: Copyright (c) knitted.studio contributors, MIT
@@ -28,12 +29,18 @@ mac:
   target:
     - { target: dmg, arch: [arm64, x64] }
     - { target: zip, arch: [arm64, x64] }
-  identity: null        # unsigned
+  icon: build/icon-mac.png      # drawn by scripts/app-icons.mjs, like the others
+  # Ad-hoc signed: a whole, valid signature, with no paid Apple certificate yet. Unsigned,
+  # a downloaded copy says "knitted is damaged" and offers only the Trash; ad-hoc, macOS
+  # says it cannot check the developer and offers Open Anyway (docs/INSTALL.md). No
+  # hardened runtime: only notarisation needs it, and it refuses an ad-hoc app's libraries.
+  identity: "-"
+  hardenedRuntime: false
 win:
   # x64 only: ffmpeg and ffprobe have no Windows on Arm builds, and the x64 app runs there too.
   target:
     - { target: nsis, arch: [x64] }
-  signAndEditExecutable: false
+  icon: build/icon.png
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
@@ -42,6 +49,7 @@ linux:
   category: Graphics
   executableName: knitted       # the default comes from the package name, "@knitted/studio", which is not a safe file name
   syncDesktopName: true
+  icon: build/icon.png
   # .deb needs a maintainer email; add one with the project contact address, then add deb here
   target:
     - { target: AppImage, arch: [x64, arm64] }

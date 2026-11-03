@@ -1,12 +1,14 @@
 # Installing knitted
 
-Download the file for your computer from the [releases page](https://github.com/knitted-studio/knitted-studio/releases), open it, and you are done. knitted includes everything it needs, including the video tools. It works without an internet connection.
+Download the file for your computer from the site's [Download page](https://knitted.filefreak.page/download/), which picks it for you, open it, and you are done. knitted includes everything it needs, including the video tools. It works without an internet connection.
 
 ## First launch: the unsigned-app warning
 
-These early builds are not signed with a paid developer certificate, so your system will ask you to confirm. This is expected, and it is safe to continue if you downloaded the file from the releases page. You only do this once.
+These early builds are not signed with a paid developer certificate, so your system will ask you to confirm. This is expected, and it is safe to continue if you downloaded the file from the Download page. You only do this once.
 
-**macOS.** Open the `.dmg`, drag knitted to Applications. The first time, right-click (or Control-click) the app and choose **Open**, then **Open** again. If macOS says the app "is damaged", open Terminal and run `xattr -dr com.apple.quarantine /Applications/knitted.app`. That clears the download flag; nothing else changes.
+**macOS.** Open the `.dmg`, drag knitted to Applications, and open it. macOS says "Apple could not verify knitted.app is free of malware": choose **Done**, not Move to Trash. Open **System Settings**, **Privacy & Security**, scroll to Security, and choose **Open Anyway** beside "knitted.app was blocked". Choose **Open Anyway** again and confirm with your password or Touch ID. Or, in Terminal, run `xattr -dr com.apple.quarantine /Applications/knitted.app` and open it as usual: that clears the flag macOS puts on downloads, and nothing else changes. If macOS says the app "is damaged", the download is from before the builds were signed or did not finish: download it again.
+
+Apple silicon or Intel: the Apple menu, **About This Mac**, says. A **Chip** line naming Apple M1 or later is Apple silicon; a **Processor** line naming Intel is an Intel Mac.
 
 **Windows.** Run the installer. If SmartScreen says "Windows protected your PC", choose **More info**, then **Run anyway**.
 

@@ -18,6 +18,10 @@ export default {
   // The engine shells out to ffmpeg and Playwright; neither belongs in a
   // client bundle, and Next will try to trace them without this.
   serverExternalPackages: ["playwright", "sharp"],
+  // Rendered pages are cached in memory, never written beside the server. In the
+  // desktop app the server lives inside the signed app, and one written file breaks
+  // the signature (macOS then calls the app damaged); it may not be writable at all.
+  experimental: { isrFlushToDisk: false },
   // The font routes read files by path, which the tracer cannot see on its own.
   outputFileTracingIncludes: { "/api/fonts/[file]": ["../../packages/fonts/files/**"], "/api/projects/[id]/fonts.css": ["../../packages/fonts/src/**"] },
 };

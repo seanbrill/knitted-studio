@@ -9,8 +9,8 @@
     "start": "next start -p 4100",
     "desktop:dev": "node ../../scripts/stage-desktop.mjs && node electron/launch.mjs",
     "desktop:smoke": "node ../../scripts/stage-desktop.mjs && node electron/launch.mjs --prod --smoke",
-    "desktop:pack": "electron-builder --dir",
-    "desktop:dist": "electron-builder"
+    "desktop:pack": "node ../../scripts/app-icons.mjs && electron-builder --dir",
+    "desktop:dist": "node ../../scripts/app-icons.mjs && electron-builder"
   },
   "dependencies": {
     "@knitted/agent": "*",
