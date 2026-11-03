@@ -76,7 +76,11 @@ steps:
     run: |
       set -euo pipefail
       version=$(node -p 'require("./apps/studio/package.json").version')
-      dest="${KNITTED_RELEASE_FOLDER%/}/v${version}"
+      # KNITTED_RELEASE_FOLDER may be written release, /release or ff:/release. The CLI
+      # needs the ff:/ form to know a path is in FileFreak and not on this computer.
+      folder="${KNITTED_RELEASE_FOLDER#ff:}"; folder="${folder#/}"; folder="${folder%/}"
+      dest="ff:/${folder}/v${version}"
+      echo "publishing to $dest"
       cd dist/desktop
       files=$(ls *.dmg *.zip *.exe *.AppImage *.deb 2>/dev/null || true)
       [ -n "$files" ] || { echo "No installers in dist/desktop, nothing to publish"; exit 1; }
