@@ -69,26 +69,15 @@ steps:
 
   - name: Upload the versioned download
     description: >
-      Puts the installers in <release folder>/v<version>. The folder is the one
-      the site's read-only key can see, and it must be public in FileFreak.
+      Puts the installers and a SHA256SUMS.txt in <release folder>/v<version>,
+      through scripts/publish-release.mjs. It makes only write calls, so a key
+      with files:write is enough. The folder must be public in FileFreak for the
+      Download page to list the files.
     shell: /bin/bash
     cwd: ./knitted
     run: |
       set -euo pipefail
-      version=$(node -p 'require("./apps/studio/package.json").version')
-      # KNITTED_RELEASE_FOLDER may be written release, /release or ff:/release. The CLI
-      # needs the ff:/ form to know a path is in FileFreak and not on this computer.
-      folder="${KNITTED_RELEASE_FOLDER#ff:}"; folder="${folder#/}"; folder="${folder%/}"
-      dest="ff:/${folder}/v${version}"
-      echo "publishing to $dest"
-      cd dist/desktop
-      files=$(ls *.dmg *.zip *.exe *.AppImage *.deb 2>/dev/null || true)
-      [ -n "$files" ] || { echo "No installers in dist/desktop, nothing to publish"; exit 1; }
-      for f in $files; do (shasum -a 256 "$f" 2>/dev/null || sha256sum "$f"); done > SHA256SUMS.txt
-      filefreak mkdir -p "$dest"
-      # Installers replace a same-named file: a re-run of the same version is safe.
-      filefreak cp $files SHA256SUMS.txt "$dest/"
-      filefreak ls -l "$dest"
+      node scripts/publish-release.mjs dist/desktop
 
   - name: Build the site
     description: >

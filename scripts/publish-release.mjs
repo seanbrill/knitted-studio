@@ -1,0 +1,70 @@
+#!/usr/bin/env node
+// Publish the built installers as a versioned download on FileFreak.
+//
+//   node scripts/publish-release.mjs [dir]        dir defaults to dist/desktop
+//
+//   FILEFREAK_KEY            a key that may write files (files:write)
+//   KNITTED_RELEASE_FOLDER   the release folder: release, /release, ff:/release, or a/b
+//
+// The files go in <release folder>/v<version>, beside a SHA256SUMS.txt, and replace
+// same-named files, so running a version again is safe.
+//
+// Only WRITE calls are made. A folder is made with ifExists "use", which hands back
+// the folder already there, and each file is uploaded into that folder's id. So a CI
+// key that may write but not read is enough. The filefreak command line looks every
+// path up first, which needs files:read, and that is why this is not `filefreak cp`.
+
+import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
+import { readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { FileFreak, FileFreakError } from "@filefreak.io/sdk";
+import { fromPath } from "@filefreak.io/sdk/node";
+
+const INSTALLER = /\.(dmg|zip|exe|msi|appimage|deb|rpm)$/i;
+const dir = resolve(process.argv[2] ?? "dist/desktop");
+const key = process.env.FILEFREAK_KEY;
+const folder = (process.env.KNITTED_RELEASE_FOLDER ?? "").replace(/^ff:/, "").replace(/^\/+|\/+$/g, "");
+const fail = (m) => { console.error(`publish: ${m}`); process.exit(1); };
+if (!key) fail("FILEFREAK_KEY is not set.");
+if (!folder) fail("KNITTED_RELEASE_FOLDER is not set.");
+
+const version = JSON.parse(await readFile(resolve("apps/studio/package.json"), "utf8")).version;
+const installers = (await readdir(dir)).filter((f) => INSTALLER.test(f)).sort();
+if (!installers.length) fail(`no installers in ${dir}, so there is nothing to publish.`);
+
+const mb = (n) => `${(n / 1024 ** 2).toFixed(1)} MB`;
+const sha256 = (p) => new Promise((ok, no) => {
+  const h = createHash("sha256");
+  createReadStream(p).on("data", (d) => h.update(d)).on("end", () => ok(h.digest("hex"))).on("error", no);
+});
+const sums = [];
+for (const f of installers) sums.push(`${await sha256(join(dir, f))}  ${f}`);
+await writeFile(join(dir, "SHA256SUMS.txt"), sums.join("\n") + "\n");
+
+const ff = new FileFreak({ apiKey: key });
+try {
+  let parentId = null;
+  for (const name of [...folder.split("/"), `v${version}`]) {
+    const { item } = await ff.folders.create({ name, parentId, ifExists: "use" });
+    parentId = item.id;
+  }
+  console.log(`publish: ff:/${folder}/v${version}`);
+
+  let hidden = 0;
+  for (const f of [...installers, "SHA256SUMS.txt"]) {
+    const path = join(dir, f);
+    const total = (await stat(path)).size;
+    let shown = 0;
+    const item = await ff.upload(await fromPath(path), {
+      parentId, onConflict: "replace",
+      onProgress: (sent) => { const pct = Math.floor((sent / total) * 4) * 25; if (pct > shown && pct < 100) { shown = pct; console.log(`  ${f} ${pct}%`); } },
+    });
+    if (!item.publicUrl) hidden++;
+    console.log(`  ${f}  ${mb(total)}  ${item.publicUrl ?? "(not public)"}`);
+  }
+  if (hidden) console.warn(`publish: ${hidden} file(s) are not public. The Download page lists only public files: make ff:/${folder} public in FileFreak.`);
+} catch (e) {
+  if (e instanceof FileFreakError) fail(`FileFreak refused it (${e.status} ${e.code}): ${e.message}`);
+  throw e;
+}

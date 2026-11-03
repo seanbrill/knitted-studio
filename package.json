@@ -31,6 +31,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",
+    "@filefreak.io/sdk": "^0.10.1",
     "@next/eslint-plugin-next": "^16.4.4",
     "@types/node": "22.10.2",
     "@types/react": "19.0.2",
