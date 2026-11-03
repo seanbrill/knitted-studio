@@ -111,16 +111,23 @@ npm run mcp
 Four tools: `list_projects`, `get_pattern`, `fill_slots`, `knit_pattern`.
 
 Slots are addressed **by name**, not by id, because a slot is what a Pattern
-promises — every launch story has a `headline` — while an id is an
+promises, every launch story has a `headline`, while an id is an
 implementation detail that changes when somebody rebuilds the layout.
 
 **A model cannot change a locked stitch.** The attempt is refused and reported,
 never silently skipped: a model that believes it wrote a headline and did not
 is worse than one that is told no. Unlocking is a human act in the studio.
 
+## Context
+
+[`docs/BRIEF.md`](docs/BRIEF.md) is where this came from: the brief it was
+built against, what is and is not built yet, the decisions already taken, and
+the production lessons inherited from the notch.fm tool it was extracted from.
+Read it before changing the engine or the data model.
+
 ## Contributing
 
-The design rules are in `KNITTED-THEME.md` and they are not suggestions —
+The design rules are in `KNITTED-THEME.md` and they are not suggestions:
 most of them exist because the alternative was tried and read badly. The two
 that catch people out:
 
