@@ -30,5 +30,8 @@ nsis:
   deleteAppDataOnUninstall: false   # uninstalling never deletes someone's library
 linux:
   category: Graphics
-  target: [AppImage, deb]
+  executableName: knitted       # the default comes from the package name, "@knitted/studio", which is not a safe file name
+  syncDesktopName: true
+  target: [AppImage]   # .deb needs a maintainer email; add one with the project contact address, then add deb here
+publish: null                    # builds never publish; the release pipeline uploads
 artifactName: knitted-${version}-${os}-${arch}.${ext}

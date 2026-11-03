@@ -34,5 +34,6 @@
   "main": "electron/main.mjs",
   "author": "knitted.studio contributors",
   "description": "Make social posts, ads and web graphics from reusable brand Patterns.",
-  "homepage": "https://knitted.studio"
+  "homepage": "https://knitted.studio",
+  "desktopName": "knitted.desktop"
 }

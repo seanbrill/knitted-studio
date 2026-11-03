@@ -10,7 +10,7 @@ These early builds are not signed with a paid developer certificate, so your sys
 
 **Windows.** Run the installer. If SmartScreen says "Windows protected your PC", choose **More info**, then **Run anyway**.
 
-**Linux.** `.AppImage`: make it executable (`chmod +x knitted-*.AppImage`) and run it; if it will not start, install `libfuse2`. `.deb`: `sudo apt install ./knitted-*.deb`.
+**Linux.** `.AppImage`: make it executable (`chmod +x knitted-*.AppImage`) and run it; if it will not start, install `libfuse2`. A `.deb` is not built yet.
 
 ## Making videos and exporting pictures
 
