@@ -1,13 +1,24 @@
 {
-  "note": "Written by hand until releases exist, then built from GitHub releases.",
+  "note": "Written by hand, newest first. Add an entry with each release (docs/RELEASING.md).",
   "entries": [
     {
-      "version": "Unreleased",
+      "version": "0.1.1",
+      "date": "2026-11-03",
+      "title": "Claude Code, pictures and updates",
+      "items": [
+        "Connect Claude Code from Settings, Model. One command, and it works in knitted with the same tools and locks as the in-app model.",
+        "A project can show a picture on its card: one of its images, chosen in Projects, in Yarn, or by your model.",
+        "The desktop app updates itself. It asks once whether to check, and Check for Updates is in the menu.",
+        "The MCP page and reference list every tool, from the server's own list."
+      ]
+    },
+    {
+      "version": "0.1.0",
       "date": "2026-11-03",
       "title": "Foundations",
       "items": [
         "The render engine knits a Pattern frame by frame and encodes it with ffmpeg.",
-        "A four-tool MCP server lets your model list projects, read a Pattern, fill slots and knit.",
+        "An MCP server lets your model list projects, read a Pattern, fill slots and knit.",
         "Locked stitches are enforced against models. A refused write is reported back, never skipped quietly.",
         "The design system is defined as tokens and shared by the studio and this site.",
         "This site, the docs and the vocabulary: Pattern, Swatch, Yarn, Stitch, Knit and Part."
