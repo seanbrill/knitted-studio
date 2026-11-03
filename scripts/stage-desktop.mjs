@@ -15,7 +15,7 @@ await mkdir(out, { recursive: true });
 
 const exe = process.platform === "win32" ? ".exe" : "";
 const ffmpeg = require("ffmpeg-static");
-const ffprobe = require("ffprobe-static").path;
+const ffprobe = require("@ffprobe-installer/ffprobe").path;
 for (const [name, src] of [["ffmpeg", ffmpeg], ["ffprobe", ffprobe]]) {
   if (!src) throw new Error(`No ${name} for ${process.platform}-${process.arch}.`);
   await copyFile(src, join(out, name + exe));

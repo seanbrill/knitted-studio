@@ -42,6 +42,10 @@ function memory() {
   return { name: "test store", available: async () => true, get: async (k) => m.get(k) ?? null, set: async (k, v) => void m.set(k, v), remove: async (k) => void m.delete(k), m };
 }
 
+// An ANTHROPIC_API_KEY in the environment always wins over a store, which is the point of the next
+// test, and would mask what these ones check. Run these without it.
+delete process.env.ANTHROPIC_API_KEY;
+
 test("a key round-trips through a store, and is trimmed", async () => {
   const s = memory();
   await setSecret("anthropic", "  sk-abc  ", dir, s);

@@ -5,8 +5,17 @@ import { execFileSync } from "node:child_process";
 import { createServer } from "node:http";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { createRequire } from "node:module";
+import { delimiter, dirname, join } from "node:path";
 import { DownloadError, cacheKey, downloadFile, durationOf, estimateWords, openaiCompatible, providerFromSettings, speak, system } from "../src/index.mjs";
+
+// A machine with no ffmpeg of its own (a build host, a fresh laptop) uses the copy the desktop app ships.
+try {
+  execFileSync("ffmpeg", ["-version"], { stdio: "ignore" });
+} catch {
+  const req = createRequire(import.meta.url);
+  process.env.PATH = [dirname(req("ffmpeg-static")), dirname(req("@ffprobe-installer/ffprobe").path), process.env.PATH].join(delimiter);
+}
 
 const dir = mkdtempSync(join(tmpdir(), "knitted-voice-"));
 const sha = (b) => createHash("sha256").update(b).digest("hex");

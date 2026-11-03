@@ -2,7 +2,7 @@
 // and the server's traced dependencies live in exactly that. Copy them by hand, after
 // packing, into wherever this platform keeps resources.
 // The shell's own tooling is never needed by the server and electron alone is 260MB.
-const SKIP = new Set(["electron", "@electron-internal", "electron-builder", "app-builder-bin", "typescript", "ffmpeg-static", "ffprobe-static"]);
+const SKIP = new Set(["electron", "@electron-internal", "electron-builder", "app-builder-bin", "typescript", "ffmpeg-static", "@ffprobe-installer"]);
 import { cp, readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

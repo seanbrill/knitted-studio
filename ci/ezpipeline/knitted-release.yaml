@@ -32,11 +32,8 @@ steps:
         [ -n "$(printenv "$v" || true)" ] || { echo "MISSING variable: $v"; missing=1; }
       done
       [ "$missing" = 0 ] || exit 1
-      if ! command -v filefreak >/dev/null; then
-        echo "Installing the FileFreak command line"
-        curl -fsSL https://filefreak.io/install.sh | sh
-      fi
-      export PATH="$HOME/.local/bin:$PATH"
+      # Provided by EZPIPELINE's "FileFreak CLI" plugin (Settings, Plugins, Install).
+      command -v filefreak >/dev/null || { echo "MISSING program: filefreak. Install the FileFreak CLI plugin in EZPIPELINE: Settings, Plugins."; exit 1; }
       filefreak --version
 
   - name: Fetch the code
@@ -73,7 +70,6 @@ steps:
     cwd: ./knitted
     run: |
       set -euo pipefail
-      export PATH="$HOME/.local/bin:$PATH"
       version=$(node -p 'require("./apps/studio/package.json").version')
       dest="${KNITTED_RELEASE_FOLDER%/}/v${version}"
       cd dist/desktop
@@ -101,5 +97,4 @@ steps:
     cwd: ./knitted
     run: |
       set -euo pipefail
-      export PATH="$HOME/.local/bin:$PATH"
       filefreak sites deploy dist/site --site "$KNITTED_SITE_NAME"
