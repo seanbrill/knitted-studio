@@ -16,11 +16,11 @@ Yes. Fonts, tools and the renderer all live on your computer. The only thing tha
 
 ## Is the desktop app released?
 
-Not yet. Today you can run it from source and drive it through your model. The [download page](/download/) shows the current state.
+Yes, for macOS, Windows and Linux, on the [download page](/download/). It is early, so expect rough edges.
 
 ## Which models work?
 
-Any model or app that speaks MCP. The in-app model, when it arrives, will use a key you bring.
+Any model or app that speaks MCP, such as Claude Code. The studio's own model uses a key you bring.
 
 ## Can my model break my brand?
 

@@ -1,23 +1,25 @@
 // The desktop shell. A walking skeleton: it proves the hard parts work on all
 // three operating systems before anything is built on them. Packaging, signing
-// and the first-run flow are Phase 12.
+// and the first-run flow are Phase 12. Updates are update.mjs.
 //
 //   electron electron/main.mjs                 dev: runs `next dev` and opens it
 //   electron electron/main.mjs --prod          runs the built dist/app server
 //   electron electron/main.mjs --prod --smoke  load, call /api/health, print, exit
 //
 // The Next server runs as a CHILD process using this same Electron binary as
-// plain Node (ELECTRON_RUN_AS_NODE), on a random free port bound to 127.0.0.1.
-// One server on a random port means no fixed :4100 assumption anywhere in the
-// code (desktop-readiness rule 4), and a crash in it cannot take the window
-// down with it.
+// plain Node (ELECTRON_RUN_AS_NODE), on a free port bound to 127.0.0.1: chosen at
+// random the first time, then the same one each launch while it stays free.
+// Any port works, so there is no fixed :4100 assumption anywhere in the code
+// (desktop-readiness rule 4), and a crash in it cannot take the window down.
 
-import { app, BrowserWindow, Menu, session, shell } from "electron";
+import { app, BrowserWindow, dialog, Menu, net, session, shell } from "electron";
 import { randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createUpdater } from "./update.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = join(here, "../../..");
@@ -42,15 +44,31 @@ app.on("second-instance", () => { const w = BrowserWindow.getAllWindows()[0]; if
 // CI Linux runners have no setuid chrome-sandbox. Opt-in only, never default.
 if (process.env.KNITTED_NO_SANDBOX === "1") app.commandLine.appendSwitch("no-sandbox");
 
-function freePort() {
+/** The port, if it can be listened on now (0: any free one). */
+function freePort(want = 0) {
   return new Promise((resolve, reject) => {
     const s = createServer();
     s.once("error", reject);
-    s.listen(0, "127.0.0.1", () => {
+    s.listen(want, "127.0.0.1", () => {
       const { port } = s.address();
       s.close(() => resolve(port));
     });
   });
+}
+
+// The same port as last time, so the MCP address in Settings (which Claude Code and
+// other MCP clients keep) still works after a restart. A new one only when another
+// program has taken it.
+const portFile = join(app.getPath("userData"), "server-port");
+async function serverPort() {
+  let last = 0;
+  try { last = Number(readFileSync(portFile, "utf8")); } catch { /* first launch */ }
+  if (Number.isInteger(last) && last > 1024 && last < 65536) {
+    try { return await freePort(last); } catch { /* taken */ }
+  }
+  const port = await freePort();
+  try { writeFileSync(portFile, String(port)); } catch { /* next launch picks again */ }
+  return port;
 }
 
 // Where the server and its tools live: inside the installed app, or in the repo.
@@ -97,12 +115,14 @@ async function waitFor(url, child, ms = 60_000) {
 let server;
 const quit = (code = 0) => {
   server?.kill("SIGKILL");
+  updater.finish();
   app.exit(code);
 };
+const updater = createUpdater({ app, dialog, net, shell, BrowserWindow, Menu }, { quit });
 
 app.whenReady().then(async () => {
   try {
-    const port = await freePort();
+    const port = await serverPort();
     server = startServer(port);
     const origin = `http://127.0.0.1:${port}`;
     await waitFor(`${origin}/api/health`, server);
@@ -111,10 +131,13 @@ app.whenReady().then(async () => {
     await session.defaultSession.cookies.set({ url: origin, name: "knitted_token", value: token, httpOnly: true, sameSite: "strict" });
     // Nothing the app does needs a camera, a microphone, a location or a notification.
     session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(permission === "clipboard-sanitized-write" || permission === "fullscreen"));
+    // Check for Updates goes where each system keeps it: the app menu on a Mac, Help elsewhere.
+    const mac = process.platform === "darwin";
+    const sep = { type: "separator" };
     Menu.setApplicationMenu(Menu.buildFromTemplate([
-      ...(process.platform === "darwin" ? [{ role: "appMenu" }] : []),
+      ...(mac ? [{ role: "appMenu", submenu: [{ role: "about" }, sep, ...updater.menu(), sep, { role: "services" }, sep, { role: "hide" }, { role: "hideOthers" }, { role: "unhide" }, sep, { role: "quit" }] }] : []),
       { role: "fileMenu" }, { role: "editMenu" }, { role: "viewMenu" }, { role: "windowMenu" },
-      { role: "help", submenu: [{ label: "Reveal my library", click: () => shell.openPath(process.env.KNITTED_HOME) }, { label: "knitted.studio on GitHub", click: () => shell.openExternal("https://github.com/knitted-studio/knitted-studio") }] },
+      { role: "help", submenu: [{ label: "Reveal my library", click: () => shell.openPath(process.env.KNITTED_HOME) }, { label: "knitted.studio on GitHub", click: () => shell.openExternal("https://github.com/seanbrill/knitted-studio") }, ...(mac ? [] : [sep, ...updater.menu()])] },
     ]));
 
     const win = new BrowserWindow({
@@ -145,6 +168,8 @@ app.whenReady().then(async () => {
     await win.loadURL(origin);
     dbg("loaded");
 
+    if (!smoke) updater.start();
+
     if (smoke) {
       // Ask FROM the page, so this exercises window -> server -> SQLite.
       const health = await win.webContents.executeJavaScript("fetch('/api/health').then(r => r.json())");
@@ -160,3 +185,5 @@ app.whenReady().then(async () => {
 
 app.on("window-all-closed", () => quit(0));
 app.on("before-quit", () => server?.kill("SIGKILL"));
+// Quitting from the menu (or Cmd+Q) comes here instead of quit(): an update waiting for it goes in.
+app.on("will-quit", () => updater.finish());

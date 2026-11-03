@@ -1,0 +1,629 @@
+[
+  {
+    "name": "list_projects",
+    "summary": "List the projects in this studio: id, name and how many patterns each has. Start here when you do not know a project id.",
+    "params": []
+  },
+  {
+    "name": "create_project",
+    "summary": "Create a project. `starter: social` gives it five ready patterns (Story, Post, Square, Landscape, Banner) with a headline slot each; `blank` gives one empty pattern.",
+    "params": [
+      {
+        "name": "name",
+        "type": "string",
+        "required": true,
+        "description": "What to call it"
+      },
+      {
+        "name": "starter",
+        "type": "string",
+        "required": false,
+        "description": "One of social, blank."
+      }
+    ]
+  },
+  {
+    "name": "get_project",
+    "summary": "A project's patterns, how much Yarn it has, and its brand (colours, fonts and voice).",
+    "params": [
+      {
+        "name": "projectId",
+        "type": "string",
+        "required": true,
+        "description": "The project id, like pj_01..."
+      }
+    ]
+  },
+  {
+    "name": "set_project_picture",
+    "summary": "Show one of a project's images or videos (from its Yarn) on the project's card in the studio, so the person knows it at a glance. A logo or a key photo works well. Leave out yarnId to take the picture away.",
+    "params": [
+      {
+        "name": "projectId",
+        "type": "string",
+        "required": true,
+        "description": "The project id, like pj_01..."
+      },
+      {
+        "name": "yarnId",
+        "type": "string",
+        "required": false,
+        "description": "An image's yarn id, from list_yarn"
+      }
+    ]
+  },
+  {
+    "name": "list_yarn",
+    "summary": "List the files (Yarn) in a project: images, video, audio, fonts and saved copy. Filter by kind, tag or a search word. Use a Yarn name or id when filling an image slot.",
+    "params": [
+      {
+        "name": "projectId",
+        "type": "string",
+        "required": true,
+        "description": "The project id, like pj_01..."
+      },
+      {
+        "name": "kind",
+        "type": "string",
+        "required": false,
+        "description": "One of image, video, audio, font, copy."
+      },
+      {
+        "name": "tag",
+        "type": "string",
+        "required": false,
+        "description": "Only Yarn with this tag"
+      },
+      {
+        "name": "q",
+        "type": "string",
+        "required": false,
+        "description": "Search the names"
+      }
+    ]
+  },
+  {
+    "name": "import_yarn",
+    "summary": "Add a file to a project's Yarn from a public web address, or save a piece of text as reusable copy. Local files are not accepted here; ask the person to upload them in the studio.",
+    "params": [
+      {
+        "name": "projectId",
+        "type": "string",
+        "required": true,
+        "description": "The project id, like pj_01..."
+      },
+      {
+        "name": "url",
+        "type": "string",
+        "required": false,
+        "description": "A public https link to an image, video or audio file"
+      },
+      {
+        "name": "text",
+        "type": "string",
+        "required": false,
+        "description": "Copy to save, instead of a file"
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "required": false,
+        "description": "What to call it"
+      }
+    ]
+  },
+  {
+    "name": "tag_yarn",
+    "summary": "Set the tags on a piece of Yarn. Tags let a batch pick from a group, like `tag:product`.",
+    "params": [
+      {
+        "name": "yarnId",
+        "type": "string",
+        "required": true,
+        "description": "The yarn id"
+      },
+      {
+        "name": "tags",
+        "type": "string[]",
+        "required": true,
+        "description": ""
+      }
+    ]
+  },
+  {
+    "name": "get_brand_guidelines",
+    "summary": "The brand's colours, fonts and how it writes (voice, do and do-not lists, examples). Read this before writing any copy.",
+    "params": [
+      {
+        "name": "projectId",
+        "type": "string",
+        "required": true,
+        "description": "The project id, like pj_01..."
+      }
+    ]
+  },
+  {
+    "name": "list_patterns",
+    "summary": "The patterns in a project.",
+    "params": [
+      {
+        "name": "projectId",
+        "type": "string",
+        "required": true,
+        "description": "The project id, like pj_01..."
+      }
+    ]
+  },
+  {
+    "name": "get_pattern",
+    "summary": "A pattern as data: every stitch, with slot names, locked or free, and coordinates as fractions of the frame. Large; prefer describe_pattern.",
+    "params": [
+      {
+        "name": "projectId",
+        "type": "string",
+        "required": true,
+        "description": "The project id, like pj_01..."
+      },
+      {
+        "name": "patternId",
+        "type": "string",
+        "required": true,
+        "description": "The pattern id, like pt_01..."
+      }
+    ]
+  },
+  {
+    "name": "describe_pattern",
+    "summary": "A short text summary of a pattern: what slots it has, which are locked by the brand and which you may fill, what it says now, any animation, and the brand's voice. The cheapest way to understand a pattern.",
+    "params": [
+      {
+        "name": "patternId",
+        "type": "string",
+        "required": true,
+        "description": "The pattern id, like pt_01..."
+      }
+    ]
+  },
+  {
+    "name": "create_pattern",
+    "summary": "Add an empty pattern to a project. Sizes: Story 1080x1920, Post 1080x1350, Square 1080x1080, Landscape 1920x1080, Banner 1456x816.",
+    "params": [
+      {
+        "name": "projectId",
+        "type": "string",
+        "required": true,
+        "description": "The project id, like pj_01..."
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "required": false,
+        "description": "Name"
+      },
+      {
+        "name": "size",
+        "type": "string",
+        "required": false,
+        "description": "One of Story, Post, Square, Landscape, Banner."
+      }
+    ]
+  },
+  {
+    "name": "duplicate_pattern",
+    "summary": "Copy a pattern, locks and all.",
+    "params": [
+      {
+        "name": "patternId",
+        "type": "string",
+        "required": true,
+        "description": "The pattern id, like pt_01..."
+      }
+    ]
+  },
+  {
+    "name": "fill_slots",
+    "summary": "Write into a pattern's named slots. Text slots take text. A slot inside a part is addressed `part.slot`, like `lower_third.name`. Locked slots are REFUSED and reported: if you are refused, tell the person, do not look for another way around it. Returns what was filled and what was refused with the reason.",
+    "params": [
+      {
+        "name": "projectId",
+        "type": "string",
+        "required": true,
+        "description": "The project id, like pj_01..."
+      },
+      {
+        "name": "patternId",
+        "type": "string",
+        "required": true,
+        "description": "The pattern id, like pt_01..."
+      },
+      {
+        "name": "slots",
+        "type": "object",
+        "required": true,
+        "description": "slot name to content, like {\"headline\": \"Spring sale\"}"
+      }
+    ]
+  },
+  {
+    "name": "add_stitch",
+    "summary": "Add a stitch. Coordinates are fractions of the frame (0 to 1). kind: text, image, shape. Give it a slot name so it can be filled later. Text sizes in style.fontSize are fractions of the frame WIDTH (0.05 is a modest body size, 0.1 a headline).",
+    "params": [
+      {
+        "name": "patternId",
+        "type": "string",
+        "required": true,
+        "description": "The pattern id, like pt_01..."
+      },
+      {
+        "name": "kind",
+        "type": "string",
+        "required": true,
+        "description": "One of text, image, shape."
+      },
+      {
+        "name": "slot",
+        "type": "string",
+        "required": false,
+        "description": "Optional lowercase name"
+      },
+      {
+        "name": "x",
+        "type": "number",
+        "required": true,
+        "description": ""
+      },
+      {
+        "name": "y",
+        "type": "number",
+        "required": true,
+        "description": ""
+      },
+      {
+        "name": "w",
+        "type": "number",
+        "required": true,
+        "description": ""
+      },
+      {
+        "name": "h",
+        "type": "number",
+        "required": true,
+        "description": ""
+      },
+      {
+        "name": "content",
+        "type": "string",
+        "required": false,
+        "description": "Text, for a text stitch"
+      },
+      {
+        "name": "yarnId",
+        "type": "string",
+        "required": false,
+        "description": "A yarn id, for an image stitch"
+      },
+      {
+        "name": "style",
+        "type": "object",
+        "required": false,
+        "description": "Use brand tokens like $color.primary and $font.display rather than hex values"
+      }
+    ]
+  },
+  {
+    "name": "update_stitch",
+    "summary": "Change a stitch's text, position, size, image or style. Address it by slot name.",
+    "params": [
+      {
+        "name": "patternId",
+        "type": "string",
+        "required": true,
+        "description": "The pattern id, like pt_01..."
+      },
+      {
+        "name": "stitch",
+        "type": "string",
+        "required": true,
+        "description": "Slot name or id"
+      },
+      {
+        "name": "patch",
+        "type": "object",
+        "required": true,
+        "description": "Any of x, y, w, h, content, yarnId, style (merged over the existing style)"
+      }
+    ]
+  },
+  {
+    "name": "remove_stitch",
+    "summary": "Remove a stitch. Locked stitches are refused.",
+    "params": [
+      {
+        "name": "patternId",
+        "type": "string",
+        "required": true,
+        "description": "The pattern id, like pt_01..."
+      },
+      {
+        "name": "stitch",
+        "type": "string",
+        "required": true,
+        "description": "Slot name or id"
+      }
+    ]
+  },
+  {
+    "name": "set_size",
+    "summary": "Change a pattern's size. Everything is stored as fractions, so it re-lays out. Check the result with preview_pattern.",
+    "params": [
+      {
+        "name": "patternId",
+        "type": "string",
+        "required": true,
+        "description": "The pattern id, like pt_01..."
+      },
+      {
+        "name": "size",
+        "type": "string",
+        "required": true,
+        "description": "One of Story, Post, Square, Landscape, Banner."
+      }
+    ]
+  },
+  {
+    "name": "apply_batch",
+    "summary": "Apply several edit commands as ONE step, so a person can undo it as one. `atomic: true` applies all or nothing. Each command is {type, ...}: addStitch, updateStitch, removeStitch, reorder, setSize, fillSlot, setMotion, setMeta.",
+    "params": [
+      {
+        "name": "patternId",
+        "type": "string",
+        "required": true,
+        "description": "The pattern id, like pt_01..."
+      },
+      {
+        "name": "commands",
+        "type": "object[]",
+        "required": true,
+        "description": ""
+      },
+      {
+        "name": "atomic",
+        "type": "boolean",
+        "required": false,
+        "description": ""
+      }
+    ]
+  },
+  {
+    "name": "list_parts",
+    "summary": "Reusable parts you can insert: lower thirds, quotes, price tags and the project's own. Each lists its slots.",
+    "params": [
+      {
+        "name": "projectId",
+        "type": "string",
+        "required": true,
+        "description": "The project id, like pj_01..."
+      }
+    ]
+  },
+  {
+    "name": "insert_part",
+    "summary": "Put a part into a pattern. Then fill its slots with fill_slots using `instance.slot`.",
+    "params": [
+      {
+        "name": "patternId",
+        "type": "string",
+        "required": true,
+        "description": "The pattern id, like pt_01..."
+      },
+      {
+        "name": "partId",
+        "type": "string",
+        "required": true,
+        "description": "From list_parts"
+      },
+      {
+        "name": "slot",
+        "type": "string",
+        "required": false,
+        "description": "A name for this instance"
+      },
+      {
+        "name": "x",
+        "type": "number",
+        "required": false,
+        "description": ""
+      },
+      {
+        "name": "y",
+        "type": "number",
+        "required": false,
+        "description": ""
+      },
+      {
+        "name": "w",
+        "type": "number",
+        "required": false,
+        "description": ""
+      },
+      {
+        "name": "overrides",
+        "type": "object",
+        "required": false,
+        "description": ""
+      }
+    ]
+  },
+  {
+    "name": "list_presets",
+    "summary": "The animation presets available to set_motion.",
+    "params": []
+  },
+  {
+    "name": "set_motion",
+    "summary": "Animate a stitch: give it clips, each {preset, startMs, endMs}. Replaces that stitch's clips. Also set the pattern's length with durationMs if the animation runs past it. Keep text on screen long enough to read (about 3 words a second).",
+    "params": [
+      {
+        "name": "patternId",
+        "type": "string",
+        "required": true,
+        "description": "The pattern id, like pt_01..."
+      },
+      {
+        "name": "stitch",
+        "type": "string",
+        "required": true,
+        "description": "Slot name or id"
+      },
+      {
+        "name": "clips",
+        "type": "object[]",
+        "required": true,
+        "description": ""
+      },
+      {
+        "name": "durationMs",
+        "type": "number",
+        "required": false,
+        "description": ""
+      }
+    ]
+  },
+  {
+    "name": "list_voices",
+    "summary": "The voices available for voiceover, and whether the configured voice works right now.",
+    "params": []
+  },
+  {
+    "name": "synthesize_voiceover",
+    "summary": "Speak lines and put them on the pattern's timeline as sound, optionally with timed captions. Returns a job id: check it with get_job. The pattern becomes a video long enough for the speech.",
+    "params": [
+      {
+        "name": "patternId",
+        "type": "string",
+        "required": true,
+        "description": "The pattern id, like pt_01..."
+      },
+      {
+        "name": "lines",
+        "type": "string[]",
+        "required": true,
+        "description": ""
+      },
+      {
+        "name": "voice",
+        "type": "string",
+        "required": false,
+        "description": ""
+      },
+      {
+        "name": "captions",
+        "type": "boolean",
+        "required": false,
+        "description": ""
+      }
+    ]
+  },
+  {
+    "name": "preview_pattern",
+    "summary": "Render the pattern and SEE it: returns a PNG. Use it after layout changes to check your own work. `time` is milliseconds for animated patterns.",
+    "params": [
+      {
+        "name": "patternId",
+        "type": "string",
+        "required": true,
+        "description": "The pattern id, like pt_01..."
+      },
+      {
+        "name": "time",
+        "type": "number",
+        "required": false,
+        "description": ""
+      }
+    ]
+  },
+  {
+    "name": "check_pattern",
+    "summary": "Run the same quality checks Knit runs, without drawing anything: missing files, low contrast, text that will not fit, animation that is too busy. Fix errors before knitting.",
+    "params": [
+      {
+        "name": "patternId",
+        "type": "string",
+        "required": true,
+        "description": "The pattern id, like pt_01..."
+      },
+      {
+        "name": "params",
+        "type": "object",
+        "required": false,
+        "description": ""
+      }
+    ]
+  },
+  {
+    "name": "knit_pattern",
+    "summary": "Make real files (PNG, JPEG, WebP or MP4) from a pattern, through the same job the studio's Knit button uses, with the same checks. `params`: sizes (array of {name,w,h}), format, scale (1 or 2), rows (an array of objects of slot values, one per post, to make many). A row may only fill free slots. Returns file paths and any issues, or a jobId when wait is false.",
+    "params": [
+      {
+        "name": "projectId",
+        "type": "string",
+        "required": true,
+        "description": "The project id, like pj_01..."
+      },
+      {
+        "name": "patternId",
+        "type": "string",
+        "required": true,
+        "description": "The pattern id, like pt_01..."
+      },
+      {
+        "name": "params",
+        "type": "object",
+        "required": false,
+        "description": ""
+      },
+      {
+        "name": "wait",
+        "type": "boolean",
+        "required": false,
+        "description": ""
+      }
+    ]
+  },
+  {
+    "name": "get_job",
+    "summary": "Check on a job: a knit or a voiceover.",
+    "params": [
+      {
+        "name": "jobId",
+        "type": "string",
+        "required": true,
+        "description": "From knit_pattern or synthesize_voiceover"
+      }
+    ]
+  },
+  {
+    "name": "cancel_job",
+    "summary": "Stop a running job.",
+    "params": [
+      {
+        "name": "jobId",
+        "type": "string",
+        "required": true,
+        "description": "The job id"
+      }
+    ]
+  },
+  {
+    "name": "list_knits",
+    "summary": "What has been knitted in a project, newest first.",
+    "params": [
+      {
+        "name": "projectId",
+        "type": "string",
+        "required": true,
+        "description": "The project id, like pj_01..."
+      }
+    ]
+  }
+]

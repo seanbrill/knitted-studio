@@ -59,6 +59,30 @@ export function yarnPath(store: Store, y: Pick<Yarn, "projectId" | "file">): str
 export function yarnThumbPath(store: Store, y: Pick<Yarn, "projectId" | "meta">): string | null {
   return y.meta.thumb ? join(store.paths.yarnDir(y.projectId), ".thumbs", y.meta.thumb) : null;
 }
+/**
+ * A bigger preview than the thumbnail, for one picture shown large (a project's card):
+ * 960 pixels on its longest side, made from the original the first time it is asked
+ * for, and named by the file's hash, so a replaced file gets a new one. Only an image
+ * has one; anything else, or an image that cannot be read, gets its thumbnail.
+ */
+export async function yarnPicturePath(store: Store, y: Yarn): Promise<string | null> {
+  if (y.kind !== "image" || !y.meta.thumb) return yarnThumbPath(store, y);
+  const out = largePath(store, y);
+  try {
+    await stat(out);
+    return out;
+  } catch { /* not made yet */ }
+  const part = `${out}.${Math.random().toString(36).slice(2)}.part`;   // two requests at once each write their own
+  try {
+    await sharp(yarnPath(store, y), { animated: false }).rotate().resize(960, 960, { fit: "inside", withoutEnlargement: true }).webp({ quality: 80 }).toFile(part);
+    await rename(part, out);
+    return out;
+  } catch {
+    await rm(part, { force: true });
+    return yarnThumbPath(store, y);
+  }
+}
+const largePath = (store: Store, y: Pick<Yarn, "id" | "projectId" | "hash">) => join(store.paths.yarnDir(y.projectId), ".thumbs", `${y.id}-${y.hash.slice(0, 10)}.large.webp`);
 /** Where an in-flight upload is written. Inside the yarn dir so the final rename never crosses a filesystem. */
 export function uploadTempPath(store: Store, projectId: string): string {
   return join(store.paths.yarnDir(projectId), ".tmp", `${newId("yn")}.part`);
@@ -114,6 +138,7 @@ export async function purgeDeletedYarn(store: Store, olderThanMs = 24 * 3600_000
     await rm(yarnPath(store, y), { force: true });
     const t = yarnThumbPath(store, y);
     if (t) await rm(t, { force: true });
+    await rm(largePath(store, y), { force: true });
     store.write(() => store.db.prepare("delete from yarn where id = ?").run(y.id));
   }
   return rows.length;
@@ -285,6 +310,7 @@ export async function importYarn(store: Store, projectId: string, tmpPath: strin
       store.db.prepare("update projects set updated_at = ? where id = ?").run(now, projectId);
     });
     if (prior && prior.file !== file) await rm(yarnPath(store, prior), { force: true });
+    if (prior && prior.hash !== hash) await rm(largePath(store, prior), { force: true });
     return { yarn: getYarn(store, id), existing: false };
   } catch (e) {
     await rm(tmpPath, { force: true }).catch(() => {});

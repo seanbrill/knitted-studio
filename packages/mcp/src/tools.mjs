@@ -68,6 +68,8 @@ export const TOOLS = [
     async handler({ name, starter = "social" }, { store }) { const p = store.createProject({ name, starter, actor: "model" }); return { id: p.id, name: p.name, patterns: store.listPatterns(p.id).map(brief) }; } },
   { name: "get_project", description: "A project's patterns, how much Yarn it has, and its brand (colours, fonts and voice).", inputSchema: obj({ projectId: PROJECT }, ["projectId"]),
     async handler({ projectId }, { store }) { const p = store.getProject(projectId); return { id: p.id, name: p.name, patterns: store.listPatterns(projectId).map(brief), yarn: listYarn(store, projectId).length, brand: guidance(store, projectId) }; } },
+  { name: "set_project_picture", description: "Show one of a project's images or videos (from its Yarn) on the project's card in the studio, so the person knows it at a glance. A logo or a key photo works well. Leave out yarnId to take the picture away.", inputSchema: obj({ projectId: PROJECT, yarnId: str("An image's yarn id, from list_yarn") }, ["projectId"]),
+    async handler({ projectId, yarnId }, { store }) { const p = store.updateProject(projectId, { coverYarnId: yarnId || null }, "model"); return { id: p.id, picture: p.coverYarnId }; } },
 
   // ── yarn ──
   { name: "list_yarn", description: "List the files (Yarn) in a project: images, video, audio, fonts and saved copy. Filter by kind, tag or a search word. Use a Yarn name or id when filling an image slot.", inputSchema: obj({ projectId: PROJECT, kind: { type: "string", enum: ["image", "video", "audio", "font", "copy"] }, tag: str("Only Yarn with this tag"), q: str("Search the names") }, ["projectId"]),

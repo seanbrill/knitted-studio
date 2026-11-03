@@ -1,12 +1,12 @@
 ---
 title: MCP reference
 order: 13
-summary: The four tools the MCP server offers, with their parameters and results.
+summary: Every tool the MCP server offers, with its parameters.
 status: shipped
 ---
 # MCP reference
 
-This page is built from the same typed list as the [MCP page](/mcp/), so it cannot drift from the server. The server speaks MCP over stdio. Run it with `npm run mcp` from the repository.
+This page is built from the server's own list of tools, the same one the [MCP page](/mcp/) shows, so it cannot drift from the server. The desktop app serves them over HTTP, at the address in Settings, Model. From a clone, the server speaks MCP over stdio: run it with `npm run mcp`. See [Using your model](/docs/using-your-model/) to connect either.
 
 {{mcp-tools}}
 

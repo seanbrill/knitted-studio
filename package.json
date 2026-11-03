@@ -23,6 +23,7 @@
     "typecheck": "tsc -b",
     "test": "node --test test/*.test.mjs packages/*/test/*.test.mjs",
     "mcp": "node packages/mcp/src/server.mjs",
+    "mcp:tools": "node scripts/mcp-tools.mjs",
     "check:contrast": "node scripts/check-contrast.mjs",
     "test:e2e": "node --test --test-concurrency=1 --test-timeout=90000 test/e2e/*.e2e.mjs",
     "test:render": "node --test --test-concurrency=1 --test-timeout=120000 test/render/*.test.mjs",

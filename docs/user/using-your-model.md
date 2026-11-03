@@ -3,15 +3,17 @@ title: Using your model
 order: 12
 summary: Connect Claude or another model so it can read Patterns, fill free slots and knit.
 status: partial
-note: The four MCP tools work today. The model prompt bar inside the studio is not built yet.
+note: Your model works in the studio through its MCP address (desktop app) or the stdio server (a clone).
 ---
 # Using your model
 
-Your model can do what you can do in the studio, through the same four tools.
+Your model can do what you can do in the studio, through the same tools.
 
 ## Connect it
 
-Add the server to your model's MCP settings, using the path to your clone:
+**From the desktop app.** Open Settings, Model, and copy the command under **Connect Claude Code**. Run it in a terminal, then start Claude Code: it adds knitted to Claude Code for every folder you work in. Or paste the command into Claude Code and ask it to connect. Other apps that speak MCP over HTTP take the address underneath it. It works while knitted is open. The address holds a key, so keep it to yourself; **Make a new address** shuts the old one.
+
+**From a clone of the repository.** Add the stdio server to your model's MCP settings, using the path to your clone:
 
 {{mcp-config}}
 
@@ -30,4 +32,4 @@ It cannot change a locked Stitch. If it tries, knitted refuses and tells your mo
 
 ## Keys and privacy
 
-When the in-app model arrives you will bring your own key. Text you send to a model goes to that model's provider. Nothing else leaves your computer.
+The studio's own model uses a key you bring, in Settings, Model. Claude Code and other apps use their own. Text you send to a model goes to that model's provider. Nothing else leaves your computer.

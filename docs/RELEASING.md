@@ -1,7 +1,7 @@
 # Releasing
 
 1. `npm run lint && npm run typecheck && npm test && npm run test:render && npm run test:e2e`
-2. Bump `version` in the root and `apps/studio/package.json`, update the changelog page (`apps/site/app/changelog`).
+2. Bump `version` in the root and `apps/studio/package.json`, add the version to the changelog (`apps/site/content/changelog.json`).
 3. On a Mac, `npm run release`. It builds the installers for macOS (Apple silicon and Intel), Windows (x64) and Linux (x64 and ARM), and uploads them with a `SHA256SUMS.txt` to `v<version>` in the FileFreak release folder. It needs `FILEFREAK_KEY` in `.env`, the release folder's write key (see `.env.example`), and checks the key before it builds. Only a Mac can build all three, because electron-builder builds macOS apps only on macOS. Running a version again replaces its files.
 4. On a clean machine per system, install from the uploaded files, go offline, and run the first journey: make a project, upload a photo, build a pattern, knit a PNG and an MP4. Note the time.
 5. Push to main, or run the site pipeline in EZPIPELINE. The site's Download page lists the release folder when the site is built, so the new version appears with that deploy.
@@ -11,6 +11,12 @@ Each installer carries its own system's ffmpeg, ffprobe and sharp, fetched once 
 Local build without uploading: `npm run desktop:dist` builds the installers for this machine's system, in `dist/desktop`. For a quick check without an installer, `npm run desktop:pack` and open the app in `dist/desktop/<platform>`.
 
 The `release` GitHub workflow (tag `v*`) builds the same installers on GitHub's runners, one per system, into a draft GitHub release. It does not upload to FileFreak.
+
+## Updates
+
+Installed apps check `/releases.json` on the site (`apps/site/app/releases.json`, the same list the Download page shows), so a release reaches them when the site deploys (step 5). The updater (`apps/studio/electron/update.mjs`) installs the Mac `.zip`, the Windows `.exe` and the Linux `.AppImage`, so a release needs those, and only installs a file whose SHA-256 the list records. Versions must go up. A test version such as `0.2.0-beta.1` is offered only to copies that are test versions themselves.
+
+To check the swap by hand on a Mac, pack two versions into a scratch folder: `npx electron-builder --dir --mac --arm64 -c.directories.output=<old>`, then `npx electron-builder --mac zip --arm64 -c.extraMetadata.version=<next> -c.directories.output=<new>` (in `apps/studio`). Serve a `releases.json` on 127.0.0.1 that lists the zip and its SHA-256, and open the old app with `KNITTED_UPDATE_URL=http://127.0.0.1:<port>/releases.json` and `--user-data-dir=<scratch>`, so it does not touch your own settings or library.
 
 ## Signing (when certificates exist)
 

@@ -19,6 +19,7 @@ afterPack: ../../scripts/after-pack.mjs
 # Only the shell goes in the asar. The server and the tools are extra resources, run as plain files.
 files:
   - electron/main.mjs
+  - electron/update.mjs
   - package.json
   - "!**/node_modules/**"
 # ffmpeg, ffprobe and sharp are not here: after-pack.mjs puts in the ones for each app's system.

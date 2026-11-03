@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState } from "react";
-import { api, type ProjectSummary } from "@knitted/core/client";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { api, uploadYarn, yarnPictureUrl, yarnThumbUrl, type ProjectSummary } from "@knitted/core/client";
 import {
   Button, Chip, ConfirmDialog, ContextMenu, Dialog, EmptyState, Field, IconButton, Input, Menu, SegmentedControl,
   Select, Skeleton, Textarea, icons, useToast, type MenuItems,
@@ -11,7 +11,7 @@ import {
 import { PageHeader } from "./AppShell";
 import { timeAgo, useLive } from "@/lib/hooks";
 
-const { Plus, Search, MoreHorizontal, Pencil, Copy, Archive, Trash2, FolderOpen } = icons;
+const { Plus, Search, MoreHorizontal, Pencil, Copy, Archive, Trash2, FolderOpen, Image: ImageIcon, Upload } = icons;
 
 type Sort = "recent" | "name" | "created";
 type View = "grid" | "list";
@@ -30,10 +30,14 @@ function ProjectCard({ p, view, items, menuTrigger }: { p: ProjectSummary; view:
     <div className="card card-link" style={{ position: "relative", padding: view === "grid" ? "var(--space-3)" : "var(--space-3) var(--space-4)", display: view === "list" ? "flex" : "block", alignItems: "center", gap: "var(--space-4)" }}>
       <Link href={`/projects/${p.id}`} aria-label={`Open ${p.name}`} style={{ position: "absolute", inset: 0, borderRadius: "var(--radius-md)", zIndex: 1 }} />
       {view === "grid" && (
-        <div style={{ aspectRatio: "4 / 3", borderRadius: "var(--radius-sm)", background: p.example ? "var(--ember)" : "var(--surface-sunken)", display: "grid", placeItems: "center", marginBottom: "var(--space-3)" }}>
-          <span style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 38, letterSpacing: "-0.04em", color: p.example ? "var(--on-ember)" : "var(--ink-muted)" }}>
-            {p.name.slice(0, 1).toUpperCase()}
-          </span>
+        <div style={{ aspectRatio: "4 / 3", borderRadius: "var(--radius-sm)", overflow: "hidden", background: p.example ? "var(--ember)" : "var(--surface-sunken)", display: "grid", placeItems: "center", marginBottom: "var(--space-3)" }}>
+          {p.cover ? (
+            <img src={yarnPictureUrl(p.cover)} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+          ) : (
+            <span style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 38, letterSpacing: "-0.04em", color: p.example ? "var(--on-ember)" : "var(--ink-muted)" }}>
+              {p.name.slice(0, 1).toUpperCase()}
+            </span>
+          )}
         </div>
       )}
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -43,7 +47,8 @@ function ProjectCard({ p, view, items, menuTrigger }: { p: ProjectSummary; view:
         </p>
       </div>
       {p.example && <Chip tone="ember">Example</Chip>}
-      <span style={{ position: "relative", zIndex: 2, ...(view === "grid" ? { position: "absolute", top: 8, right: 8 } : {}) }}>{menuTrigger}</span>
+      {/* In the grid it sits on the picture, so it brings its own background to be seen on any picture. */}
+      <span style={{ position: "relative", zIndex: 2, ...(view === "grid" ? { position: "absolute", top: 18, right: 18, display: "flex", background: "var(--surface-raised)", borderRadius: "var(--radius-sm)", boxShadow: "var(--shadow-lift)" } : {}) }}>{menuTrigger}</span>
     </div>
   );
   return <ContextMenu items={items}>{card}</ContextMenu>;
@@ -61,6 +66,7 @@ function ProjectsInner() {
 
   const [creating, setCreating] = useState(params.get("new") === "1");
   const [renaming, setRenaming] = useState<ProjectSummary | null>(null);
+  const [picturing, setPicturing] = useState<ProjectSummary | null>(null);
   const [deleting, setDeleting] = useState<ProjectSummary | null>(null);
 
   const list = useMemo(() => {
@@ -76,6 +82,7 @@ function ProjectsInner() {
   const menuFor = (p: ProjectSummary): MenuItems => [
     { label: "Open", icon: <FolderOpen size={14} />, onSelect: () => router.push(`/projects/${p.id}`) },
     { label: "Rename", icon: <Pencil size={14} />, onSelect: () => setRenaming(p) },
+    { label: "Choose picture", icon: <ImageIcon size={14} />, onSelect: () => setPicturing(p) },
     { label: "Duplicate", icon: <Copy size={14} />, onSelect: () => act(() => api.projects.action(p.id, "duplicate"), `Duplicated ${p.name}`) },
     p.archivedAt
       ? { label: "Restore", icon: <Archive size={14} />, onSelect: () => act(() => api.projects.action(p.id, "restore"), `Restored ${p.name}`) }
@@ -140,6 +147,8 @@ function ProjectsInner() {
         onSave={(name) => act(() => api.projects.update(renaming!.id, { name }))}
       />
 
+      <PictureDialog project={picturing} onOpenChange={(o) => !o && setPicturing(null)} onDone={refresh} />
+
       <ConfirmDialog
         open={!!deleting}
         onOpenChange={(o) => !o && setDeleting(null)}
@@ -193,6 +202,56 @@ export function NewProjectDialog({ open, onOpenChange, onCreated }: { open: bool
         </Field>
         <button type="submit" hidden />
       </form>
+    </Dialog>
+  );
+}
+
+/** The picture on a project's card: one of its images or videos, or a new image uploaded into its Yarn. */
+function PictureDialog({ project, onOpenChange, onDone }: { project: ProjectSummary | null; onOpenChange: (o: boolean) => void; onDone: () => void }) {
+  const toast = useToast();
+  const id = project?.id;
+  const { data: yarn, refresh } = useLive(() => (id ? api.yarn.list(id) : Promise.resolve([])), [id]);
+  const [sel, setSel] = useState<string | null>(null);
+  const [progress, setProgress] = useState<number | null>(null);
+  const file = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (project) { setSel(project.coverYarnId); setProgress(null); }
+  }, [project]);
+  const pictures = (yarn ?? []).filter((y) => (y.kind === "image" || y.kind === "video") && y.meta.thumb);
+  const save = async (coverYarnId: string | null) => {
+    try { await api.projects.update(project!.id, { coverYarnId }); onOpenChange(false); onDone(); toast(coverYarnId ? "Picture set." : "Picture taken away."); } catch (e) { toast((e as Error).message); }
+  };
+  const upload = async (f: File) => {
+    setProgress(0);
+    try { const r = await uploadYarn(project!.id, f, setProgress).promise; await refresh(); setSel(r.yarn.id); } catch (e) { toast((e as Error).message); } finally { setProgress(null); }
+  };
+  return (
+    <Dialog open={!!project} onOpenChange={onOpenChange} wide title="Project picture" description="It shows on the project's card. Choose one of its images, or upload one, which also adds it to the project's Yarn."
+      actions={<>
+        {project?.coverYarnId && <Button variant="ghost" onClick={() => save(null)}>Take picture away</Button>}
+        <span style={{ flex: 1 }} />
+        <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+        <Button variant="primary" disabled={!sel || sel === project?.coverYarnId} onClick={() => save(sel)}>Use picture</Button>
+      </>}>
+      <div style={{ display: "grid", gap: "var(--space-4)" }}>
+        {yarn && pictures.length === 0 && <p className="body-sm" style={{ color: "var(--ink-muted)", margin: 0 }}>This project has no images yet.</p>}
+        {pictures.length > 0 && (
+          <div role="listbox" aria-label="The project's images" style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fill, minmax(96px, 1fr))", maxHeight: 340, overflowY: "auto", padding: 2 }}>
+            {pictures.map((y) => (
+              <button key={y.id} type="button" role="option" aria-selected={sel === y.id} aria-label={y.name} title={y.name} onClick={() => setSel(y.id)}
+                style={{ aspectRatio: "1", padding: 0, borderRadius: 8, overflow: "hidden", cursor: "pointer", background: "var(--surface-sunken)", border: sel === y.id ? "2px solid var(--ember)" : "1px solid var(--line-strong)" }}>
+                <img src={yarnThumbUrl(y)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+              </button>
+            ))}
+          </div>
+        )}
+        <div style={{ display: "flex", gap: "var(--space-3)", alignItems: "center" }}>
+          <Button onClick={() => file.current?.click()} disabled={progress !== null}><Upload size={14} aria-hidden /> Upload an image</Button>
+          {progress !== null && <span className="body-sm" style={{ color: "var(--ink-muted)" }}>Uploading, {Math.round(progress * 100)}%</span>}
+          <input ref={file} type="file" accept="image/*" hidden aria-label="Choose an image" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void upload(f); }} />
+        </div>
+      </div>
     </Dialog>
   );
 }

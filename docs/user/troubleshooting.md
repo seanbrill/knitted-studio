@@ -21,7 +21,7 @@ Video needs ffmpeg. Check that `ffmpeg -version` prints a version in your termin
 
 ## My model cannot see the tools
 
-Restart the model's app after editing its MCP settings. Check that the path points at `packages/mcp/src/server.mjs` inside your clone, and that Node 22.13 or newer is installed.
+Restart the model's app after editing its MCP settings. With the desktop app, knitted has to be open, and the address has to be the one in Settings, Model: making a new address shuts the old one. With a clone, check that the path points at `packages/mcp/src/server.mjs` inside it, and that Node 22.13 or newer is installed.
 
 ## My model says a slot was refused
 

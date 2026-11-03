@@ -16,6 +16,7 @@ const ACTOR_LABEL: Record<string, string> = { human: "You", fill: "You", model: 
 const ACTION_TEXT: Record<string, (subject: string | null) => string> = {
   "project.created": (s) => `created ${s}`,
   "project.renamed": (s) => `renamed the project to ${s}`,
+  "project.picture": (s) => (s ? "changed the project's picture" : "took the project's picture away"),
   "project.duplicated": (s) => `duplicated ${s}`,
   "project.deleted": (s) => `deleted ${s}`,
   "pattern.created": (s) => `added the pattern ${s}`,

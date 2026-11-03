@@ -44,6 +44,8 @@ function cleanName(raw: unknown, what = "name"): string {
 
 export interface ProjectSummary extends Project {
   counts: { patterns: number; yarn: number; knits: number };
+  /** The project's picture, for its card: its Yarn's id and hash. Null when none is set or the file is gone. */
+  cover: { id: string; hash: string } | null;
 }
 export interface Activity { id: string; projectId: string | null; actor: string; action: string; subject: string | null; detail: unknown; createdAt: string; }
 export interface Revision { id: string; patternId: string; author: Actor; label: string | null; createdAt: string; }
@@ -91,8 +93,16 @@ export class Store {
     const rows = this.db.prepare(`select * from projects where ${where} order by updated_at desc`).all() as Row[];
     return rows.map((r) => {
       const p = this.toProject(r);
-      return { ...p, counts: { patterns: this.count("patterns", p.id), yarn: this.count("yarn", p.id), knits: this.count("knits", p.id) } };
+      const cover = p.coverYarnId ? this.pictureYarn(p.id, p.coverYarnId) : undefined;
+      return { ...p, counts: { patterns: this.count("patterns", p.id), yarn: this.count("yarn", p.id), knits: this.count("knits", p.id) }, cover: cover?.thumb ? { id: cover.id, hash: cover.hash } : null };
     });
+  }
+
+  /** A project's own live Yarn, as far as its picture needs it. A file that was deleted is not a picture. */
+  private pictureYarn(projectId: string, yarnId: string): { id: string; hash: string; kind: string; thumb: boolean } | undefined {
+    if (!this.has("yarn")) return undefined;
+    const r = this.db.prepare("select id, hash, kind, meta from yarn where id = ? and project_id = ? and deleted_at is null").get(yarnId, projectId) as Row | undefined;
+    return r && { id: r.id as string, hash: r.hash as string, kind: r.kind as string, thumb: !!(JSON.parse(r.meta as string) as { thumb?: string }).thumb };
   }
 
   getProject(id: string): Project {
@@ -127,10 +137,16 @@ export class Store {
       swatchId: patch.swatchId !== undefined ? patch.swatchId : cur.swatchId,
       coverYarnId: patch.coverYarnId !== undefined ? patch.coverYarnId : cur.coverYarnId,
     };
+    if (patch.coverYarnId) {
+      const y = this.pictureYarn(id, patch.coverYarnId);
+      if (!y) throw new ValidationError("That picture is not in this project's Yarn. Add it there first.");
+      if (!y.thumb || (y.kind !== "image" && y.kind !== "video")) throw new ValidationError("A project's picture is an image or a video from its Yarn.");
+    }
     this.write(() => {
       this.db.prepare("update projects set name = ?, description = ?, swatch_id = ?, cover_yarn_id = ?, updated_at = ? where id = ?")
         .run(next.name, next.description, next.swatchId, next.coverYarnId, now(), id);
       if (next.name !== cur.name) this.logRow(id, actor, "project.renamed", next.name, { from: cur.name });
+      if (next.coverYarnId !== cur.coverYarnId) this.logRow(id, actor, "project.picture", next.coverYarnId, { from: cur.coverYarnId });
     });
     return this.getProject(id);
   }

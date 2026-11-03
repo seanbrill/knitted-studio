@@ -14,6 +14,10 @@ Apple silicon or Intel: the Apple menu, **About This Mac**, says. A **Chip** lin
 
 **Linux.** `.AppImage`: make it executable (`chmod +x knitted-*.AppImage`) and run it; if it will not start, install `libfuse2`. A `.deb` is not built yet.
 
+## Updating
+
+knitted can update itself. The first time it opens, it asks whether to check for updates by itself, once a day. **Check for Updates…**, in the knitted menu on a Mac and the Help menu on Windows and Linux, checks whenever you like. When there is a new version, knitted downloads it while you work, checks it against the SHA-256 on the Download page, and asks to restart. On a Mac, keep knitted in Applications: a copy opened from the disk image cannot replace itself. Version 0.1.0 does not update itself, so install 0.1.1 from the Download page once.
+
 ## Making videos and exporting pictures
 
 The first time you knit, knitted asks to download a small browser (about 100 MB) it draws with. It happens once, only when you say yes, and is saved in your own data folder.

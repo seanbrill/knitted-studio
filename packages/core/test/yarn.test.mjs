@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import sharp from "sharp";
-import { ValidationError, assertPublicUrl, createCopy, deleteYarn, importYarn, importYarnFromUrl, listYarn, openStore, purgeDeletedYarn, undeleteYarn, updateYarn, uploadTempPath, yarnPath, yarnUsage } from "../src/node.ts";
+import { ValidationError, assertPublicUrl, createCopy, deleteYarn, importYarn, importYarnFromUrl, listYarn, openStore, purgeDeletedYarn, undeleteYarn, updateYarn, uploadTempPath, yarnPath, yarnPicturePath, yarnUsage } from "../src/node.ts";
 import { sanitiseSvg } from "../src/svg.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "knitted-yarn-"));
@@ -201,4 +201,42 @@ test("importing from a local server is refused end to end", async () => {
   await new Promise((r) => srv.once("listening", r));
   try { await assert.rejects(importYarnFromUrl(store, project.id, `http://127.0.0.1:${srv.address().port}/a.png`), /your own computer or network/); }
   finally { srv.close(); }
+});
+
+// ── A project's picture, on its card ────────────────────────────────────────
+test("a project's picture is one of its own images, and its card in the list gets it", async () => {
+  const p = store.createProject({ name: "Pictured" });
+  const tmp = uploadTempPath(store, p.id);
+  (await import("node:fs")).mkdirSync(join(tmp, ".."), { recursive: true });
+  writeFileSync(tmp, await png(2000, 1500, { r: 20, g: 120, b: 200 }));
+  const { yarn: y } = await importYarn(store, p.id, tmp, "Cover.png");
+  assert.equal(store.listProjects().find((x) => x.id === p.id).cover, null);
+  store.updateProject(p.id, { coverYarnId: y.id });
+  assert.deepEqual(store.listProjects().find((x) => x.id === p.id).cover, { id: y.id, hash: y.hash });
+  assert.ok(store.activity(p.id).some((a) => a.action === "project.picture"), "who changed it is in the activity");
+
+  deleteYarn(store, y.id);
+  assert.equal(store.listProjects().find((x) => x.id === p.id).cover, null, "a deleted file is not a picture");
+  undeleteYarn(store, y.id);
+  assert.deepEqual(store.listProjects().find((x) => x.id === p.id).cover, { id: y.id, hash: y.hash }, "and undoing the delete brings it back");
+
+  const { yarn: words } = await createCopy(store, p.id, { name: "Tagline", text: "Make it knitted." });
+  assert.throws(() => store.updateProject(p.id, { coverYarnId: words.id }), /image or a video/);
+  const { result } = await imp("Someone else's.png", await png(300, 300));
+  assert.throws(() => store.updateProject(p.id, { coverYarnId: result.yarn.id }), /not in this project/, "another project's image is not this one's picture");
+  store.updateProject(p.id, { coverYarnId: null });
+  assert.equal(store.listProjects().find((x) => x.id === p.id).cover, null);
+});
+
+test("the card's picture is made once from the original, 960 pixels at most, and never enlarged", async () => {
+  const { result: big } = await imp("Big.png", await png(2000, 1500, { r: 1, g: 2, b: 3 }));
+  const first = await yarnPicturePath(store, big.yarn);
+  assert.deepEqual(Object.values((({ width, height }) => ({ width, height }))(await sharp(first).metadata())), [960, 720]);
+  const made = statSync(first).mtimeMs;
+  assert.equal(await yarnPicturePath(store, big.yarn), first);
+  assert.equal(statSync(first).mtimeMs, made, "the second ask is served from the first");
+  const { result: small } = await imp("Small.png", await png(400, 300, { r: 4, g: 5, b: 6 }));
+  assert.equal((await sharp(await yarnPicturePath(store, small.yarn)).metadata()).width, 400);
+  const { yarn: words } = await createCopy(store, project.id, { name: "No picture", text: "Words only." });
+  assert.equal(await yarnPicturePath(store, words), null, "copy has nothing to show");
 });

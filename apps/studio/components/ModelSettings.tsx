@@ -5,9 +5,18 @@ import { api } from "@knitted/core/client";
 import { Button, Field, Input, Select, Slider, icons, useToast } from "@knitted/ui";
 import { useLive } from "@/lib/hooks";
 
-const { AlertTriangle, Check } = icons;
+const { AlertTriangle, Check, Copy, RotateCcw } = icons;
 
 export function ModelSettings() {
+  return (
+    <div style={{ display: "grid", gap: "var(--space-10)", maxWidth: 560 }}>
+      <OwnKey />
+      <Connect />
+    </div>
+  );
+}
+
+function OwnKey() {
   const toast = useToast();
   const { data: cfg, refresh } = useLive(() => api.agent.config(), []);
   const [key, setKey] = useState("");
@@ -18,7 +27,7 @@ export function ModelSettings() {
   const save = async (p: Parameters<typeof api.agent.save>[0]) => { try { await api.agent.save(p); await refresh(); setErr(undefined); } catch (e) { setErr((e as Error).message); } };
   const test = async () => { setBusy(true); setErr(undefined); setGood(false); try { await api.agent.test(); setGood(true); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); } };
   return (
-    <div style={{ display: "grid", gap: "var(--space-5)", maxWidth: 560 }}>
+    <div style={{ display: "grid", gap: "var(--space-5)" }}>
       <div>
         <h2 className="h3" style={{ marginBottom: 4 }}>Model</h2>
         <p className="body-sm" style={{ color: "var(--ink-muted)", margin: 0 }}>Bring your own Anthropic key and your model can edit patterns and knit posts with you. It follows the same locks you do. Requests go straight from this computer to Anthropic.</p>
@@ -38,6 +47,44 @@ export function ModelSettings() {
         <Button variant="primary" onClick={test} disabled={busy || !cfg.key.present}>{busy ? "Checking..." : "Test connection"}</Button>
         {good && <span className="body-sm" style={{ color: "var(--success)", display: "flex", gap: 4, alignItems: "center" }}><Check size={14} aria-hidden /> Connected</span>}
         {err && <span className="field-error" role="alert"><AlertTriangle size={14} aria-hidden /> {err}</span>}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Claude Code, or any MCP client, working in this studio through the MCP address:
+ * the same tools and locks as the model above, with its own account instead of a key here.
+ */
+function Connect() {
+  const toast = useToast();
+  const { data, refresh } = useLive(() => api.agent.mcp(), []);
+  if (!data) return null;
+  const url = `${window.location.origin}${data.path}`;
+  const command = `claude mcp add --scope user --transport http knitted ${url}`;
+  const copy = async (text: string, what: string) => {
+    try { await navigator.clipboard.writeText(text); toast(`${what} copied.`); } catch { toast("This window would not copy. Select the text and copy it."); }
+  };
+  const copyField = (id: string, value: string, what: string) => (
+    <div style={{ display: "flex", gap: 8 }}>
+      <Input id={id} mono readOnly value={value} onFocus={(e) => e.target.select()} />
+      <Button onClick={() => copy(value, what)}><Copy size={14} aria-hidden /> Copy</Button>
+    </div>
+  );
+  return (
+    <div style={{ display: "grid", gap: "var(--space-5)" }}>
+      <div>
+        <h2 className="h3" style={{ marginBottom: 4 }}>Connect Claude Code</h2>
+        <p className="body-sm" style={{ color: "var(--ink-muted)", margin: 0 }}>Or use a model you already have. Claude Code, or any app that speaks MCP, can work here through this address, with the same tools and the same locks. You see its changes as it makes them. It works while knitted is open.</p>
+      </div>
+      <Field label="For Claude Code" htmlFor="mcp-command" hint="Run it in a terminal, then start Claude Code. Or paste it into Claude Code and ask it to connect to knitted.">
+        {copyField("mcp-command", command, "Command")}
+      </Field>
+      <Field label="The address, for other MCP apps" htmlFor="mcp-url" hint="It holds a key. Anyone with it can edit your library, so keep it to yourself.">
+        {copyField("mcp-url", url, "Address")}
+      </Field>
+      <div>
+        <Button variant="ghost" onClick={async () => { await api.agent.newMcpAddress(); await refresh(); toast("New address made. The old one no longer works."); }}><RotateCcw size={14} aria-hidden /> Make a new address</Button>
       </div>
     </div>
   );

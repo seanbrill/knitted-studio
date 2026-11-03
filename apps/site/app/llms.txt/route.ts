@@ -24,7 +24,7 @@ Not built yet:
 ${soon.join("\n")}
 
 ## Use it from a model (MCP)
-The MCP server runs over stdio: node packages/mcp/src/server.mjs. Tools: ${MCP_TOOLS.map((t) => t.name).join(", ")}.
+The desktop app serves MCP over HTTP at the address in Settings, Model, with a command to add it to Claude Code. From a clone, the server runs over stdio: node packages/mcp/src/server.mjs. Tools: ${MCP_TOOLS.map((t) => t.name).join(", ")}.
 A locked slot cannot be changed through MCP: fill_slots refuses it and reports the refusal.
 
 ## Pages

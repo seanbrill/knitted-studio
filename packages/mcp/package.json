@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/server.mjs",
     "./tools": "./src/tools.mjs",
-    "./context": "./src/context.mjs"
+    "./context": "./src/context.mjs",
+    "./protocol": "./src/protocol.mjs"
   },
   "dependencies": {
     "@knitted/core": "*",

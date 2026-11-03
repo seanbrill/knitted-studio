@@ -1,35 +1,43 @@
 import Link from "next/link";
 import { PageHero } from "../../components/PageHero";
 import { Badge } from "../../components/Badge";
-import { MCP_TOOLS, MCP_CONFIG } from "../../content/mcp-tools";
+import { MCP_TOOLS, MCP_CONFIG, MCP_COMMAND } from "../../content/mcp-tools";
 import { CopyCode } from "../../components/CopyCode";
 import { pageMeta } from "../../lib/meta";
 
 export const metadata = pageMeta({
   title: "Use it from your model",
-  description: "A four-tool MCP server lets Claude and other models read Patterns, fill free slots and knit. Locked slots are refused and reported.",
+  description: "An MCP server lets Claude Code and other models read Patterns, fill free slots and knit. Locked slots are refused and reported.",
   path: "/mcp/",
 });
+
+/** A tool's own description marks names with backticks, as markdown does. */
+const withCode = (text: string) => text.split("`").map((part, i) => (i % 2 ? <code key={i} className="code">{part}</code> : part));
 
 export default function Mcp() {
   return (
     <>
-      <PageHero eyebrow="Your model" title="Let your model knit." lead="The studio and your model use the same four tools against the same store. Nothing is a model-only back door." />
+      <PageHero eyebrow="Your model" title="Let your model knit." lead="The studio and your model use the same tools against the same store. Nothing is a model-only back door." />
       <section className="sec-tight">
         <div className="wrap-narrow" id="mcp-body">
           <p><Badge status="shipped" /></p>
           <h2 className="h1" style={{ margin: "var(--space-4) 0" }}>Add it to your model</h2>
-          <p className="body-lg">Point any MCP client at the server. It speaks over stdio, so it needs no ports and no account. Clone the repository, run <code className="code">npm install</code>, then add this to your client&rsquo;s MCP settings with your own path.</p>
+          <h3 className="h3" style={{ margin: "var(--space-8) 0 var(--space-2)" }}>From the desktop app</h3>
+          <p className="body-lg">Open Settings, Model, and copy the command under Connect Claude Code. Run it in a terminal, or paste it into Claude Code and ask it to connect to knitted. It looks like this, with your own address:</p>
+          <div className="doc"><pre tabIndex={0}><code>{MCP_COMMAND}</code></pre></div>
+          <p className="body">Other MCP clients take the address on its own. It works while knitted is open, and it holds a key, so keep it to yourself. Settings can make a new one and shut the old.</p>
+          <h3 className="h3" style={{ margin: "var(--space-8) 0 var(--space-2)" }}>From a clone</h3>
+          <p className="body-lg">The server also speaks over stdio, so it needs no ports and no account. Clone the repository, run <code className="code">npm install</code>, then add this to your client&rsquo;s MCP settings with your own path.</p>
           <div className="doc"><pre tabIndex={0}><code>{MCP_CONFIG}</code></pre></div>
-          <p className="body">Knitting needs Playwright and ffmpeg installed. The other three tools do not.</p>
+          <p className="body">From a clone, knitting needs Playwright and ffmpeg installed. The other tools do not.</p>
 
-          <h2 className="h1" style={{ margin: "var(--space-12) 0 var(--space-4)" }}>The four tools</h2>
+          <h2 className="h1" style={{ margin: "var(--space-12) 0 var(--space-4)" }}>The {MCP_TOOLS.length} tools</h2>
           {MCP_TOOLS.map((t) => (
             <article key={t.name} className="card tool">
               <h3 className="h3">{t.name}</h3>
-              <p className="body-lg" style={{ margin: "var(--space-2) 0" }}>{t.summary}</p>
+              <p className="body-lg" style={{ margin: "var(--space-2) 0" }}>{withCode(t.summary)}</p>
               <p className="body-sm muted" style={{ margin: 0 }}>
-                {t.params.length ? `Takes ${t.params.map((p) => p.name + (p.required ? "" : " (optional)")).join(", ")}.` : "Takes nothing."} {t.returns}
+                {t.params.length ? `Takes ${t.params.map((p) => p.name + (p.required ? "" : " (optional)")).join(", ")}.` : "Takes nothing."}
               </p>
             </article>
           ))}

@@ -40,6 +40,25 @@ test("settings: the key is reported as present but never returned", async () => 
   assert.ok(!JSON.stringify(c).includes("sk-test-not-real"));
 });
 
+test("Settings, Model gives Claude Code a command with an address that works, and a new address shuts the old", async () => {
+  await page.goto(`${studio.url}/settings`);
+  await page.getByRole("tab", { name: "Model" }).click();
+  const address = page.getByLabel("The address, for other MCP apps");
+  await page.waitForFunction(() => document.querySelector("#mcp-url")?.value);
+  const url = await address.inputValue();
+  assert.match(url, /^http:\/\/127\.0\.0\.1:\d+\/api\/mcp\/[\w-]{32}$/);
+  assert.equal(await page.getByLabel("For Claude Code").inputValue(), `claude mcp add --scope user --transport http knitted ${url}`);
+  assert.deepEqual(await axeProblems(page), []);
+
+  const list = (u) => fetch(u, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }) });
+  assert.ok((await (await list(url)).json()).result.tools.some((t) => t.name === "fill_slots"), "an MCP client at the address gets the tools");
+  await page.getByRole("button", { name: "Make a new address" }).click();
+  await page.getByText("New address made.").waitFor();
+  await page.waitForFunction((old) => document.querySelector("#mcp-url")?.value !== old, url);
+  assert.equal((await list(url)).status, 404, "the old address is shut");
+  assert.equal((await list(await address.inputValue())).status, 200);
+});
+
 test("asking from the editor edits the pattern, and Undo all puts it back", async () => {
   const before = (await pattern()).stitches.find((s) => s.slot === "headline").content;
   await page.goto(`${studio.url}/projects/${projectId}/patterns/${patternId}`);

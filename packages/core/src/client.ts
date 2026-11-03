@@ -7,7 +7,7 @@ import type { Actor, Part, Pattern, Project, Refusal, Size, Swatch, Yarn } from 
 import type { KnitIssue, KnitRecord } from "./knits.ts";
 import type { Command } from "./commands.ts";
 
-export interface ProjectSummary extends Project { counts: { patterns: number; yarn: number; knits: number }; }
+export interface ProjectSummary extends Project { counts: { patterns: number; yarn: number; knits: number }; cover: { id: string; hash: string } | null; }
 export interface ActivityItem { id: string; projectId: string | null; actor: string; action: string; subject: string | null; detail: unknown; createdAt: string; }
 export interface RevisionItem { id: string; patternId: string; author: Actor; label: string | null; createdAt: string; }
 export interface ApplyResponse { pattern: Pattern; inverse: Command | null; refusals: Refusal[]; changed: boolean; }
@@ -103,6 +103,9 @@ export const api = {
     config: () => call<ModelConfig>("GET", "/api/agent/model"),
     save: (b: Partial<Pick<ModelConfig, "model" | "maxTurns" | "maxKnits">> & { apiKey?: string; clearKey?: boolean }) => call<ModelConfig>("PUT", "/api/agent/model", b),
     test: () => call<{ ok: true }>("POST", "/api/agent/model/test", {}),
+    /** The path of the MCP address for Claude Code and other MCP clients, key included. POST makes a new one. */
+    mcp: () => call<{ path: string }>("GET", "/api/agent/mcp"),
+    newMcpAddress: () => call<{ path: string }>("POST", "/api/agent/mcp", {}),
     start: (b: { projectId: string; patternId?: string; prompt: string; mode?: "edit" | "suggest" }) => call<AgentJob>("POST", "/api/agent", b),
     job: (id: string) => call<AgentJob>("GET", `/api/jobs/${id}`),
     cancel: (id: string) => call<AgentJob>("DELETE", `/api/jobs/${id}`),
@@ -144,6 +147,8 @@ export function subscribeChanges(onChange: (rev: number) => void): () => void {
 
 export const yarnFileUrl = (y: Pick<Yarn, "id" | "hash">) => `/api/yarn/${y.id}/file?v=${y.hash.slice(0, 10)}`;
 export const yarnThumbUrl = (y: Pick<Yarn, "id" | "hash">) => `/api/yarn/${y.id}/thumb?v=${y.hash.slice(0, 10)}`;
+/** A bigger preview, 960 pixels on its longest side, for one picture shown large: a project's card. */
+export const yarnPictureUrl = (y: Pick<Yarn, "id" | "hash">) => `/api/yarn/${y.id}/thumb?size=large&v=${y.hash.slice(0, 10)}`;
 
 export interface UploadHandle { promise: Promise<{ yarn: Yarn; existing: boolean }>; cancel: () => void; }
 

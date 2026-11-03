@@ -23,6 +23,14 @@ const get = (path, headers = {}) => new Promise((resolve, reject) => {
   const req = request({ host: "127.0.0.1", port, path, headers }, (res) => { res.resume(); res.on("end", () => resolve(res.statusCode)); });
   req.on("error", reject); req.end();
 });
+const send = (path, { method = "GET", headers = {}, body } = {}) => new Promise((resolve, reject) => {
+  const req = request({ host: "127.0.0.1", port, path, method, headers: { ...(body ? { "content-type": "application/json" } : {}), ...headers } }, (res) => {
+    let text = "";
+    res.setEncoding("utf8"); res.on("data", (d) => (text += d));
+    res.on("end", () => resolve({ status: res.statusCode, json: () => JSON.parse(text) }));
+  });
+  req.on("error", reject); req.end(body === undefined ? undefined : JSON.stringify(body));
+});
 
 before(async () => {
   if (!built) return;
@@ -46,4 +54,40 @@ test("the right token, as a cookie or a header, is let in", opts, async () => {
 });
 test("a foreign Host header (DNS rebinding) is refused even with the token", opts, async () => {
   assert.equal(await get("/api/projects", { host: "evil.example", "x-knitted-token": TOKEN }), 421);
+});
+
+// ── The MCP address: Claude Code and other MCP clients get in with its key instead ──
+const address = async () => (await send("/api/agent/mcp", { headers: { "x-knitted-token": TOKEN } })).json().path;
+const rpc = (method, params) => ({ jsonrpc: "2.0", id: 1, method, params });
+const mcpPost = (path, body, headers = {}) => send(path, { method: "POST", body, headers });
+
+test("only the window is given the MCP address", opts, async () => {
+  assert.equal((await send("/api/agent/mcp")).status, 401);
+  assert.match(await address(), /^\/api\/mcp\/[\w-]{32}$/);
+});
+test("an MCP client gets in at the address with no launch token, and talks MCP", opts, async () => {
+  const mcp = await address();
+  const init = await mcpPost(mcp, rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } }));
+  assert.equal(init.status, 200);
+  assert.equal(init.json().result.serverInfo.name, "knitted-studio");
+  assert.equal((await mcpPost(mcp, { jsonrpc: "2.0", method: "notifications/initialized" })).status, 202, "a notification gets no reply");
+  assert.ok((await mcpPost(mcp, rpc("tools/list"))).json().result.tools.some((t) => t.name === "list_projects"));
+  const call = (await mcpPost(mcp, rpc("tools/call", { name: "list_projects", arguments: {} }))).json().result;
+  assert.ok(Array.isArray(JSON.parse(call.content[0].text)));
+});
+test("a wrong key, a web page, a foreign Host or a GET does not get in", opts, async () => {
+  const mcp = await address();
+  assert.equal((await mcpPost(mcp.replace(/.$/, (c) => (c === "a" ? "b" : "a")), rpc("tools/list"))).status, 404);
+  assert.equal((await mcpPost("/api/mcp/short", rpc("tools/list"))).status, 404);
+  assert.equal((await mcpPost("/api/mcp", rpc("tools/list"))).status, 401, "no key is no way round the gate");
+  assert.equal((await mcpPost(mcp, rpc("tools/list"), { origin: "https://evil.example" })).status, 403);
+  assert.equal((await mcpPost(mcp, rpc("tools/list"), { host: "evil.example" })).status, 421);
+  assert.equal((await send(mcp)).status, 405);
+});
+test("a new address shuts the old one", opts, async () => {
+  const old = await address();
+  const fresh = (await send("/api/agent/mcp", { method: "POST", headers: { "x-knitted-token": TOKEN }, body: {} })).json().path;
+  assert.notEqual(fresh, old);
+  assert.equal((await mcpPost(old, rpc("tools/list"))).status, 404);
+  assert.equal((await mcpPost(fresh, rpc("tools/list"))).status, 200);
 });

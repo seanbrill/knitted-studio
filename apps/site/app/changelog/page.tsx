@@ -11,7 +11,7 @@ export const metadata = pageMeta({
 export default function Changelog() {
   return (
     <>
-      <PageHero eyebrow="Changelog" title="Row by row." lead="What changed, newest first. There are no tagged releases yet." />
+      <PageHero eyebrow="Changelog" title="Row by row." lead="What changed, newest first." />
       <section className="sec-tight">
         <div className="wrap-narrow doc">
           {changelog.entries.map((e) => (

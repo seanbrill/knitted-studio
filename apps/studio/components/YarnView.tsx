@@ -261,6 +261,11 @@ function YarnDrawer({ id, projectId, onClose, onChanged, onDelete }: { id: strin
               try { await uploadYarn(projectId, f, () => {}, { replaceId: y.id }).promise; await refresh(); onChanged(); toast("Replaced. Every pattern using it now shows the new file."); } catch (err) { toast((err as Error).message); }
             }} />
             <a className="btn btn-secondary" href={yarnFileUrl(y)} download={y.originalName}><Download size={14} aria-hidden /> Download</a>
+            {(y.kind === "image" || y.kind === "video") && y.meta.thumb && (
+              <Button onClick={async () => { try { await api.projects.update(projectId, { coverYarnId: y.id }); toast("It is now the project's picture, on its card in Projects."); } catch (err) { toast((err as Error).message); } }}>
+                <ImageIcon size={14} aria-hidden /> Use as project picture
+              </Button>
+            )}
             <Button variant="danger" onClick={() => (data.usage.length ? setConfirm(true) : onDelete(y))}><Trash2 size={14} aria-hidden /> Delete</Button>
           </div>
           <ConfirmDialog open={confirm} onOpenChange={setConfirm} title={`Delete ${y.name}?`}

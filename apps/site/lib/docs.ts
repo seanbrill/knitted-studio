@@ -69,7 +69,6 @@ function mcpMarkdown(): string {
       for (const p of t.params) out.push(`| \`${p.name}\` | ${p.type} | ${p.required ? "yes" : "no"} | ${p.description} |`);
       out.push("");
     } else out.push("Takes no parameters.\n");
-    out.push(`Returns: ${t.returns}\n`);
     if (t.example) out.push(`Example call:\n\n\`\`\`json\n${t.example.call}\n\`\`\`\n\nExample result:\n\n\`\`\`json\n${t.example.result}\n\`\`\`\n`);
   }
   return out.join("\n");

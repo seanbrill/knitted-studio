@@ -20,6 +20,7 @@
 
 import { getStore } from "@knitted/core/node";
 import { runTool, toolContext, TOOLS } from "./context.mjs";
+import { answer } from "./protocol.mjs";
 
 // The same store the studio uses. Nothing here is a model-only path: a model's
 // edit and a person's edit are one operation on one document, so each sees the
@@ -32,34 +33,10 @@ const call = async (name, args) => runTool(name, args, await toolContext({ store
 /** The tools as plain async functions, one per registry entry, so tests and scripts can call them without MCP. */
 export const tools = Object.fromEntries(TOOLS.map((t) => [t.name, (args) => call(t.name, args)]));
 
-// ── The MCP wire format ─────────────────────────────────────────────────────
+// ── The MCP wire format over stdio: one JSON-RPC message per line ───────────
 //
-// Deliberately hand-rolled rather than pulling in an SDK: the protocol surface used
-// here is three methods (initialize, tools/list, tools/call), and a dependency that
-// must be upgraded in lockstep with a host is a poor trade for that.
-
-async function handle(msg) {
-  if (msg.method === "initialize") {
-    return { protocolVersion: "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "knitted-studio", version: "0.2.0" } };
-  }
-  if (msg.method === "tools/list") {
-    return { tools: TOOLS.map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })) };
-  }
-  if (msg.method === "tools/call") {
-    // A tool that fails is a RESULT with isError set, not a protocol error: that is
-    // how the model learns what went wrong and tries again.
-    try {
-      const result = await call(msg.params?.name, msg.params?.arguments ?? {});
-      if (result && result.__image) {
-        return { content: [{ type: "image", data: result.__image, mimeType: result.mime }, { type: "text", text: result.caption ?? "" }] };
-      }
-      return { content: [{ type: "text", text: typeof result === "string" ? result : JSON.stringify(result, null, 2) }] };
-    } catch (e) {
-      return { isError: true, content: [{ type: "text", text: String(e?.message ?? e) }] };
-    }
-  }
-  throw new Error(`unknown method ${msg.method}`);
-}
+// The messages themselves are answered in protocol.mjs, which the studio's HTTP
+// door uses too.
 
 // Only speak the protocol when actually run as a server, so the tools above
 // can be imported by a test without a stdio loop starting.
@@ -79,22 +56,8 @@ if (process.argv[1] && process.argv[1].endsWith("server.mjs")) {
       } catch {
         continue;
       }
-      try {
-        const result = await handle(msg);
-        if (msg.id !== undefined) {
-          process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result }) + "\n");
-        }
-      } catch (e) {
-        if (msg.id !== undefined) {
-          process.stdout.write(
-            JSON.stringify({
-              jsonrpc: "2.0",
-              id: msg.id,
-              error: { code: -32000, message: String(e?.message ?? e) },
-            }) + "\n"
-          );
-        }
-      }
+      const reply = await answer(msg, call);
+      if (reply) process.stdout.write(JSON.stringify(reply) + "\n");
     }
   });
 }
