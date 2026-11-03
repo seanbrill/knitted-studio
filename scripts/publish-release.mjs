@@ -35,9 +35,11 @@ const sha256 = (p) => new Promise((ok, no) => {
   const h = createHash("sha256");
   createReadStream(p).on("data", (d) => h.update(d)).on("end", () => ok(h.digest("hex"))).on("error", no);
 });
-const sums = [];
-for (const f of installers) sums.push(`${await sha256(join(dir, f))}  ${f}`);
-await writeFile(join(dir, "SHA256SUMS.txt"), sums.join("\n") + "\n");
+// Each file's SHA-256 is also kept with it in FileFreak, where the Download page reads it.
+const hashes = new Map();
+for (const f of installers) hashes.set(f, await sha256(join(dir, f)));
+await writeFile(join(dir, "SHA256SUMS.txt"), [...hashes].map(([f, h]) => `${h}  ${f}`).join("\n") + "\n");
+hashes.set("SHA256SUMS.txt", await sha256(join(dir, "SHA256SUMS.txt")));
 
 const ff = new FileFreak({ apiKey: key });
 try {
@@ -51,7 +53,9 @@ try {
     const total = (await stat(path)).size;
     let shown = 0;
     const item = await ff.upload(await fromPath(path), {
-      parentId, onConflict: "replace",
+      // Stored as it is, so its public link downloads it. A file FileFreak keeps compressed
+      // has no direct address: its public link opens a FileFreak page that rebuilds it.
+      parentId, onConflict: "replace", sha256: hashes.get(f), compress: false,
       onProgress: (sent) => { const pct = Math.floor((sent / total) * 4) * 25; if (pct > shown && pct < 100) { shown = pct; console.log(`  ${f} ${pct}%`); } },
     });
     if (!item.publicUrl) hidden++;
