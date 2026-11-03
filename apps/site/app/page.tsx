@@ -1,6 +1,7 @@
 import Link from "next/link";
 import home from "../content/home.json";
 import gallery from "../content/gallery.json";
+import releases from "../content/releases.json";
 import { Nav } from "../components/Nav";
 import { ChevronField, ChevronRow } from "../components/Chevrons";
 import { Demo } from "../components/Demo";
@@ -29,6 +30,9 @@ const icon = (d: string) => (
     <path d={d} />
   </svg>
 );
+
+// content/releases.json is filled from the release folder when the site is built.
+const released = releases.releases.length > 0;
 
 export default function Home() {
   const h = home;
@@ -224,10 +228,10 @@ knitted     `}<span className="ok">filled</span>{`  headline
         <div className="wrap">
           <p className="eyebrow">{h.final.eyebrow}</p>
           <h2 id="final-title" className="display-xl">{h.final.title}</h2>
-          <p className="body-lg prose" style={{ marginBottom: "var(--space-8)" }}>{h.final.text}</p>
+          <p className="body-lg prose" style={{ marginBottom: "var(--space-8)" }}>{released ? h.final.released : h.final.text}</p>
           <div className="cta-row">
             <a href={GITHUB} className="btn btn-dark btn-lg">Star on GitHub</a>
-            <Link href="/download/" className="link-on-field">Windows, macOS and Linux: not released yet</Link>
+            <Link href="/download/" className="link-on-field">{released ? "Download for Windows, macOS and Linux" : "Windows, macOS and Linux: not released yet"}</Link>
           </div>
         </div>
       </section>

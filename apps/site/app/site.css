@@ -78,6 +78,15 @@ body { font-size: 15px; }
 .page-hero-body h1 { margin: var(--space-4) 0 var(--space-5); }
 .page-hero-body .lead { margin: 0; }
 
+/* ── Download: the button that picks this visitor's installer, and the full list ── */
+.get { margin-top: var(--space-8); }
+.get > .body-lg { margin: 0; max-width: 58ch; }
+.get-file { margin: var(--space-3) 0 0; }
+.get-more { margin: var(--space-2) 0 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-5); font-size: 14px; }
+#all-downloads { scroll-margin-top: var(--space-6); }
+.downloads code { overflow-wrap: anywhere; }   /* a SHA-256 is 64 characters with nowhere to break */
+.downloads .size { white-space: nowrap; }
+
 /* ── Home hero ──────────────────────────────────────────────────────────── */
 .hero { min-height: min(100dvh, 920px); display: flex; flex-direction: column; }
 .hero::before {

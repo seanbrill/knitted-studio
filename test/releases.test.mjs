@@ -26,6 +26,11 @@ test("each download says which chip it is for, so nobody has to know what arm64 
   });
 });
 
+test("each file gives its system and chip as data too, for the button that picks one", () => {
+  const { releases } = buildReleases([dir("a", "v1.0.0"), file("1", "a", "knitted-1.0.0-mac-universal.dmg"), file("2", "a", "knitted-1.0.0-linux-x86_64.AppImage")]);
+  assert.deepEqual(releases[0].files.map(({ system, arch }) => ({ system, arch })), [{ system: "Linux", arch: "x64" }, { system: "macOS", arch: null }]);
+});
+
 test("checksums, blockmaps, stray folders and loose files never become buttons", () => {
   const { releases } = buildReleases([dir("a", "v1.0.0"), dir("x", "drafts"), file("1", "a", "SHA256SUMS.txt"), file("2", "a", "x.blockmap"), file("3", "x", "knitted.dmg"), file("4", null, "knitted.dmg")]);
   assert.deepEqual(releases, []);

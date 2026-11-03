@@ -49,6 +49,7 @@
   "final": {
     "eyebrow": "Ready when you are",
     "title": "Knit your first post tonight.",
-    "text": "The desktop app for Windows, macOS and Linux is not released yet. Star the project and you will see it the moment it is."
+    "text": "The desktop app for Windows, macOS and Linux is not released yet. Star the project and you will see it the moment it is.",
+    "released": "The desktop app for Windows, macOS and Linux is out as an early preview. Download it, or star the project to see what comes next."
   }
 }

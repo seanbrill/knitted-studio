@@ -10,16 +10,12 @@ const PLATFORMS = [
 const VERSION = /^v?(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?$/;
 const systemOf = (name) => (name.toLowerCase().endsWith(".zip") && /linux/i.test(name) ? "Linux" : name.toLowerCase().endsWith(".zip") && /win/i.test(name) ? "Windows" : PLATFORMS.find(([re]) => re.test(name))?.[1] ?? null);
 // The chip, from the arch in the name (knitted-0.1.0-mac-arm64.dmg is for Apple silicon).
-// Windows on x64 gets no word: that is nearly every Windows PC, and Windows on Arm runs it.
-const CHIPS = [
-  [/[-_.](arm64|aarch64)[-_.]/i, { macOS: "Apple silicon", Windows: "Arm", Linux: "ARM64" }],
-  [/[-_.](x64|x86_64|amd64)[-_.]/i, { macOS: "Intel", Windows: null, Linux: "x64" }],
-];
-const platformOf = (name) => {
-  const system = systemOf(name);
-  const chip = system && CHIPS.find(([re]) => re.test(name))?.[1][system];
-  return chip ? `${system} (${chip})` : system;
-};
+// None in the name (a universal Mac build) means every chip.
+const ARCHS = [[/[-_.](arm64|aarch64)[-_.]/i, "arm64"], [/[-_.](x64|x86_64|amd64)[-_.]/i, "x64"]];
+const archOf = (name) => ARCHS.find(([re]) => re.test(name))?.[1] ?? null;
+// What each system calls each chip. Windows on x64 gets no word: that is nearly every
+// Windows PC, and Windows on Arm runs it.
+const CHIPS = { arm64: { macOS: "Apple silicon", Windows: "Arm", Linux: "ARM64" }, x64: { macOS: "Intel", Windows: null, Linux: "x64" } };
 
 export const size = (n) => (n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(1)} GB` : `${Math.max(1, Math.round(n / 1024 ** 2))} MB`);
 const cmp = (a, b) => { const p = (v) => v.replace(/^v/, "").split("-")[0].split(".").map(Number); const [x, y] = [p(a), p(b)]; for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return y[i] - x[i]; return 0; };
@@ -38,12 +34,15 @@ export function buildReleases(items) {
   const byVersion = new Map();
   for (const f of items) {
     if (f.kind !== "file" || !folders.has(f.parentId)) continue;
-    const platform = platformOf(f.name);
-    if (!platform) continue;                                   // checksums, blockmaps and the like
+    const system = systemOf(f.name);
+    if (!system) continue;                                     // checksums, blockmaps and the like
     if (!f.publicUrl) { skipped.push(f.name); continue; }       // a download button that cannot work is worse than none
     const version = folders.get(f.parentId).name.replace(/^v/, "");
+    const arch = archOf(f.name);
+    const chip = arch && CHIPS[arch][system];
+    // system and arch are for the button that picks the visitor's file (lib/downloads.ts).
     (byVersion.get(version) ?? byVersion.set(version, []).get(version)).push({
-      platform, name: f.name, url: f.publicUrl, size: size(f.sizeBytes), sha256: f.clientSha256 ?? "not recorded",
+      platform: chip ? `${system} (${chip})` : system, system, arch, name: f.name, url: f.publicUrl, size: size(f.sizeBytes), sha256: f.clientSha256 ?? "not recorded",
     });
   }
   const releases = [...byVersion].sort(([a], [b]) => cmp(a, b)).map(([version, files]) => ({ version, files: files.sort((a, b) => a.platform.localeCompare(b.platform) || a.name.localeCompare(b.name)) }));
