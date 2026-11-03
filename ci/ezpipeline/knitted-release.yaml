@@ -36,6 +36,17 @@ steps:
       command -v filefreak >/dev/null || { echo "MISSING program: filefreak. Install the FileFreak CLI plugin in EZPIPELINE: Settings, Plugins."; exit 1; }
       filefreak --version
 
+      # Can the site key deploy? Asked now, not after ten minutes of building. FileFreak lets
+      # only an app's own key deploy (made for the app, NOT limited to a folder, and allowed
+      # sites:deploy). A folder key, like the one that uploads releases, is refused.
+      if [ -n "${FILEFREAK_SITE_KEY:-}" ]; then site_key="$FILEFREAK_SITE_KEY"; which=FILEFREAK_SITE_KEY; else site_key="$FILEFREAK_KEY"; which=FILEFREAK_KEY; fi
+      if ! sites=$(FILEFREAK_KEY="$site_key" filefreak sites list 2>&1); then
+        echo "The site cannot be deployed with $which: $sites"
+        echo "Set FILEFREAK_SITE_KEY to a key made for the app that owns the site, not limited to a folder, allowed sites:deploy."
+        exit 1
+      fi
+      echo "$sites" | grep -qw -- "$KNITTED_SITE_NAME" || { echo "That key's app has no site called $KNITTED_SITE_NAME. It has: $sites"; exit 1; }
+
   - name: Fetch the code
     shell: /bin/bash
     run: |
@@ -97,4 +108,4 @@ steps:
     cwd: ./knitted
     run: |
       set -euo pipefail
-      filefreak sites deploy dist/site --site "$KNITTED_SITE_NAME"
+      FILEFREAK_KEY="${FILEFREAK_SITE_KEY:-$FILEFREAK_KEY}" filefreak sites deploy dist/site --site "$KNITTED_SITE_NAME"
