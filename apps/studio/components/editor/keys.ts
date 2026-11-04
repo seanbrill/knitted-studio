@@ -43,6 +43,8 @@ export function useEditorKeys({ onShortcuts, onFit }: { onShortcuts: () => void;
       if (key === "escape") { st.select([]); return; }
       if (key === "delete" || key === "backspace") { e.preventDefault(); st.dispatch({ type: "batch", commands: sel.map((s) => ({ type: "removeStitch" as const, id: s.id })) }, { label: "Delete" }); return; }
       if (key.startsWith("arrow")) {
+        // A slider (the timeline's scrub bar, the Inspector's) moves itself with the arrows, not the selection.
+        if (el?.closest("[role=slider]")) return;
         e.preventDefault();
         const step = e.shiftKey ? 10 : 1;
         const dx = key === "arrowleft" ? -step : key === "arrowright" ? step : 0;

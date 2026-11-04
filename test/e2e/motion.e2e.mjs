@@ -44,6 +44,7 @@ test("Animate adds a clip at the playhead and the pattern becomes a video", asyn
 });
 
 test("scrubbing drives the engine's clock: invisible at the start, visible at the end", async () => {
+  const x = (await pattern()).stitches.find((s) => s.slot === "headline").x;
   const bar = page.getByRole("slider", { name: "Scrub the timeline" });
   await bar.focus();
   await page.keyboard.press("Home").catch(() => {});
@@ -53,6 +54,9 @@ test("scrubbing drives the engine's clock: invisible at the start, visible at th
   await shows(0).catch(() => assert.fail("before the clip starts the stitch waits, hidden"));
   for (let i = 0; i < 2; i++) await bar.press("Shift+ArrowRight");
   await shows(1).catch(() => assert.fail("after the clip the stitch is fully shown"));
+  // The headline is still selected: the arrows moved the playhead, and only the playhead.
+  await page.waitForTimeout(1000);
+  assert.equal((await pattern()).stitches.find((s) => s.slot === "headline").x, x, "scrubbing with the arrow keys moved the selected stitch");
 });
 
 test("play runs the clock forward and stops at the end", async () => {
