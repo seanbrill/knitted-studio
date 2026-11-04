@@ -21,4 +21,4 @@ A Pattern is a page with a timeline. To make a video, knitted sets the time to a
 
 ## Needs
 
-Playwright and ffmpeg. The desktop app will include both.
+The desktop app has what it needs: it carries ffmpeg, and downloads the browser it draws frames with by itself the first time it starts. Running from a clone, install Playwright's Chromium and ffmpeg yourself ([Quick start](/docs/quick-start/) shows how).

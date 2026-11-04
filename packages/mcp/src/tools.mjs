@@ -57,7 +57,7 @@ function guidance(store, projectId) {
 
 // The renderer gate, said for a model: it can still check a pattern without the browser.
 const CHECK_STILL_WORKS = " check_pattern still works without it: it finds missing files, low contrast, text that will not fit and busy animation without drawing anything.";
-const browserGate = (message) => /download its browser|could not find its browser|needs a browser to draw|part that starts its browser/.test(message ?? "");
+const browserGate = (message) => /download its browser|downloaded its browser|could not find its browser|needs a browser to draw|part that starts its browser|browser would not start/.test(message ?? "");
 
 /** A Yarn file for an image slot, by id, by name, or `tag:product` for the first with that tag. */
 function yarnFor(store, projectId, ref) {

@@ -2,11 +2,11 @@
 //
 // An interface rather than "Playwright", so the engine depends only on the two things
 // the frame loop needs, `evaluate` and `screenshot`. Today it is Playwright's headless
-// Chromium everywhere. The desktop app does not ship that browser (about 100 MB): it
-// downloads it once, when the person says yes in the Knit dialog or Settings, About
-// (installBrowser), into PLAYWRIGHT_BROWSERS_PATH, which the shell points at their own
-// data folder. The studio's own window draws everything else, so only knitting and model
-// previews need it.
+// Chromium everywhere. The desktop app does not ship that browser (about 100 MB, and a
+// different one for every system): it downloads it by itself, once, the first time it
+// starts (ensureBrowser, from instrumentation.ts), into PLAYWRIGHT_BROWSERS_PATH, which
+// the shell points at the person's own data folder. The studio's own window draws
+// everything else, so only knitting and model previews need it.
 
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -22,23 +22,40 @@ const DETERMINISTIC_ARGS = [
   "--disable-font-subpixel-positioning", "--disable-skia-runtime-opts", "--hide-scrollbars", "--allow-file-access-from-files",
 ];
 
-/** @returns {Promise<{ backend: string, newPage(o: {width:number,height:number,scale?:number}): Promise<any>, close(): Promise<void> }>} */
-export async function openRenderer({ backend = "playwright" } = {}) {
-  if (backend !== "playwright") throw new RendererUnavailable(`Unknown renderer "${backend}".`);
+/** The browser, started; or a RendererUnavailable saying why not, `missing` when it is only not downloaded yet. */
+async function launch() {
   let chromium;
   try {
     ({ chromium } = await import(/* webpackIgnore: true */ "playwright"));
   } catch {
     throw new RendererUnavailable(process.env.KNITTED_DESKTOP ? "This copy of knitted is missing the part that starts its browser. Reinstall it from the Download page." : "Knitting needs a browser to draw with. Run `npm i playwright && npx playwright install chromium`, or use the desktop app, which downloads one for you.");
   }
+  try {
+    return await chromium.launch({ args: DETERMINISTIC_ARGS });
+  } catch (e) {
+    if (/Executable doesn't exist/i.test(String(e?.message))) {
+      throw Object.assign(new RendererUnavailable(process.env.KNITTED_DESKTOP ? "knitted needs to download its browser before it can knit." : "knitted could not find its browser. Run `npx playwright install chromium`, then try again."), { missing: true });
+    }
+    if (/browserType\.launch/i.test(String(e?.message))) throw new RendererUnavailable(`knitted's browser would not start: ${clause(String(e.message).replace(/^browserType\.launch:\s*/, "").split("\n")[0])}.`);
+    throw e;
+  }
+}
+const clause = (s) => String(s).trim().replace(/\.$/, "");
+
+/**
+ * Open the renderer. In the desktop app a browser that is not there yet is downloaded
+ * first (ensureBrowser), so a knit or a preview waits for it rather than failing.
+ * @returns {Promise<{ backend: string, newPage(o: {width:number,height:number,scale?:number}): Promise<any>, close(): Promise<void> }>}
+ */
+export async function openRenderer({ backend = "playwright" } = {}) {
+  if (backend !== "playwright") throw new RendererUnavailable(`Unknown renderer "${backend}".`);
   let browser;
   try {
-    browser = await chromium.launch({ args: DETERMINISTIC_ARGS });
+    browser = await launch();
   } catch (e) {
-    if (/Executable doesn't exist|browserType\.launch/i.test(String(e?.message))) {
-      throw new RendererUnavailable(process.env.KNITTED_DESKTOP ? "knitted needs to download its browser before it can knit. Open Settings, then About, and press Download it." : "knitted could not find its browser. Run `npx playwright install chromium`, then try again.");
-    }
-    throw e;
+    if (!(e?.missing && process.env.KNITTED_DESKTOP)) throw e;
+    await ensureBrowser();
+    browser = await launch();
   }
   return {
     backend: "playwright",
@@ -53,15 +70,63 @@ export async function openRenderer({ backend = "playwright" } = {}) {
   };
 }
 
-/** Why the browser knitting draws with does not start, or null when it does. */
+/** Why the browser knitting draws with does not start, or null when it does. Never downloads it. */
 export async function browserProblem() {
+  return (await launchProblem())?.message ?? null;
+}
+async function launchProblem() {
   try {
-    const r = await openRenderer();
-    await r.close();
+    await (await launch()).close();
     return null;
   } catch (e) {
-    return String(e?.message ?? e);
+    return e instanceof RendererUnavailable ? e : new RendererUnavailable(String(e?.message ?? e));
   }
+}
+
+// One download at a time for the whole server. Each of the studio's routes is bundled on
+// its own, with its own copy of this module, so where it stands is kept on globalThis.
+const shared = () => (globalThis.__knittedBrowser ??= { ready: false, install: null, pending: null, looking: null });
+
+/** Whether the browser starts, and how its download is going: what Settings and the Knit dialog show. */
+export async function browserStatus() {
+  const s = shared();
+  if (!s.ready && !s.pending) s.ready = !(await launchProblem());
+  // ensureBrowser is still finding out whether it has to download: a second, not a download.
+  else if (s.looking) await s.looking;
+  return { ready: s.ready, install: s.install && { state: s.install.state, progress: s.install.progress, ...(s.install.error ? { error: s.install.error } : {}) } };
+}
+
+/**
+ * Make sure the browser is there, downloading it when it is missing. The desktop app does
+ * this by itself when it starts, and again whenever something needs to draw, so an
+ * attempt that failed offline is tried again later. Every caller joins the one download
+ * running. Rejects with what went wrong, in words for the person and their model alike.
+ */
+export function ensureBrowser() {
+  const s = shared();
+  if (s.ready) return Promise.resolve();
+  return (s.pending ??= (async () => {
+    try {
+      const problem = await (s.looking = launchProblem());
+      s.looking = null;
+      if (!problem) { s.ready = true; return; }
+      // Only a browser that is not there is helped by downloading it.
+      if (!problem.missing) throw problem;
+      const install = (s.install = { state: "running", progress: null });
+      const fail = (message) => { install.state = "failed"; install.progress = null; install.error = message; return new RendererUnavailable(message); };
+      try {
+        await installBrowser({ onProgress: (p) => { install.progress = p; } });
+      } catch (e) {
+        throw fail(`knitted could not download its browser: ${clause(e?.message ?? e)}. Check the internet connection and try again.`);
+      }
+      // Installed is not the same as working: say why if it will not start.
+      const after = await launchProblem();
+      if (after) throw fail(`knitted downloaded its browser, but it would not start: ${clause(after.message)}.`);
+      s.ready = true; install.state = "done"; install.progress = 1;
+    } finally {
+      s.pending = null;
+    }
+  })());
 }
 
 /**

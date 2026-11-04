@@ -6,9 +6,9 @@ status: shipped
 ---
 # Troubleshooting
 
-## "Knitting needs Playwright"
+## Knitting waits for the browser
 
-Knitting uses a browser engine. In the desktop app, press **Download it** in the Knit dialog or in Settings, About. Running from a clone, install it:
+Knitting draws each frame in a browser of its own, so every copy comes out the same, and your model uses it to see a Pattern. The desktop app downloads it by itself the first time it starts: about 100 MB, once, kept in your data folder. The Knit dialog shows how far along it is, and you can knit when it is done. Everything else in the studio works meanwhile. Running from a clone, install it yourself:
 
 ```bash
 npm install playwright
@@ -17,7 +17,7 @@ npx playwright install chromium
 
 ## The browser download stops
 
-The message under **Download it** says why. Most often it is the connection: the browser comes from `cdn.playwright.dev`, so a firewall or proxy that blocks it stops the download. Press **Download it** again once that is fixed.
+The Knit dialog, and Settings, About, say why. Most often it is the connection: the browser comes from `cdn.playwright.dev`, so a firewall or proxy that blocks it stops the download. Press **Try again** once that is fixed. knitted also tries again the next time it starts.
 
 ## A knit finishes with no video
 

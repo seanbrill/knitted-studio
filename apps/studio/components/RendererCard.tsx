@@ -7,9 +7,10 @@ import { Button, useToast } from "@knitted/ui";
 type State = { ready: boolean; install: { state: "running" | "done" | "failed"; progress: number | null; error?: string } | null };
 
 /**
- * Knitting draws with a browser that is not bundled. This is where someone says yes to
- * downloading it: in Settings, About, and in the Knit dialog (missingOnly), which shows it
- * only when the browser is not there and is told through onReady when it is.
+ * Knitting draws with a browser that is not bundled. The desktop app downloads it by
+ * itself when it first starts; this card says how that is going, in Settings, About and in
+ * the Knit dialog (missingOnly), which shows it only while the browser is not there and is
+ * told through onReady when it is. After an attempt that failed, it offers Try again.
  */
 export function RendererCard({ missingOnly = false, onReady }: { missingOnly?: boolean; onReady?: (ready: boolean) => void }) {
   const toast = useToast();
@@ -30,6 +31,7 @@ export function RendererCard({ missingOnly = false, onReady }: { missingOnly?: b
   useEffect(() => { if (s?.install?.state === "done") toast("The browser for knitting is ready."); }, [s?.install?.state]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!s || (missingOnly && s.ready && !missing)) return null;
   const running = s.install?.state === "running";
+  const failed = s.install?.state === "failed";
   const progress = s.install?.progress ?? null;
   const start = async () => {
     setStartError(null);
@@ -45,8 +47,10 @@ export function RendererCard({ missingOnly = false, onReady }: { missingOnly?: b
       </p>
       {s.ready ? <p className="body-sm" style={{ margin: 0 }}>Installed. Knitting is ready.</p> : (
         <>
-          <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>It is about 100 MB, downloaded once and kept in your data folder.</p>
-          <div><Button variant="primary" onClick={start} disabled={running}>{running ? "Downloading..." : "Download it"}</Button></div>
+          <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>
+            {running ? "knitted is downloading it now: about 100 MB, once, kept in your data folder. You can knit when it is done." : "It is about 100 MB, downloaded once and kept in your data folder."}
+          </p>
+          {!running && <div><Button variant="primary" onClick={start}>{failed || startError ? "Try again" : "Download it"}</Button></div>}
           {running && (
             <div style={{ display: "grid", gap: 4 }}>
               <div role="progressbar" aria-label="Downloading the browser for knitting" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress === null ? undefined : Math.round(progress * 100)}

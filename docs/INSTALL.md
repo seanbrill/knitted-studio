@@ -20,7 +20,7 @@ knitted can update itself. The first time it opens, it asks whether to check for
 
 ## Making videos and exporting pictures
 
-Everything you see in the studio draws in its own window. Knitting, which makes the files you post, draws each frame in a separate browser so every copy comes out the same, and your model uses it to preview a Pattern. The first time you knit, the Knit dialog offers to download that browser (about 100 MB), and Settings, About has the same button. It happens once, only when you say yes, and is saved in your own data folder.
+Everything you see in the studio draws in its own window. Knitting, which makes the files you post, draws each frame in a separate browser so every copy comes out the same, and your model uses it to preview a Pattern. The first time knitted starts, it downloads that browser by itself (about 100 MB, once, saved in your own data folder), and the Knit dialog shows how far along it is. If the download cannot finish, the Knit dialog and Settings, About say why and offer **Try again**.
 
 ## Where your work lives
 

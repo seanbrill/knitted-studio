@@ -22,6 +22,8 @@ export default function Privacy() {
           <p>If you connect Claude Code or another app at the address in Settings, Model, that app can read and change your library, the same way the in-app model can, and what it sends to its own model is under its own terms.</p>
           <h2>Updates</h2>
           <p>The app asks once whether to check for updates by itself. If you say yes, it reads the list of releases once a day, the way a browser opens a page, and sends nothing about your work. It reads the list in the release folder on FileFreak, where the installers are kept, or this website&rsquo;s copy if it cannot (versions before 0.1.2 always ask this website). When you install an update, it downloads that file from the release folder. You can turn the check off in the knitted menu (the Help menu on Windows and Linux), and Check for Updates there works either way.</p>
+          <h2>The browser for knitting</h2>
+          <p>Knitting draws each frame in a browser of its own, which is not in the installer because it is large (about 100 MB). When the app starts without it, it downloads it once from Playwright&rsquo;s servers, <code>cdn.playwright.dev</code>, or Microsoft&rsquo;s <code>playwright.download.prss.microsoft.com</code> if that one does not answer. It is an ordinary download that sends nothing about your work, and the browser is kept in your data folder.</p>
           <h2>Questions</h2>
           <p>Open an issue on <a className="link" href={GITHUB}>GitHub</a>. A contact email will be added here before launch.</p>
         </div>
