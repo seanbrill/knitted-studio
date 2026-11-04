@@ -2,6 +2,23 @@
   "note": "Written by hand, newest first. Add an entry with each release (docs/RELEASING.md).",
   "entries": [
     {
+      "version": "0.1.2",
+      "date": "2026-11-03",
+      "title": "Knitting in the desktop app, and brands from a website",
+      "items": [
+        "The desktop app downloads the browser it knits with. Before, Download it did nothing, so the app could not knit.",
+        "The download shows how far it has got, and says why if it stops. The Knit dialog offers it the first time you knit.",
+        "Adding Yarn from a link works in the desktop app, and the file keeps a readable name.",
+        "Starting a Swatch from a website finds a brand's real colours far more often: it reads the site in its own dark or light mode and takes the primary colour from its logo. You see where each colour came from and can change it before you create the Swatch, which is not used until you say so.",
+        "Your model can propose a Swatch from a website, rename its own drafts and put Yarn into image slots. check_pattern warns about a style that nothing draws.",
+        "In Yarn, a search made just after picking a kind shows what it found, not the whole library.",
+        "Arrow keys on a slider move the slider. Before, they also moved the selected stitch, when scrubbing the timeline or adjusting a style.",
+        "Settings, About shows the version you have.",
+        "The Download page puts the newest version first, with every older one below it.",
+        "Text on the primary button stays readable when you hover over it."
+      ]
+    },
+    {
       "version": "0.1.1",
       "date": "2026-11-03",
       "title": "Claude Code, pictures and updates",
