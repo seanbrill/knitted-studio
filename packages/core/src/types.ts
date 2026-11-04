@@ -10,6 +10,8 @@
 //   Stitch   a single element in a pattern (text box, image slot, shape)
 //   Knit     the verb for producing an output
 
+import type { FolderSection } from "./folders-pure.ts";
+
 export type ColorRole = "primary" | "secondary" | "accent" | "neutral" | "background" | "text";
 export const COLOR_ROLES: ColorRole[] = ["primary", "secondary", "accent", "neutral", "background", "text"];
 
@@ -33,6 +35,8 @@ export interface Swatch {
   /** How this brand writes. Fed verbatim to a model when it drafts copy. */
   voice: { summary: string; do: string[]; dont: string[]; examples: string[] };
   rules: { cornerRadius: number; heatGrade?: { hue: "ember" | "red"; strength: number } };
+  /** The folder it is filed in, in the Swatch tab: "Seasonal/Summer". "" is the top. */
+  folder: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -57,6 +61,8 @@ export interface Yarn {
   height?: number;
   durationMs?: number;
   tags: string[];
+  /** The folder it is filed in: "Royalty free music/Lo-fi". "" is the top of Yarn. Filing it never touches the file. */
+  folder: string;
   /** Derived facts: dominant colours, waveform peaks, fps, font family, a thumbnail file. */
   meta: YarnMeta;
   deletedAt: string | null;
@@ -152,6 +158,8 @@ export interface Pattern {
   motion?: Motion;
   /** Increments on every applied change. Stale writes are detected with it. */
   version: number;
+  /** The folder it is filed in, in the project's Patterns. "" is the top. Not part of its history. */
+  folder: string;
   updatedAt: string;
 }
 
@@ -198,7 +206,7 @@ export interface Knit {
 
 export type PartKind = "stitches" | "code";
 /** Where a model's call works: what the studio points at and highlights while it does. */
-export interface AgentWhere { projectId?: string; patternId?: string; stitchIds?: string[]; yarnId?: string; partId?: string; swatchId?: string; jobId?: string; }
+export interface AgentWhere { projectId?: string; patternId?: string; stitchIds?: string[]; yarnId?: string; partId?: string; swatchId?: string; jobId?: string; section?: FolderSection; }
 /** One call a model made, as the studio shows it: who, what, where, and how it ended. */
 export interface AgentCall {
   id: string;
@@ -249,6 +257,8 @@ export interface Part {
   aspect: number;
   durationMs: number;
   version: number;
+  /** The folder it is filed in, in Parts. A library part is in the same folder in every project. The starter parts are at the top. */
+  folder: string;
   createdAt: string;
   updatedAt: string;
 }

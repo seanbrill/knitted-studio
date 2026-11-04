@@ -5,6 +5,7 @@ import { BUILTIN_PARTS, BUILTIN_VERSION } from "./builtin-parts.ts";
 import { NotFoundError, ValidationError, type Store } from "./store.ts";
 import type { Actor, Part, PartCategory, PartKind, PartSlot, Stitch } from "./types.ts";
 import { hasLintErrors, lintCodePart } from "./parts-pure.ts";
+import { cleanFolder, fileInto } from "./folders.ts";
 
 type Row = Record<string, unknown>;
 const CATEGORIES: PartCategory[] = ["text", "media", "motion", "frame", "cta", "other"];
@@ -15,7 +16,7 @@ function toPart(r: Row): Part {
     id: r.id as string, projectId: (r.project_id as string) ?? null, builtin: !!r.builtin, name: r.name as string, description: r.description as string,
     category: r.category as PartCategory, tags: JSON.parse(r.tags as string), kind: r.kind as PartKind, stitches: data.stitches ?? [], html: data.html, css: data.css,
     slots: JSON.parse(r.slots as string) as PartSlot[], aspect: Number(r.aspect), durationMs: Number(r.duration_ms), version: Number(r.version),
-    createdAt: r.created_at as string, updatedAt: r.updated_at as string,
+    folder: (r.folder as string) ?? "", createdAt: r.created_at as string, updatedAt: r.updated_at as string,
   };
 }
 
@@ -45,12 +46,13 @@ export function ensureBuiltinParts(store: Store): void {
   store.setSetting("seeded.parts", BUILTIN_VERSION);
 }
 
+/** `folder`, when it is made: the folder in Parts it goes in. Moving it later is moveToFolder's. */
 export interface PartInput {
   name: string; description?: string; category?: PartCategory; tags?: string[]; kind?: PartKind;
-  stitches?: Stitch[]; html?: string; css?: string; slots?: PartSlot[]; aspect?: number; durationMs?: number;
+  stitches?: Stitch[]; html?: string; css?: string; slots?: PartSlot[]; aspect?: number; durationMs?: number; folder?: string;
 }
 
-function clean(i: PartInput): Required<Omit<PartInput, "html" | "css">> & { html?: string; css?: string } {
+function clean(i: PartInput): Required<Omit<PartInput, "html" | "css" | "folder">> & { html?: string; css?: string } {
   const name = String(i.name ?? "").trim().replace(/\s+/g, " ");
   if (!name) throw new ValidationError("Give the part a name.");
   if (name.length > 80) throw new ValidationError("That part name is too long. Keep it under 80 characters.");
@@ -73,10 +75,11 @@ function clean(i: PartInput): Required<Omit<PartInput, "html" | "css">> & { html
 export function createPart(store: Store, projectId: string | null, input: PartInput, actor: Actor = "human"): Part {
   if (projectId) store.getProject(projectId);
   const c = clean(input);
+  cleanFolder(input.folder);
   const id = newId("pa"), t = new Date().toISOString();
   store.write(() => {
-    store.db.prepare("insert into parts (id, project_id, builtin, name, description, category, tags, kind, data, slots, aspect, duration_ms, version, created_at, updated_at) values (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)")
-      .run(id, projectId, c.name, c.description, c.category, JSON.stringify(c.tags), c.kind, JSON.stringify({ stitches: c.stitches, html: c.html, css: c.css }), JSON.stringify(c.slots), c.aspect, c.durationMs, t, t);
+    store.db.prepare("insert into parts (id, project_id, builtin, name, description, category, tags, kind, data, slots, aspect, duration_ms, version, folder, created_at, updated_at) values (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)")
+      .run(id, projectId, c.name, c.description, c.category, JSON.stringify(c.tags), c.kind, JSON.stringify({ stitches: c.stitches, html: c.html, css: c.css }), JSON.stringify(c.slots), c.aspect, c.durationMs, fileInto(store, projectId, "parts", input.folder), t, t);
     if (projectId) store.logRow(projectId, actor, "part.created", c.name, null);
   });
   return getPart(store, id);
@@ -106,17 +109,21 @@ export function deletePart(store: Store, id: string): { usedIn: number } {
   return { usedIn };
 }
 
-export function duplicatePart(store: Store, id: string, toProjectId: string | null | undefined = undefined): Part {
+/** The copy goes next to the original, in its folder, or into `folder` when one is given. */
+export function duplicatePart(store: Store, id: string, toProjectId: string | null | undefined = undefined, folder?: string): Part {
   const p = getPart(store, id);
-  return createPart(store, toProjectId === undefined ? p.projectId : toProjectId, { ...p, name: p.builtin ? p.name : `${p.name} copy` });
+  return createPart(store, toProjectId === undefined ? p.projectId : toProjectId, { ...p, name: p.builtin ? p.name : `${p.name} copy`, folder: folder ?? p.folder });
 }
 
-/** Move a project's Part into the library (every project can use it), or back. */
+/** Move a project's Part into the library (every project can use it), or back. It stays in its folder. */
 export function setPartScope(store: Store, id: string, projectId: string | null): Part {
   const p = getPart(store, id);
   if (p.builtin) throw new ValidationError("The starter parts already live in the library.");
   if (projectId) store.getProject(projectId);
-  store.write(() => store.db.prepare("update parts set project_id = ?, updated_at = ? where id = ?").run(projectId, new Date().toISOString(), id));
+  store.write(() => {
+    store.db.prepare("update parts set project_id = ?, updated_at = ? where id = ?").run(projectId, new Date().toISOString(), id);
+    if (projectId) fileInto(store, projectId, "parts", p.folder);
+  });
   return getPart(store, id);
 }
 
@@ -125,9 +132,10 @@ export function exportPart(store: Store, id: string) {
   const p = getPart(store, id);
   return { format: "knitted-part", version: 1, part: { name: p.name, description: p.description, category: p.category, tags: p.tags, kind: p.kind, stitches: p.stitches, html: p.html, css: p.css, slots: p.slots, aspect: p.aspect, durationMs: p.durationMs } };
 }
-export function importPart(store: Store, projectId: string | null, file: unknown): Part {
+/** A part from a file, into `folder` in Parts. Where it was filed where it came from is not in the file. */
+export function importPart(store: Store, projectId: string | null, file: unknown, folder?: string): Part {
   const f = file as { format?: string; version?: number; part?: PartInput };
   if (f?.format !== "knitted-part" || !f.part) throw new ValidationError("That is not a knitted part file.");
   if ((f.version ?? 1) > 1) throw new ValidationError("That part was made by a newer knitted. Update the app to import it.");
-  return createPart(store, projectId, f.part);
+  return createPart(store, projectId, { ...f.part, folder });
 }

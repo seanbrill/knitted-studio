@@ -9,10 +9,11 @@ import {
 import { useLive } from "@/lib/hooks";
 import { SwatchPreview } from "./SwatchPreview";
 import { ContrastPanel } from "./ContrastPanel";
+import { FolderCrumbs, FolderDialogs, FolderList, NewFolderButton, byFolder, useFolders } from "./Folders";
 
-const { Plus, Trash2, Copy, Download, Upload, Link2, Wand2, AlertTriangle, Check } = icons;
+const { Plus, Trash2, Copy, Download, Upload, Link2, Wand2, AlertTriangle, Check, FolderInput } = icons;
 
-type Draft = Omit<Swatch, "id" | "projectId" | "createdAt" | "updatedAt">;
+type Draft = Omit<Swatch, "id" | "projectId" | "folder" | "createdAt" | "updatedAt">;
 const toDraft = (s: Swatch): Draft => ({ name: s.name, colors: s.colors, fonts: s.fonts, logos: s.logos, voice: s.voice, rules: s.rules });
 const lines = (v: string) => v.split("\n").map((x) => x.trim()).filter(Boolean);
 
@@ -27,6 +28,7 @@ export function SwatchView({ projectId }: { projectId: string }) {
   const { data: project, refresh: refreshProject } = useLive(() => api.projects.get(projectId), [projectId]);
   const { data: yarn } = useLive(() => api.yarn.list(projectId), [projectId]);
   const { data: fonts } = useLive(() => api.fonts(), []);
+  const kit = useFolders(projectId, "swatches", swatches, { onChanged: refresh });
   const [pickedId, setPickedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -82,7 +84,7 @@ export function SwatchView({ projectId }: { projectId: string }) {
   const unusedRole = COLOR_ROLES.find((r) => !draft.colors.some((c) => c.role === r)) ?? "accent";
   const fontOptions = [
     ...(fonts ?? []).map((f) => ({ value: f.family, label: f.family })),
-    ...fontYarn.map((y) => ({ value: `yarn:${y.id}`, label: `${y.meta.family ?? y.name} (yours)` })),
+    ...byFolder(fontYarn, (y) => ({ value: `yarn:${y.id}`, label: `${y.meta.family ?? y.name} (yours)` })),
   ];
   const fontValue = (ref?: { family: string; yarnId?: string }) => (ref?.yarnId ? `yarn:${ref.yarnId}` : ref?.family ?? "");
   const pickFont = (slot: "display" | "body" | "mono", v: string) => {
@@ -101,13 +103,15 @@ export function SwatchView({ projectId }: { projectId: string }) {
     <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 340px", gap: "var(--space-8)", alignItems: "start" }}>
       <link rel="stylesheet" href={`/api/projects/${projectId}/fonts.css`} />
       <div style={{ display: "grid", gap: "var(--space-6)" }}>
+        {(kit.here || (kit.folders ?? []).length > 0) && <div><FolderCrumbs kit={kit} /><FolderList kit={kit} /></div>}
         <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center", flexWrap: "wrap" }}>
-          {swatches.map((s) => (
-            <button key={s.id} className="chip chip-button" aria-pressed={s.id === current.id} onClick={() => { dirty.current = false; setPickedId(s.id); }}>
+          {swatches.filter((s) => s.folder === kit.here).map((s) => (
+            <button key={s.id} className="chip chip-button" aria-pressed={s.id === current.id} draggable onDragStart={kit.dragThings([s.id])} onClick={() => { dirty.current = false; setPickedId(s.id); }}>
               {s.name}{s.id === project?.swatchId && <Chip tone="ember">Active</Chip>}
             </button>
           ))}
           <Button size="sm" onClick={() => setDialog("new")}><Plus size={13} aria-hidden /> New swatch</Button>
+          <NewFolderButton kit={kit} size="sm" />
           <div style={{ flex: 1 }} />
           <span className="body-sm" role="status" aria-live="polite" style={{ color: saving === "error" ? "var(--danger)" : "var(--ink-muted)" }}>
             {saving === "saving" ? "Saving..." : saving === "saved" ? "Saved" : saving === "error" ? "Not saved" : ""}
@@ -117,11 +121,12 @@ export function SwatchView({ projectId }: { projectId: string }) {
         <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
           {!isActive && <Button variant="primary" onClick={async () => { await api.swatches.activate(current.id); await refresh(); await refreshProject(); toast(`${current.name} is now this project's swatch`); }}>Use for this project</Button>}
           <Button onClick={async () => { const d = await api.swatches.duplicate(current.id); await refresh(); setPickedId(d.id); }}><Copy size={14} aria-hidden /> Duplicate</Button>
+          <Button onClick={() => kit.askMove([current], current.name)}><FolderInput size={14} aria-hidden /> Move to folder</Button>
           <Button onClick={exportFile}><Download size={14} aria-hidden /> Export</Button>
           <Button onClick={() => importRef.current?.click()}><Upload size={14} aria-hidden /> Import file</Button>
           <input ref={importRef} type="file" accept=".json,application/json" hidden aria-label="Choose a swatch file" onChange={async (e) => {
             const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
-            try { const s = await api.swatches.import(projectId, JSON.parse(await f.text())); await refresh(); setPickedId(s.id); toast(`Imported ${s.name}`); } catch (err) { toast((err as Error).message); }
+            try { const s = await api.swatches.import(projectId, JSON.parse(await f.text()), kit.here); await refresh(); setPickedId(s.id); toast(`Imported ${s.name}`); } catch (err) { toast((err as Error).message); }
           }} />
           <Button onClick={() => setDialog("site")}><Link2 size={14} aria-hidden /> From a website</Button>
           <Button variant="danger" disabled={swatches.length < 2} onClick={() => setDialog("delete")}><Trash2 size={14} aria-hidden /> Delete</Button>
@@ -165,7 +170,7 @@ export function SwatchView({ projectId }: { projectId: string }) {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <h3 className="h3">Logos</h3>
             <Select aria-label="Add a logo" value="" onValueChange={(id) => edit({ logos: [...draft.logos, { yarnId: id, use: draft.logos.length ? "mark" : "full" }] })}
-              options={images.filter((y) => !draft.logos.some((l) => l.yarnId === y.id)).map((y) => ({ value: y.id, label: y.name }))} placeholder="Add a logo from Yarn" />
+              options={byFolder(images.filter((y) => !draft.logos.some((l) => l.yarnId === y.id)), (y) => ({ value: y.id, label: y.name }))} placeholder="Add a logo from Yarn" />
           </div>
           {draft.logos.length === 0 && <p className="body-sm" style={{ color: "var(--ink-muted)", margin: 0 }}>{images.length ? "Pick an image from your Yarn." : "Upload a logo in the Yarn tab first."}</p>}
           {draft.logos.map((l, i) => {
@@ -204,11 +209,12 @@ export function SwatchView({ projectId }: { projectId: string }) {
         <ContrastPanel swatch={preview} onFix={(role, hex) => edit({ colors: draft.colors.map((c) => (c.role === role ? { ...c, hex } : c)) })} />
       </aside>
 
-      <NewSwatchDialog open={dialog === "new"} onOpenChange={(o) => !o && setDialog(null)} onCreate={async (template, name) => { const s = await api.swatches.create(projectId, { template, data: name ? { name } : undefined }); await refresh(); dirty.current = false; setPickedId(s.id); }} />
+      <NewSwatchDialog open={dialog === "new"} onOpenChange={(o) => !o && setDialog(null)} onCreate={async (template, name) => { const s = await api.swatches.create(projectId, { template, data: name ? { name } : undefined, folder: kit.here }); await refresh(); dirty.current = false; setPickedId(s.id); }} />
       <YarnColorsDialog open={dialog === "yarn"} onOpenChange={(o) => !o && setDialog(null)} images={images} onAccept={(hex, role) => { const has = draft.colors.some((c) => c.role === role); edit({ colors: has ? draft.colors.map((c) => (c.role === role ? { ...c, hex } : c)) : [...draft.colors, { role, name: role, hex }] }); }} />
-      <SiteDialog open={dialog === "site"} onOpenChange={(o) => !o && setDialog(null)} projectId={projectId} onCreated={async (s, notes) => { await refresh(); dirty.current = false; setPickedId(s.id); toast(notes.find((n) => /logo/i.test(n)) ?? `Created ${s.name}. Press Use for this project when it looks right.`); }} />
+      <SiteDialog open={dialog === "site"} onOpenChange={(o) => !o && setDialog(null)} projectId={projectId} folder={kit.here} onCreated={async (s, notes) => { await refresh(); dirty.current = false; setPickedId(s.id); toast(notes.find((n) => /logo/i.test(n)) ?? `Created ${s.name}. Press Use for this project when it looks right.`); }} />
       <ConfirmDialog open={dialog === "delete"} onOpenChange={(o) => !o && setDialog(null)} title={`Delete ${current.name}?`} description={isActive ? "It is this project's active swatch. Another one will take its place." : "Patterns using its colours will use this project's active swatch instead."} confirmLabel="Delete swatch"
         onConfirm={async () => { await api.swatches.remove(current.id); dirty.current = false; setPickedId(null); await refresh(); await refreshProject(); }} />
+      <FolderDialogs kit={kit} />
     </div>
   );
 }
@@ -252,7 +258,7 @@ const SLOT_LABEL = { display: "Headlines", body: "Body text", mono: "Labels and 
 const sourceText = (from: string) => (from === "made from the others" ? "Made from the others" : from.startsWith("--") ? `Its ${from} variable` : from.startsWith("the ") ? `From ${from}` : `From its ${from}`);
 const shortUrl = (u: string) => { try { const x = new URL(u); const s = x.hostname + x.pathname; return s.length > 48 ? `${s.slice(0, 47)}...` : s; } catch { return u; } };
 
-function SiteDialog({ open, onOpenChange, projectId, onCreated }: { open: boolean; onOpenChange: (o: boolean) => void; projectId: string; onCreated: (s: Swatch, notes: string[]) => Promise<void> }) {
+function SiteDialog({ open, onOpenChange, projectId, folder, onCreated }: { open: boolean; onOpenChange: (o: boolean) => void; projectId: string; folder: string; onCreated: (s: Swatch, notes: string[]) => Promise<void> }) {
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState<null | "reading" | "creating">(null);
   const [err, setErr] = useState<string | undefined>();
@@ -271,7 +277,7 @@ function SiteDialog({ open, onOpenChange, projectId, onCreated }: { open: boolea
     if (!found) return;
     setBusy("creating"); setErr(undefined);
     try {
-      const r = await api.swatches.fromSite(projectId, { name: name.trim() || found.name, colors, fonts: found.fontRoles, logo: keepLogo ? found.logo : undefined });
+      const r = await api.swatches.fromSite(projectId, { name: name.trim() || found.name, colors, fonts: found.fontRoles, logo: keepLogo ? found.logo : undefined, folder });
       await onCreated(r.swatch, r.notes);
       onOpenChange(false); setFound(null); setUrl("");
     } catch (e) { setErr((e as Error).message); } finally { setBusy(null); }

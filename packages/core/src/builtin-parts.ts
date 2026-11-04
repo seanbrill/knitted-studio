@@ -4,7 +4,7 @@
 
 import type { Part, PartCategory, PartSlot, Stitch } from "./types.ts";
 
-type Draft = Omit<Part, "id" | "projectId" | "builtin" | "version" | "createdAt" | "updatedAt" | "durationMs" | "tags" | "kind"> & { durationMs?: number; tags?: string[] };
+type Draft = Omit<Part, "id" | "projectId" | "builtin" | "version" | "folder" | "createdAt" | "updatedAt" | "durationMs" | "tags" | "kind"> & { durationMs?: number; tags?: string[] };
 const t = (slot: string | undefined, content: string, x: number, y: number, w: number, h: number, style: Record<string, string | number>): Stitch =>
   ({ id: `c_${slot ?? Math.random().toString(36).slice(2, 7)}`, kind: "text", slot, x, y, w, h, locked: false, content, style });
 const shape = (id: string, x: number, y: number, w: number, h: number, style: Record<string, string | number>): Stitch => ({ id, kind: "shape", x, y, w, h, locked: false, style });

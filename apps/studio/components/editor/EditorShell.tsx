@@ -13,7 +13,7 @@ import { HistoryDrawer } from "./HistoryDrawer";
 import { KnitDialog } from "./KnitDialog";
 import { Inspector } from "./Inspector";
 import { SHORTCUTS, useEditorKeys } from "./keys";
-import { PatternsPanel, ShapesPanel, SwatchPanel, TextPanel, YarnPanel } from "./Panels";
+import { PatternsPanel, ShapesPanel, SwatchPanel, TextPanel, YarnPanel, type PanelPattern } from "./Panels";
 import { PartsPanel, SavePartDialog } from "./PartsUI";
 import { VoicePanel } from "./VoicePanel";
 import { AskPanel } from "./AskPanel";
@@ -27,7 +27,7 @@ const TOOLS: { id: Tool; label: string; Icon: React.ComponentType<{ size?: numbe
   { id: "shapes", label: "Shapes", Icon: Shapes }, { id: "parts", label: "Parts", Icon: Package }, { id: "voice", label: "Voice", Icon: Mic }, { id: "swatch", label: "Swatch", Icon: Palette }, { id: "ask", label: "Ask", Icon: Sparkles },
 ];
 
-export function EditorShell({ projectId, pattern, swatch, yarn, parts, patterns, onKnit }: { projectId: string; pattern: Pattern; swatch: Swatch; yarn: Yarn[]; parts: Part[]; patterns: { id: string; name: string; size: string }[]; onKnit?: () => void }) {
+export function EditorShell({ projectId, pattern, swatch, yarn, parts, patterns, onKnit }: { projectId: string; pattern: Pattern; swatch: Swatch; yarn: Yarn[]; parts: Part[]; patterns: PanelPattern[]; onKnit?: () => void }) {
   const toast = useToast();
   const st = useEditor();
   const [tool, setTool] = useState<Tool | null>("patterns");
@@ -103,7 +103,7 @@ export function EditorShell({ projectId, pattern, swatch, yarn, parts, patterns,
             {tool === "yarn" && <YarnPanel projectId={projectId} onYarnChanged={refreshYarn} />}
             {tool === "text" && <TextPanel />}
             {tool === "shapes" && <ShapesPanel />}
-            {tool === "parts" && <PartsPanel projectId={projectId} />}
+            {tool === "parts" && <PartsPanel projectId={projectId} onPartsChanged={refreshParts} />}
             {tool === "voice" && <VoicePanel projectId={projectId} />}
             {tool === "ask" && <AskPanel projectId={projectId} />}
             {tool === "swatch" && <SwatchPanel projectId={projectId} />}

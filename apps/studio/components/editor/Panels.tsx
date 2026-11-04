@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import { api, uploadYarn, yarnThumbUrl } from "@knitted/core/client";
-import { colorFor, COLOR_ROLES, type Stitch, type Yarn } from "@knitted/core";
+import { colorFor, COLOR_ROLES, foldersIn, nameOf, type Stitch, type Yarn } from "@knitted/core";
 import { Button, EmptyState, icons, useToast } from "@knitted/ui";
 import { useEditor } from "@/lib/editor/store";
+import { useLive } from "@/lib/hooks";
+import { FolderCrumbs, FolderDialogs, FolderList, useFolders, type FolderKit } from "../Folders";
 import { Layers } from "./Layers";
 
 const { Plus, Upload } = icons;
@@ -22,13 +24,35 @@ export function addStitch(s: Omit<Stitch, "id">, label: string) {
 
 const PanelHead = ({ title }: { title: string }) => <h2 className="eyebrow" style={{ margin: "0 0 var(--space-3)" }}>{title}</h2>;
 
-export function PatternsPanel({ projectId, current, list }: { projectId: string; current: string; list: { id: string; name: string; size: string }[] }) {
+/** A panel's folders: where it is, the folders in it, and a line when the folder is empty. */
+export function PanelFolders({ kit, empty }: { kit: FolderKit; empty: boolean }) {
+  return (
+    <>
+      <FolderCrumbs kit={kit} />
+      <FolderList kit={kit} compact />
+      {empty && kit.here && !kit.gone && kit.folders && foldersIn(kit.folders, kit.here).length === 0 && <p className="body-sm" style={{ color: "var(--ink-muted)", margin: "0 0 12px" }}>Nothing in {nameOf(kit.here)} yet.</p>}
+      <FolderDialogs kit={kit} />
+    </>
+  );
+}
+
+export type PanelPattern = { id: string; name: string; size: string; folder: string };
+const brief = (p: { id: string; name: string; size: { name: string; w: number; h: number }; folder: string }): PanelPattern => ({ id: p.id, name: p.name, size: `${p.size.name} ${p.size.w}x${p.size.h}`, folder: p.folder });
+
+export function PatternsPanel({ projectId, current, list }: { projectId: string; current: string; list: PanelPattern[] }) {
+  // Kept fresh, so a pattern filed somewhere else, or a folder renamed here, shows where it is now.
+  const { data } = useLive(() => api.patterns.list(projectId).then((ps) => ps.map(brief)), [projectId]);
+  const items = data ?? list;
+  // It opens in the folder of the pattern being edited.
+  const kit = useFolders(projectId, "patterns", items, { inAddress: false, start: list.find((p) => p.id === current)?.folder ?? "" });
+  const here = items.filter((p) => p.folder === kit.here);
   return (
     <div>
       <PanelHead title="Patterns" />
+      <PanelFolders kit={kit} empty={here.length === 0} />
       <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 4 }}>
-        {list.map((p) => (
-          <li key={p.id}><Link href={`/projects/${projectId}/patterns/${p.id}`} aria-current={p.id === current ? "page" : undefined} className="card card-link" style={{ padding: "8px 10px", display: "block", borderColor: p.id === current ? "var(--ember)" : undefined }}>
+        {here.map((p) => (
+          <li key={p.id}><Link href={`/projects/${projectId}/patterns/${p.id}`} aria-current={p.id === current ? "page" : undefined} className="card card-link" draggable onDragStart={kit.dragThings([p.id])} style={{ padding: "8px 10px", display: "block", borderColor: p.id === current ? "var(--ember)" : undefined }}>
             <span className="label">{p.name}</span><br /><span className="eyebrow">{p.size}</span>
           </Link></li>
         ))}
@@ -43,9 +67,13 @@ export function YarnPanel({ projectId, onYarnChanged }: { projectId: string; onY
   const st = useEditor();
   const toast = useToast();
   const input = useRef<HTMLInputElement>(null);
-  const items = Object.values(st.yarn).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  const visual = items.filter((y) => y.kind === "image" || y.kind === "video");
-  const copy = items.filter((y) => y.kind === "copy");
+  const items = useMemo(() => Object.values(st.yarn).sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [st.yarn]);
+  const kit = useFolders(projectId, "yarn", items, { inAddress: false, onChanged: onYarnChanged });
+  const here = items.filter((y) => y.folder === kit.here);
+  const visual = here.filter((y) => y.kind === "image" || y.kind === "video");
+  const copy = here.filter((y) => y.kind === "copy");
+  // Onto the canvas it places the file; onto a folder here it files it.
+  const drag = (y: Yarn) => (e: React.DragEvent) => { kit.dragThings([y.id])(e); e.dataTransfer.setData("application/x-knitted-yarn", y.id); e.dataTransfer.effectAllowed = "copyMove"; };
 
   const use = (y: Yarn) => {
     const sel = st.pattern.stitches.find((s) => s.id === st.selection[0]);
@@ -58,7 +86,7 @@ export function YarnPanel({ projectId, onYarnChanged }: { projectId: string; onY
 
   const upload = async (files: File[]) => {
     for (const f of files) {
-      try { await uploadYarn(projectId, f, () => {}).promise; } catch (e) { toast((e as Error).message); }
+      try { await uploadYarn(projectId, f, () => {}, { folder: kit.here }).promise; } catch (e) { toast((e as Error).message); }
     }
     onYarnChanged();
   };
@@ -68,12 +96,13 @@ export function YarnPanel({ projectId, onYarnChanged }: { projectId: string; onY
       <PanelHead title="Yarn" />
       <Button block onClick={() => input.current?.click()}><Upload size={14} aria-hidden /> Upload</Button>
       <input ref={input} type="file" multiple hidden aria-label="Upload Yarn" onChange={(e) => { void upload([...(e.target.files ?? [])]); e.target.value = ""; }} />
-      <p className="body-sm" style={{ color: "var(--ink-muted)", margin: "8px 0 12px" }}>Click to add or swap. Drag onto the canvas to place it exactly.</p>
-      {visual.length === 0 && copy.length === 0 ? <EmptyState title="No yarn yet" body="Upload a photo or logo to use it here." /> : (
+      <p className="body-sm" style={{ color: "var(--ink-muted)", margin: "8px 0 12px" }}>Click to add or swap. Drag onto the canvas to place it exactly{kit.folders?.length ? ", or onto a folder to file it" : ""}.</p>
+      <PanelFolders kit={kit} empty={visual.length === 0 && copy.length === 0} />
+      {items.length === 0 && !kit.folders?.length ? <EmptyState title="No yarn yet" body="Upload a photo or logo to use it here." /> : visual.length > 0 && (
         <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
           {visual.map((y) => (
             <li key={y.id}>
-              <button draggable aria-label={`Use ${y.name}`} onDragStart={(e) => { e.dataTransfer.setData("application/x-knitted-yarn", y.id); e.dataTransfer.effectAllowed = "copy"; }} onClick={() => use(y)}
+              <button draggable aria-label={`Use ${y.name}`} onDragStart={drag(y)} onClick={() => use(y)}
                 style={{ width: "100%", padding: 0, border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden", background: "var(--surface-sunken)", cursor: "grab", aspectRatio: "1" }}>
                 {y.meta.thumb ? <img src={yarnThumbUrl(y)} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : <span className="eyebrow">{y.kind}</span>}
               </button>
@@ -84,7 +113,7 @@ export function YarnPanel({ projectId, onYarnChanged }: { projectId: string; onY
       {copy.length > 0 && <>
         <h3 className="eyebrow" style={{ margin: "var(--space-4) 0 var(--space-2)" }}>Copy</h3>
         <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 6 }}>
-          {copy.map((y) => <li key={y.id}><button className="card card-link" onClick={() => use(y)} style={{ width: "100%", textAlign: "left", padding: 8, cursor: "pointer", font: "inherit", color: "inherit" }}><span className="label">{y.name}</span><br /><span className="body-sm" style={{ color: "var(--ink-muted)" }}>{(y.meta.text ?? "").slice(0, 60)}</span></button></li>)}
+          {copy.map((y) => <li key={y.id}><button className="card card-link" draggable onDragStart={drag(y)} onClick={() => use(y)} style={{ width: "100%", textAlign: "left", padding: 8, cursor: "pointer", font: "inherit", color: "inherit" }}><span className="label">{y.name}</span><br /><span className="body-sm" style={{ color: "var(--ink-muted)" }}>{(y.meta.text ?? "").slice(0, 60)}</span></button></li>)}
         </ul>
       </>}
     </div>

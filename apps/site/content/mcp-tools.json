@@ -54,7 +54,7 @@
   },
   {
     "name": "list_yarn",
-    "summary": "List the files (Yarn) in a project: images, video, audio, fonts and saved copy. Filter by kind, tag or a search word. Use a Yarn name or id when filling an image slot.",
+    "summary": "List the files (Yarn) in a project: images, video, audio, fonts and saved copy. Filter by kind, tag, a search word or a folder. Use a Yarn name or id when filling an image slot.",
     "params": [
       {
         "name": "projectId",
@@ -79,6 +79,12 @@
         "type": "string",
         "required": false,
         "description": "Search the names"
+      },
+      {
+        "name": "folder",
+        "type": "string",
+        "required": false,
+        "description": "Only Yarn in this folder and the folders inside it, like Royalty free music"
       }
     ]
   },
@@ -115,6 +121,12 @@
         "type": "string[]",
         "required": false,
         "description": "Tags to give it, like [\"product\"], so a slot can take `tag:product`"
+      },
+      {
+        "name": "folder",
+        "type": "string",
+        "required": false,
+        "description": "The folder it goes in, as a path from the top of its section, like Royalty free music/Lo-fi. Made when it is not there. Left out, the top."
       }
     ]
   },
@@ -138,7 +150,7 @@
   },
   {
     "name": "rename",
-    "summary": "Rename a pattern or a piece of Yarn: give its patternId or its yarnId, and the new name. Use it to label a draft of your own, like \"Draft: spring post\"; only a person deletes, in the studio.",
+    "summary": "Rename a pattern, a piece of Yarn or a folder: give its patternId, its yarnId, or a folder's path with the projectId and section it is in, and the new name. A folder's new name may be a whole path, to move it and everything in it: Music/Lo-fi puts it inside Music, /Lo-fi at the top; into a folder that is there already, the two become one. Use it to label a draft of your own, like \"Draft: spring post\"; only a person deletes, in the studio.",
     "params": [
       {
         "name": "patternId",
@@ -151,6 +163,24 @@
         "type": "string",
         "required": false,
         "description": "A yarn id, from list_yarn"
+      },
+      {
+        "name": "folder",
+        "type": "string",
+        "required": false,
+        "description": "A folder's path, from list_folders, like Royalty free music/Lofi"
+      },
+      {
+        "name": "section",
+        "type": "string",
+        "required": false,
+        "description": "Which section the folder is in: each of patterns, yarn, parts, swatches and knits has folders of its own. One of patterns, yarn, parts, swatches, knits."
+      },
+      {
+        "name": "projectId",
+        "type": "string",
+        "required": false,
+        "description": "The project the folder is in"
       },
       {
         "name": "name",
@@ -223,6 +253,12 @@
         "type": "string",
         "required": false,
         "description": "An image already in this project's Yarn to use as its logo, instead of the site's"
+      },
+      {
+        "name": "folder",
+        "type": "string",
+        "required": false,
+        "description": "The folder the swatch goes in, as a path from the top of its section, like Royalty free music/Lo-fi. Made when it is not there. Left out, the top."
       }
     ]
   },
@@ -289,6 +325,12 @@
         "type": "string",
         "required": false,
         "description": "One of Story, Post, Square, Landscape, Banner."
+      },
+      {
+        "name": "folder",
+        "type": "string",
+        "required": false,
+        "description": "The folder the pattern goes in, as a path from the top of its section, like Royalty free music/Lo-fi. Made when it is not there. Left out, the top."
       }
     ]
   },
@@ -577,6 +619,12 @@
         "type": "boolean",
         "required": false,
         "description": ""
+      },
+      {
+        "name": "folder",
+        "type": "string",
+        "required": false,
+        "description": "The folder the part goes in, as a path from the top of its section, like Royalty free music/Lo-fi. Made when it is not there. Left out, the top."
       }
     ]
   },
@@ -749,6 +797,78 @@
         "type": "string",
         "required": true,
         "description": "The project id, like pj_01..."
+      },
+      {
+        "name": "folder",
+        "type": "string",
+        "required": false,
+        "description": "Only knits in this folder and the folders inside it"
+      }
+    ]
+  },
+  {
+    "name": "list_folders",
+    "summary": "How a project's things are sorted: each section (patterns, yarn, parts, swatches, knits) has folders of its own, which can hold folders. Each folder is a path like Royalty free music/Lo-fi, with how many things are in it, not counting the folders inside. Give a section for just that one.",
+    "params": [
+      {
+        "name": "projectId",
+        "type": "string",
+        "required": true,
+        "description": "The project id, like pj_01..."
+      },
+      {
+        "name": "section",
+        "type": "string",
+        "required": false,
+        "description": "Which section the folder is in: each of patterns, yarn, parts, swatches and knits has folders of its own. One of patterns, yarn, parts, swatches, knits."
+      }
+    ]
+  },
+  {
+    "name": "move_to_folder",
+    "summary": "File things into a folder, to sort a project the way its person thinks of it: one folder per campaign, a folder for royalty free music with one inside for each kind. Give the folder as a path, like Royalty free music/Lo-fi, or \"\" for the top; it is made when it is not there, in each section the things are from. Give the ids of what to move, of one kind or several. Moving changes nothing else about them. To move or rename a folder itself, use rename.",
+    "params": [
+      {
+        "name": "projectId",
+        "type": "string",
+        "required": true,
+        "description": "The project id, like pj_01..."
+      },
+      {
+        "name": "folder",
+        "type": "string",
+        "required": false,
+        "description": "The folder's path, like Royalty free music/Lo-fi, or \"\" for the top"
+      },
+      {
+        "name": "yarnIds",
+        "type": "string[]",
+        "required": false,
+        "description": "The ids of the Yarn to move"
+      },
+      {
+        "name": "patternIds",
+        "type": "string[]",
+        "required": false,
+        "description": "The ids of the patterns to move"
+      },
+      {
+        "name": "partIds",
+        "type": "string[]",
+        "required": false,
+        "description": "The ids of the parts (not the starter parts) to move"
+      },
+      {
+        "name": "swatchIds",
+        "type": "string[]",
+        "required": false,
+        "description": "The ids of the swatches to move"
+      },
+      {
+        "name": "knitIds",
+        "type": "string[]",
+        "required": false,
+        "description": "The ids of the knits to move"
       }
     ]
   }

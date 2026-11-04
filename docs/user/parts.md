@@ -20,6 +20,10 @@ In the editor, select the Stitches the piece is made of and choose **Save as par
 
 The Parts panel in the editor lists the built-in Parts and the project's own. Choose one to add it to the Pattern. Your model fills a slot inside a Part as `part.slot`, like `footer.legal`.
 
+## Sorting them
+
+Your own Parts can be sorted into folders on the Parts page. See [Folders](/docs/folders/).
+
 ## How they relate
 
 A Part is made of Stitches. A Pattern is made of Stitches and Parts. Locked Stitches inside a Part stay locked wherever the Part is used.

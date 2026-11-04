@@ -3,9 +3,11 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { api } from "@knitted/core/client";
-import { instanceOf, partFromStitches, uniqueSlotName, detachInstance, type Part, type PartCategory, type PartSlot, type Stitch } from "@knitted/core";
+import { instanceOf, isInside, partFromStitches, uniqueSlotName, detachInstance, type Part, type PartCategory, type PartSlot, type Stitch } from "@knitted/core";
 import { Button, Chip, Dialog, EmptyState, Field, Input, Select, Switch, icons, useToast } from "@knitted/ui";
 import { useEditor } from "@/lib/editor/store";
+import { byFolder, FolderCrumbs, InFolder, useFolders } from "../Folders";
+import { PanelFolders } from "./Panels";
 import { PartThumb } from "./PartThumb";
 
 const { Search, Package } = icons;
@@ -23,13 +25,18 @@ export function insertPart(part: Part) {
   st.select([inst.id]);
 }
 
-export function PartsPanel({ projectId }: { projectId: string }) {
+export function PartsPanel({ projectId, onPartsChanged }: { projectId: string; onPartsChanged: () => void }) {
   const { parts, swatch } = useEditor();
   const [q, setQ] = useState("");
   const [scope, setScope] = useState<"all" | "mine" | "library">("all");
+  const mine = useMemo(() => Object.values(parts).filter((p) => !p.builtin), [parts]);
+  const kit = useFolders(projectId, "parts", mine, { inAddress: false, onChanged: onPartsChanged });
+  // A search looks in this folder and the folders in it. The starter parts are at the top.
+  const filtering = !!q.trim();
   const list = useMemo(() => Object.values(parts)
+    .filter((p) => (p.builtin ? !kit.here : filtering ? isInside(p.folder, kit.here) : p.folder === kit.here))
     .filter((p) => (scope === "all" || (scope === "mine" ? !!p.projectId : !p.projectId)) && p.name.toLowerCase().includes(q.trim().toLowerCase()))
-    .sort((a, b) => Number(a.builtin) - Number(b.builtin) || a.name.localeCompare(b.name)), [parts, q, scope]);
+    .sort((a, b) => Number(a.builtin) - Number(b.builtin) || a.name.localeCompare(b.name)), [parts, q, scope, filtering, kit.here]);
   return (
     <div>
       <h2 className="eyebrow" style={{ margin: "0 0 var(--space-3)" }}>Parts</h2>
@@ -40,19 +47,24 @@ export function PartsPanel({ projectId }: { projectId: string }) {
       <div style={{ display: "flex", gap: 6, marginBottom: 12 }} role="group" aria-label="Show">
         {(["all", "mine", "library"] as const).map((s) => <button key={s} type="button" className="chip chip-button" aria-pressed={scope === s} onClick={() => setScope(s)}>{s === "all" ? "All" : s === "mine" ? "This project" : "Library"}</button>)}
       </div>
-      {list.length === 0 ? <EmptyState title="No parts match" body="Select some stitches and choose Save as part to make your own." /> : (
+      {filtering ? <FolderCrumbs kit={kit} /> : <PanelFolders kit={kit} empty={list.length === 0} />}
+      {list.length === 0 ? ((filtering || !kit.here) && <EmptyState title="No parts match" body="Select some stitches and choose Save as part to make your own." />) : (
         <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 10 }}>
-          {list.map((p) => (
+          {list.map((p) => {
+            const from = !p.builtin && p.folder !== kit.here ? p.folder : "";
+            return (
             <li key={p.id}>
-              <div className="card card-link" style={{ position: "relative", padding: 8 }}>
+              <div className="card card-link" draggable={!p.builtin} onDragStart={p.builtin ? undefined : kit.dragThings([p.id])} style={{ position: "relative", padding: 8 }}>
                 {/* One empty button carries the name, so what is announced and what is shown cannot disagree. */}
-                <button aria-label={`Add ${p.name}`} onClick={() => insertPart(p)} style={{ position: "absolute", inset: 0, zIndex: 1, background: "transparent", border: 0, cursor: "pointer", borderRadius: "var(--radius-md)" }} />
+                <button aria-label={`Add ${p.name}${from ? `, from ${from.split("/").join(" / ")}` : ""}`} onClick={() => insertPart(p)} style={{ position: "absolute", inset: 0, zIndex: 1, background: "transparent", border: 0, cursor: "pointer", borderRadius: "var(--radius-md)" }} />
                 <PartThumb part={p} swatch={swatch} projectId={projectId} width={208} />
                 <span className="label" aria-hidden style={{ display: "block", marginTop: 6 }}>{p.name}</span>
                 <span className="body-sm" aria-hidden style={{ color: "var(--ink-muted)" }}>{p.builtin ? "Starter" : p.projectId ? "This project" : "Library"}{p.kind === "code" ? " · code" : ""}</span>
+                {from && <span aria-hidden style={{ display: "block", marginTop: 2 }}><InFolder path={from} /></span>}
               </div>
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
       <p className="body-sm" style={{ color: "var(--ink-muted)", marginTop: 12 }}>Linked parts follow the part. Detach one to edit it freely. <Link className="link" href={`/projects/${projectId}/parts`}>Manage parts</Link></p>
@@ -134,7 +146,7 @@ export function PartInstanceInspector({ stitch }: { stitch: Stitch }) {
           {sl.kind === "text" ? (
             <Input id={`pi-${sl.name}`} defaultValue={stitch.overrides?.[sl.name] ?? sl.default ?? ""} key={`${stitch.id}-${sl.name}-${stitch.overrides?.[sl.name]}`} disabled={sl.locked && st.mode === "fill"} onBlur={(e) => e.target.value !== (stitch.overrides?.[sl.name] ?? sl.default ?? "") && set(sl.name, e.target.value)} />
           ) : (
-            <Select aria-label={sl.name} value={stitch.overrides?.[sl.name] ?? ""} onValueChange={(v) => set(sl.name, v)} options={yarn.map((y) => ({ value: y.id, label: y.name }))} placeholder="Choose from Yarn" />
+            <Select aria-label={sl.name} value={stitch.overrides?.[sl.name] ?? ""} onValueChange={(v) => set(sl.name, v)} options={byFolder(yarn, (y) => ({ value: y.id, label: y.name }))} placeholder="Choose from Yarn" />
           )}
         </Field>
       ))}

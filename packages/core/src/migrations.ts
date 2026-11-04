@@ -173,4 +173,23 @@ export const MIGRATIONS: Migration[] = [
       create index parts_project on parts (project_id);
     `,
   },
+  {
+    version: 6,
+    name: "folders",
+    sql: `
+      alter table patterns add column folder text not null default '';
+      alter table yarn add column folder text not null default '';
+      alter table parts add column folder text not null default '';
+      alter table swatches add column folder text not null default '';
+      alter table knits add column folder text not null default '';
+
+      create table folders (
+        project_id text not null references projects(id) on delete cascade,
+        section text not null,
+        path text not null,
+        created_at text not null,
+        primary key (project_id, section, path)
+      );
+    `,
+  },
 ];

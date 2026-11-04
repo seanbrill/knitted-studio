@@ -9,12 +9,13 @@ export const GET = route(async (_: Request, { params }: Ctx) => { const s = stor
 export const PATCH = route(async (req: Request, { params }: Ctx) => ok(updatePart(store(), (await params).pid, (await body(req, z.record(z.string(), z.unknown()))) as never)));
 export const DELETE = route(async (_: Request, { params }: Ctx) => ok(deletePart(store(), (await params).pid)));
 
-const Action = z.object({ action: z.enum(["duplicate", "to-library", "to-project", "export"]), projectId: z.string().optional() });
+// `folder`, for duplicate: where the copy goes. Left out, it goes next to the original.
+const Action = z.object({ action: z.enum(["duplicate", "to-library", "to-project", "export"]), projectId: z.string().optional(), folder: z.string().max(400).optional() });
 export const POST = route(async (req: Request, { params }: Ctx) => {
   const { pid } = await params;
   const b = await body(req, Action);
   const s = store();
-  if (b.action === "duplicate") return ok(duplicatePart(s, pid, b.projectId ?? undefined), 201);
+  if (b.action === "duplicate") return ok(duplicatePart(s, pid, b.projectId ?? undefined, b.folder), 201);
   if (b.action === "to-library") return ok(setPartScope(s, pid, null));
   if (b.action === "to-project") return ok(setPartScope(s, pid, b.projectId ?? null));
   return ok(exportPart(s, pid));

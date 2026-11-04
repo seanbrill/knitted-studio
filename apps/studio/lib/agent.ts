@@ -7,7 +7,7 @@
 import { useEffect, useState } from "react";
 import { create } from "zustand";
 import { api, subscribeAgent } from "@knitted/core/client";
-import type { AgentCall, AgentState } from "@knitted/core";
+import type { AgentCall, AgentState, FolderSection } from "@knitted/core";
 
 /** How long a finished call is still "just now" on the canvas: long enough to see, short enough to be true. */
 export const RECENT_MS = 6000;
@@ -69,12 +69,16 @@ export function isActive(s: AgentState | null, now: number): boolean {
   return !!c && (s!.calls.some((x) => x.state === "running") || now - endedAt(c) < LINGER_MS);
 }
 
+// Each section's page, for a call that sorts its folders.
+const SECTION_PATH: Record<FolderSection, string> = { patterns: "", yarn: "/yarn", parts: "/parts", swatches: "/swatch", knits: "/knits" };
+
 /** The page where a call works: what Follow goes to. */
 export function pathFor(c: AgentCall): string | null {
   const w = c.where;
   if (!w.projectId) return null;
   const pj = `/projects/${w.projectId}`;
   if (c.tool === "knit_pattern") return `${pj}/knits`;
+  if (w.section) return pj + SECTION_PATH[w.section];
   if (w.patternId) return `${pj}/patterns/${w.patternId}`;
   if (w.yarnId || c.tool === "import_yarn") return `${pj}/yarn`;
   if (w.swatchId || c.tool === "propose_swatch") return `${pj}/swatch`;

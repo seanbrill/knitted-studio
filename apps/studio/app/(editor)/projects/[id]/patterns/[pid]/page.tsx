@@ -27,7 +27,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
       swatch={activeSwatch(s, id)}
       yarn={listYarn(s, id)}
       parts={listParts(s, id)}
-      patterns={s.listPatterns(id).map((p) => ({ id: p.id, name: p.name, size: `${p.size.name} ${p.size.w}x${p.size.h}` }))}
+      patterns={s.listPatterns(id).map((p) => ({ id: p.id, name: p.name, size: `${p.size.name} ${p.size.w}x${p.size.h}`, folder: p.folder }))}
     />
   );
 }

@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { useState } from "react";
 import { api, knitFileUrl, type KnitRecord, type JobItem } from "@knitted/core/client";
+import { foldersIn, nameOf } from "@knitted/core";
 import { Button, ConfirmDialog, Dialog, EmptyState, Skeleton, StitchProgress, icons, useToast } from "@knitted/ui";
 import { formatBytes, timeAgo, useLive } from "@/lib/hooks";
+import { FolderCrumbs, FolderDialogs, FolderList, NewFolderButton, useFolders } from "./Folders";
 
-const { Download, Trash2, AlertTriangle, Copy } = icons;
+const { Download, Trash2, AlertTriangle, Copy, FolderInput } = icons;
 
 export function KnitsView({ projectId }: { projectId: string }) {
   const toast = useToast();
@@ -16,17 +18,27 @@ export function KnitsView({ projectId }: { projectId: string }) {
   const [del, setDel] = useState<KnitRecord | null>(null);
   // Anything knitted after this page opened is new, and gets the signature "stitching in" reveal.
   const [openedAt] = useState(() => Date.now());
+  const kit = useFolders(projectId, "knits", knits, { onChanged: refresh });
 
   const active = (jobs ?? []).filter((j) => j.kind === "knit" && (j.status === "running" || j.status === "queued"));
+  const here = (knits ?? []).filter((k) => k.folder === kit.here);
   const batches = new Map<string, KnitRecord[]>();
-  for (const k of knits ?? []) { const key = k.batchId ?? k.id; batches.set(key, [...(batches.get(key) ?? []), k]); }
+  for (const k of here) { const key = k.batchId ?? k.id; batches.set(key, [...(batches.get(key) ?? []), k]); }
+  // A folder downloads as a zip of it and the folders in it, each a folder in the zip.
+  const anything = kit.here ? kit.countIn(kit.here) > 0 : (knits ?? []).length > 0;
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-4)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--space-3)", flexWrap: "wrap", marginBottom: "var(--space-4)" }}>
         <h2 className="h2">Knits</h2>
-        {knits && knits.length > 0 && <a className="btn btn-secondary" href={`/api/projects/${projectId}/knits/zip`}><Download size={14} aria-hidden /> Download all</a>}
+        <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
+          <NewFolderButton kit={kit} />
+          {anything && (kit.here
+            ? <a className="btn btn-secondary" href={`/api/projects/${projectId}/knits/zip?folder=${encodeURIComponent(kit.here)}`}><Download size={14} aria-hidden /> Download folder</a>
+            : <a className="btn btn-secondary" href={`/api/projects/${projectId}/knits/zip`}><Download size={14} aria-hidden /> Download all</a>)}
+        </div>
       </div>
+      <FolderCrumbs kit={kit} />
 
       {active.map((j) => (
         <div key={j.id} className="panel" style={{ padding: "var(--space-4)", marginBottom: "var(--space-4)", display: "flex", gap: 16, alignItems: "center" }} role="status">
@@ -36,19 +48,28 @@ export function KnitsView({ projectId }: { projectId: string }) {
         </div>
       ))}
 
-      {!knits ? <Skeleton height={200} /> : knits.length === 0 ? (
+      <FolderList kit={kit} />
+      {!knits || !kit.folders ? <Skeleton height={200} /> : knits.length === 0 && kit.folders.length === 0 ? (
         <EmptyState title="Nothing knitted yet" body="Open a pattern and press Knit. Everything you make from this project shows up here." />
+      ) : here.length === 0 ? (
+        kit.here && !kit.gone && foldersIn(kit.folders, kit.here).length === 0 && <EmptyState title={`Nothing in ${nameOf(kit.here)} yet`} body="Drag knits onto this folder, or open one and choose Move to folder." />
       ) : (
         <div style={{ display: "grid", gap: "var(--space-8)" }}>
           {[...batches.values()].map((group) => (
             <section key={group[0].batchId ?? group[0].id} aria-label={group.length > 1 ? `Batch of ${group.length}` : group[0].label}>
-              {group.length > 1 && <h3 className="eyebrow" style={{ marginBottom: 8, display: "flex", gap: 12, alignItems: "center" }}>Batch of {group.length} · {timeAgo(group[0].createdAt)} <a className="link" href={`/api/projects/${projectId}/knits/zip?batch=${group[0].batchId}`}>Download batch</a></h3>}
+              {group.length > 1 && (
+                <h3 className="eyebrow" style={{ marginBottom: 8, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                  Batch of {group.length} · {timeAgo(group[0].createdAt)}
+                  <a className="link" href={`/api/projects/${projectId}/knits/zip?batch=${group[0].batchId}`}>Download batch</a>
+                  <button type="button" className="link" onClick={() => kit.askMove(group, `the batch of ${group.length}`)}>Move batch</button>
+                </h3>
+              )}
               <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: "var(--space-4)", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))" }}>
                 {group.map((k) => {
                   const fresh = Date.parse(k.createdAt) > openedAt;
                   const warn = (k.report.issues ?? []).filter((i) => i.level === "warning").length;
                   return (
-                    <li key={k.id} className={fresh ? "stitching-in" : undefined}>
+                    <li key={k.id} className={fresh ? "stitching-in" : undefined} draggable onDragStart={kit.dragThings([k.id])}>
                       <div className="card card-link" style={{ position: "relative", padding: "var(--space-2)" }}>
                         <button aria-label={`Open ${k.label}`} onClick={() => setOpen(k)} style={{ position: "absolute", inset: 0, zIndex: 1, background: "transparent", border: 0, cursor: "pointer", borderRadius: "var(--radius-md)" }} />
                         <div aria-hidden className="thumb" style={{ aspectRatio: `${k.width} / ${k.height}`, maxHeight: 260, background: "var(--surface-sunken)" }}>
@@ -69,6 +90,7 @@ export function KnitsView({ projectId }: { projectId: string }) {
       <Dialog open={!!open} onOpenChange={(o) => !o && setOpen(null)} wide title={open?.label ?? "Knit"}
         actions={open && (<>
           <Button variant="ghost" onClick={() => { setDel(open); setOpen(null); }}><Trash2 size={14} aria-hidden /> Delete</Button>
+          <Button onClick={() => { kit.askMove([open], open.label); setOpen(null); }}><FolderInput size={14} aria-hidden /> Move to folder</Button>
           {open.kind === "image" && <Button onClick={async () => { try { const blob = await (await fetch(knitFileUrl(open))).blob(); await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]); toast("Copied. Paste it anywhere."); } catch { toast("Your browser would not copy that. Use Download instead."); } }}><Copy size={14} aria-hidden /> Copy</Button>}
           <a className="btn btn-primary" href={knitFileUrl(open, true)}><Download size={14} aria-hidden /> Download</a>
         </>)}>
@@ -83,6 +105,7 @@ export function KnitsView({ projectId }: { projectId: string }) {
         )}
       </Dialog>
       <ConfirmDialog open={!!del} onOpenChange={(o) => !o && setDel(null)} title="Delete this knit?" description="The file is removed from disk. You can knit it again from the pattern." confirmLabel="Delete file" onConfirm={async () => { await api.knit.remove(del!.id); await refresh(); toast("Deleted"); }} />
+      <FolderDialogs kit={kit} />
     </div>
   );
 }

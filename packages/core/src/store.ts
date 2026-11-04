@@ -19,6 +19,7 @@ import { newId } from "./ids.ts";
 import { blankPattern, socialStarterPack } from "./starters.ts";
 import { paths as defaultPaths, type KnittedPaths } from "./paths.ts";
 import { SWATCH_TEMPLATES, insertSwatch } from "./swatch.ts";
+import { cleanFolder, fileInto } from "./folders.ts";
 
 export class ValidationError extends Error { readonly kind = "validation"; }
 export class NotFoundError extends Error { readonly kind = "not_found"; }
@@ -158,16 +159,18 @@ export class Store {
     this.write(() => {
       this.db.prepare("insert into projects (id, name, description, swatch_id, created_at, updated_at) values (?, ?, ?, ?, ?, ?)")
         .run(copyId, cleanName(opts.name ?? `${src.name} copy`), src.description, null, t, t);
-      for (const p of this.listPatterns(id)) this.insertPattern(copyId, p.name, p.size, p.stitches, { html: p.html, css: p.css, durationMs: p.durationMs, motion: p.motion });
+      for (const p of this.listPatterns(id)) this.insertPattern(copyId, p.name, p.size, p.stitches, { html: p.html, css: p.css, durationMs: p.durationMs, motion: p.motion, folder: p.folder });
       // The brand comes along with the patterns that reference it.
-      const rows = this.db.prepare("select data from swatches where project_id = ? order by created_at, rowid").all(id) as { data: string }[];
+      const rows = this.db.prepare("select data, folder from swatches where project_id = ? order by created_at, rowid").all(id) as { data: string; folder: string }[];
       const active = src.swatchId ? (this.db.prepare("select data from swatches where id = ?").get(src.swatchId) as { data: string } | undefined) : undefined;
       let first: string | null = null;
-      for (const r of rows.length ? rows : [{ data: JSON.stringify(SWATCH_TEMPLATES.starter.data) }]) {
-        const nid = insertSwatch(this, copyId, { ...(JSON.parse(r.data) as typeof SWATCH_TEMPLATES.starter.data), logos: [] });
+      for (const r of rows.length ? rows : [{ data: JSON.stringify(SWATCH_TEMPLATES.starter.data), folder: "" }]) {
+        const nid = insertSwatch(this, copyId, { ...(JSON.parse(r.data) as typeof SWATCH_TEMPLATES.starter.data), logos: [] }, r.folder);
         if (!first || (active && r.data === active.data)) first = nid;
       }
       this.db.prepare("update projects set swatch_id = ? where id = ?").run(first, copyId);
+      // And so do their folders, empty ones too. Yarn and knits stay with the first project.
+      this.db.prepare("insert into folders (project_id, section, path, created_at) select ?, section, path, created_at from folders where project_id = ? and section in ('patterns', 'swatches')").run(copyId, id);
       this.logRow(copyId, opts.actor ?? "human", "project.duplicated", src.name, { from: id });
     });
     return this.getProject(copyId);
@@ -206,18 +209,18 @@ export class Store {
     return {
       id: r.id as string, projectId: r.project_id as string, name: r.name as string, size: JSON.parse(r.size as string) as Size,
       durationMs: Number(r.duration_ms), stitches: doc.stitches, html: doc.html, css: doc.css, motion: doc.motion,
-      version: Number(r.version), updatedAt: r.updated_at as string,
+      version: Number(r.version), folder: (r.folder as string) ?? "", updatedAt: r.updated_at as string,
     };
   }
   private snapshot(p: Pattern): string {
     return JSON.stringify({ name: p.name, size: p.size, durationMs: p.durationMs, stitches: p.stitches, html: p.html, css: p.css, motion: p.motion });
   }
 
-  private insertPattern(projectId: string, name: string, size: Size, stitches: Stitch[], extra: { html?: string; css?: string; durationMs?: number; motion?: Motion } = {}): string {
+  private insertPattern(projectId: string, name: string, size: Size, stitches: Stitch[], extra: { html?: string; css?: string; durationMs?: number; motion?: Motion; folder?: string } = {}): string {
     const id = newId("pt");
     const t = now();
-    this.db.prepare("insert into patterns (id, project_id, name, size, duration_ms, doc, version, created_at, updated_at) values (?, ?, ?, ?, ?, ?, 1, ?, ?)")
-      .run(id, projectId, name, JSON.stringify(size), extra.durationMs ?? 0, JSON.stringify({ stitches, html: extra.html, css: extra.css, motion: extra.motion }), t, t);
+    this.db.prepare("insert into patterns (id, project_id, name, size, duration_ms, doc, version, folder, created_at, updated_at) values (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)")
+      .run(id, projectId, name, JSON.stringify(size), extra.durationMs ?? 0, JSON.stringify({ stitches, html: extra.html, css: extra.css, motion: extra.motion }), extra.folder ?? "", t, t);
     const p = this.getPattern(id);
     this.db.prepare("insert into pattern_revisions (id, pattern_id, snapshot, author, label, created_at) values (?, ?, ?, 'system', 'Created', ?)")
       .run(newId("rv"), id, this.snapshot(p), t);
@@ -234,11 +237,13 @@ export class Store {
     return this.toPattern(r);
   }
 
-  createPattern(projectId: string, input: { name?: string; size?: Size; stitches?: Stitch[]; actor?: Actor }): Pattern {
+  /** `folder`: the folder in Patterns it goes in, made when it is not there. */
+  createPattern(projectId: string, input: { name?: string; size?: Size; stitches?: Stitch[]; folder?: string; actor?: Actor }): Pattern {
     this.getProject(projectId);
     const name = cleanName(input.name ?? "Untitled pattern");
+    cleanFolder(input.folder);
     const id = this.write(() => {
-      const pid = this.insertPattern(projectId, name, input.size ?? SIZES[0], input.stitches ?? []);
+      const pid = this.insertPattern(projectId, name, input.size ?? SIZES[0], input.stitches ?? [], { folder: fileInto(this, projectId, "patterns", input.folder) });
       this.touchProject(projectId);
       this.logRow(projectId, input.actor ?? "human", "pattern.created", name, { patternId: pid });
       return pid;
@@ -249,7 +254,8 @@ export class Store {
   duplicatePattern(id: string, actor: Actor = "human"): Pattern {
     const p = this.getPattern(id);
     const newPid = this.write(() => {
-      const pid = this.insertPattern(p.projectId, `${p.name} copy`, p.size, p.stitches, { html: p.html, css: p.css, durationMs: p.durationMs });
+      // The copy goes next to the original, in its folder.
+      const pid = this.insertPattern(p.projectId, `${p.name} copy`, p.size, p.stitches, { html: p.html, css: p.css, durationMs: p.durationMs, folder: p.folder });
       this.touchProject(p.projectId);
       this.logRow(p.projectId, actor, "pattern.duplicated", p.name, { patternId: pid });
       return pid;

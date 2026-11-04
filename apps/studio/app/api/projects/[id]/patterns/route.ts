@@ -7,5 +7,5 @@ type Ctx = { params: Promise<{ id: string }> };
 
 export const GET = route(async (_: Request, { params }: Ctx) => ok(store().listPatterns((await params).id)));
 
-const Create = z.object({ name: z.string().optional(), size: SizeSchema.optional() });
+const Create = z.object({ name: z.string().optional(), size: SizeSchema.optional(), folder: z.string().max(400).optional() });
 export const POST = route(async (req: Request, { params }: Ctx) => ok(store().createPattern((await params).id, await body(req, Create)), 201));

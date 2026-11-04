@@ -7,6 +7,7 @@ import { Button, Field, Input, SegmentedControl, Select, Slider, Switch, Textare
 import { liveStitches, useEditor } from "@/lib/editor/store";
 import { NumberField, Section, TokenColor } from "./controls";
 import { PartInstanceInspector } from "./PartsUI";
+import { byFolder } from "../Folders";
 import { addClip } from "./Timeline";
 import { PRESETS } from "@knitted/core";
 
@@ -135,7 +136,7 @@ export function Inspector({ fonts, onSavePart }: { fonts: string[]; onSavePart?:
       {isMedia && (
         <Section title={same((s) => s.kind) === "video" ? "Video" : "Image"}>
           <Field label="Yarn">
-            <Select aria-label="Yarn" value={first.yarnId ?? ""} onValueChange={(v) => patchEach(() => ({ yarnId: v }), "Set image")} options={images.map((y) => ({ value: y.id, label: y.name }))} placeholder="Choose from Yarn" />
+            <Select aria-label="Yarn" value={first.yarnId ?? ""} onValueChange={(v) => patchEach(() => ({ yarnId: v }), "Set image")} options={byFolder(images, (y) => ({ value: y.id, label: y.name }))} placeholder="Choose from Yarn" />
           </Field>
           {first.yarnId && yarn[first.yarnId] && <img src={yarnThumbUrl(yarn[first.yarnId])} alt="" style={{ width: "100%", maxHeight: 120, objectFit: "contain", background: "var(--surface-sunken)", borderRadius: 6 }} />}
           {first.yarnId && !yarn[first.yarnId] && <p className="field-error">That yarn was deleted. Choose another.</p>}

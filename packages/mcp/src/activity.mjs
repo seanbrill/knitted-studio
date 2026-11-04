@@ -12,6 +12,18 @@ const words = (xs) => (xs.length <= 2 ? xs.join(" and ") : `${xs.slice(0, -1).jo
 const host = (url) => safe(() => new URL(url).hostname) ?? "a website";
 const fileOf = (url) => safe(() => decodeURIComponent(new URL(url).pathname.split("/").pop())) || "a file";
 const possessive = (name, fallback) => (name ? `${name}'s` : fallback);
+// The things each section holds, and the ids move_to_folder takes for them.
+const HOLDS = { patterns: ["pattern", "patterns"], yarn: ["file", "files"], parts: ["part", "parts"], swatches: ["swatch", "swatches"], knits: ["knit", "knits"] };
+const SECTION_WORD = { patterns: "pattern", yarn: "Yarn", parts: "part", swatches: "swatch", knits: "knit" };
+const IDS_OF = { yarnIds: "yarn", patternIds: "patterns", partIds: "parts", swatchIds: "swatches", knitIds: "knits" };
+/** The sections move_to_folder was given ids for, with how many. */
+const moving = (a) => Object.entries(IDS_OF).filter(([k]) => Array.isArray(a[k]) && a[k].length).map(([k, sec]) => [sec, a[k].length]);
+const filing = (a) => {
+  const m = moving(a);
+  const n = m.reduce((t, [, k]) => t + k, 0);
+  const what = m.length === 1 ? `${n} ${HOLDS[m[0][0]][n === 1 ? 0 : 1]}` : `${n} things`;
+  return `Filing ${what} ${a.folder ? `into ${quote(a.folder)}` : "at the top"}`;
+};
 
 /** The stitch a slot name or id stands for, and for `part.slot` the part's instance. */
 function stitchIdFor(p, ref) {
@@ -29,7 +41,7 @@ const SAY = {
   list_yarn: (a, c) => `Looking through ${possessive(c.project, "the")} Yarn`,
   import_yarn: (a) => (a.text ? `Saving copy, ${quote(a.name ?? "Copy")}` : `Bringing ${a.name ? quote(a.name) : fileOf(a.url)} into Yarn`),
   tag_yarn: (a, c) => `Tagging ${c.yarn ? quote(c.yarn) : "a file"}${Array.isArray(a.tags) && a.tags.length ? ` ${a.tags.join(", ")}` : ""}`,
-  rename: (a, c) => `Renaming ${c.pattern ? c.pattern.name : c.yarn ? quote(c.yarn) : "something"} to ${quote(a.name)}`,
+  rename: (a, c) => `Renaming ${a.folder ? `the folder ${quote(a.folder)}` : c.pattern ? c.pattern.name : c.yarn ? quote(c.yarn) : "something"} to ${quote(a.name)}`,
   get_brand_guidelines: (a, c) => `Reading ${possessive(c.project, "the")} brand`,
   propose_swatch: (a) => (a.url ? `Reading the brand from ${host(a.url)}` : "Proposing a swatch"),
   list_patterns: (a, c) => `Looking at ${possessive(c.project, "the")} patterns`,
@@ -56,6 +68,8 @@ const SAY = {
   get_job: () => "Checking on a job",
   cancel_job: () => "Stopping a job",
   list_knits: (a, c) => `Looking at what ${c.project ?? "the project"} has knitted`,
+  list_folders: (a, c) => `Looking at ${possessive(c.project, "the")} ${HOLDS[a.section] ? `${SECTION_WORD[a.section]} ` : ""}folders`,
+  move_to_folder: (a) => filing(a),
 };
 
 /** The stitches a call works on, by id, from the slot names and ids it was given. */
@@ -84,7 +98,9 @@ export function describeCall(name, a, store) {
   };
   const summary = safe(() => SAY[name]?.(a, c)) ?? name.replace(/_/g, " ");
   const stitchIds = p ? stitchesOf(name, a, p) : [];
-  const where = Object.fromEntries(Object.entries({ projectId, patternId: p?.id, stitchIds: stitchIds.length ? stitchIds : undefined, yarnId: yarn?.id, partId: a.partId, jobId: a.jobId }).filter(([, v]) => v !== undefined));
+  // A call on folders works in one section: the page Follow opens. Moving things of several kinds, the first.
+  const section = name === "move_to_folder" ? moving(a)[0]?.[0] : (name === "list_folders" || (name === "rename" && a.folder)) && HOLDS[a.section] ? a.section : undefined;
+  const where = Object.fromEntries(Object.entries({ projectId, patternId: p?.id, stitchIds: stitchIds.length ? stitchIds : undefined, yarnId: yarn?.id, partId: a.partId, jobId: a.jobId, section }).filter(([, v]) => v !== undefined));
   return { summary, where };
 }
 

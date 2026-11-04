@@ -21,6 +21,8 @@ import { NotFoundError, ValidationError, type Store } from "./store.ts";
 import { hasTool, run } from "./proc.ts";
 import { looksLikeSvg, sanitiseSvg } from "./svg.ts";
 import { readFont } from "./fonts.ts";
+import { cleanFolder, fileInto, folderNamed } from "./folders.ts";
+import { isInside } from "./folders-pure.ts";
 
 const EXT: Record<string, { kind: YarnKind; mime: string }> = {
   ".png": { kind: "image", mime: "image/png" }, ".jpg": { kind: "image", mime: "image/jpeg" }, ".jpeg": { kind: "image", mime: "image/jpeg" },
@@ -43,7 +45,7 @@ function toYarn(r: Row): Yarn {
     originalName: r.original_name as string, mime: r.mime as string, bytes: Number(r.bytes), hash: r.hash as string,
     width: r.width == null ? undefined : Number(r.width), height: r.height == null ? undefined : Number(r.height),
     durationMs: r.duration_ms == null ? undefined : Number(r.duration_ms),
-    tags: JSON.parse(r.tags as string), meta: JSON.parse(r.meta as string) as YarnMeta,
+    tags: JSON.parse(r.tags as string), folder: (r.folder as string) ?? "", meta: JSON.parse(r.meta as string) as YarnMeta,
     deletedAt: (r.deleted_at as string) ?? null, createdAt: r.created_at as string, updatedAt: r.updated_at as string,
   };
 }
@@ -100,10 +102,12 @@ export function getYarn(store: Store, id: string): Yarn {
   return toYarn(r);
 }
 
-export function listYarn(store: Store, projectId: string, f: { kind?: string; q?: string; tag?: string; deleted?: boolean } = {}): Yarn[] {
+/** `folder`: only what is in that folder, or in the folders inside it. */
+export function listYarn(store: Store, projectId: string, f: { kind?: string; q?: string; tag?: string; folder?: string; deleted?: boolean } = {}): Yarn[] {
   const rows = (store.db.prepare(`select * from yarn where project_id = ? and deleted_at is ${f.deleted ? "not null" : "null"} order by created_at desc, rowid desc`).all(projectId) as Row[]).map(toYarn);
   const q = f.q?.trim().toLowerCase();
-  return rows.filter((y) => (!f.kind || y.kind === f.kind) && (!f.tag || y.tags.includes(f.tag)) && (!q || y.name.toLowerCase().includes(q) || y.tags.some((t) => t.includes(q))));
+  const folder = folderNamed(store, projectId, "yarn", f.folder);
+  return rows.filter((y) => (!f.kind || y.kind === f.kind) && (!f.tag || y.tags.includes(f.tag)) && isInside(y.folder, folder) && (!q || y.name.toLowerCase().includes(q) || y.tags.some((t) => t.includes(q))));
 }
 
 /** Where a piece of Yarn is used: every Pattern with a Stitch pointing at it. */
@@ -146,11 +150,12 @@ export async function purgeDeletedYarn(store: Store, olderThanMs = 24 * 3600_000
   return rows.length;
 }
 
-export async function createCopy(store: Store, projectId: string, input: { name: string; text: string; tags?: string[] }, actor: ImportOptions["actor"] = "human"): Promise<{ yarn: Yarn; existing: boolean }> {
+export async function createCopy(store: Store, projectId: string, input: { name: string; text: string; tags?: string[]; folder?: string }, actor: ImportOptions["actor"] = "human"): Promise<{ yarn: Yarn; existing: boolean }> {
   const text = String(input.text ?? "");
   if (!text.trim()) throw new ValidationError("Write some copy first.");
+  cleanFolder(input.folder);
   const tmp = await writeTemp(store, projectId, Buffer.from(text, "utf8"));
-  return importYarn(store, projectId, tmp, `${input.name || "Copy"}.txt`, { name: input.name || "Copy", tags: input.tags, actor });
+  return importYarn(store, projectId, tmp, `${input.name || "Copy"}.txt`, { name: input.name || "Copy", tags: input.tags, folder: input.folder, actor });
 }
 
 async function writeTemp(store: Store, projectId: string, data: Buffer): Promise<string> {
@@ -198,7 +203,8 @@ async function probe(file: string): Promise<{ durationMs?: number; width?: numbe
   return { durationMs: Number.isFinite(dur) ? Math.round(dur * 1000) : undefined, width: v ? Number(v.width) : undefined, height: v ? Number(v.height) : undefined, fps: den ? Math.round((num / den) * 100) / 100 : undefined, hasAudio: !!a, hasVideo: !!v };
 }
 
-export interface ImportOptions { name?: string; tags?: string[]; replaceId?: string; maxBytes?: number; actor?: "human" | "model" | "import"; }
+/** `folder`: the Yarn folder a new file goes in, made when it is not there. A file already in Yarn stays where it is. */
+export interface ImportOptions { name?: string; tags?: string[]; folder?: string; replaceId?: string; maxBytes?: number; actor?: "human" | "model" | "import"; }
 export interface ImportResult { yarn: Yarn; existing: boolean; }
 
 /**
@@ -209,6 +215,7 @@ export interface ImportResult { yarn: Yarn; existing: boolean; }
 export async function importYarn(store: Store, projectId: string, tmpPath: string, originalName: string, opts: ImportOptions = {}): Promise<ImportResult> {
   try {
     store.getProject(projectId);
+    cleanFolder(opts.folder);
     const ext = extname(originalName).toLowerCase();
     const spec = EXT[ext];
     if (!spec) throw new ValidationError(`knitted cannot use ${ext || "that kind of file"} yet. Try ${SUPPORTED}.`);
@@ -306,8 +313,8 @@ export async function importYarn(store: Store, projectId: string, tmpPath: strin
         store.db.prepare("update yarn set file = ?, original_name = ?, mime = ?, bytes = ?, hash = ?, width = ?, height = ?, duration_ms = ?, meta = ?, updated_at = ? where id = ?")
           .run(file, basename(originalName), spec.mime, bytes, hash, width ?? null, height ?? null, durationMs ?? null, JSON.stringify(meta), now, id);
       } else {
-        store.db.prepare("insert into yarn (id, project_id, kind, name, file, original_name, mime, bytes, hash, width, height, duration_ms, tags, meta, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-          .run(id, projectId, spec.kind, name, file, basename(originalName), spec.mime, bytes, hash, width ?? null, height ?? null, durationMs ?? null, JSON.stringify(tags), JSON.stringify(meta), now, now);
+        store.db.prepare("insert into yarn (id, project_id, kind, name, file, original_name, mime, bytes, hash, width, height, duration_ms, tags, folder, meta, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+          .run(id, projectId, spec.kind, name, file, basename(originalName), spec.mime, bytes, hash, width ?? null, height ?? null, durationMs ?? null, JSON.stringify(tags), fileInto(store, projectId, "yarn", opts.folder), JSON.stringify(meta), now, now);
         store.logRow(projectId, opts.actor ?? "human", "yarn.imported", name, { kind: spec.kind });
       }
       store.db.prepare("update projects set updated_at = ? where id = ?").run(now, projectId);
@@ -344,6 +351,7 @@ export async function assertPublicUrl(raw: string): Promise<URL> {
 
 export async function importYarnFromUrl(store: Store, projectId: string, rawUrl: string, opts: ImportOptions = {}): Promise<ImportResult> {
   const max = opts.maxBytes ?? 200 * 1024 * 1024;
+  cleanFolder(opts.folder);
   let url = await assertPublicUrl(rawUrl);
   let res: Response | undefined;
   for (let hop = 0; hop < 4; hop++) {

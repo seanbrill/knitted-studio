@@ -4,6 +4,7 @@
 // route's shape lives in one place and a change to it is a type error here.
 
 import type { Actor, AgentState, ColorRole, Part, Pattern, Project, Refusal, Size, Swatch, Yarn } from "./types.ts";
+import type { FolderSection } from "./folders-pure.ts";
 import type { SiteProposal } from "./site.ts";
 import type { KnitIssue, KnitRecord } from "./knits.ts";
 import type { Command } from "./commands.ts";
@@ -39,9 +40,17 @@ export const api = {
     remove: (id: string) => call<{ ok: true }>("DELETE", `/api/projects/${id}`),
     activity: (id: string) => call<ActivityItem[]>("GET", `/api/projects/${id}/activity`),
   },
+  /** Each section's folders. Moving a folder is renaming it to its whole new path; deleting one deletes nothing in it. */
+  folders: {
+    list: (projectId: string, section: FolderSection) => call<{ folders: string[] }>("GET", `/api/projects/${projectId}/folders?section=${section}`).then((r) => r.folders),
+    create: (projectId: string, section: FolderSection, path: string) => call<{ path: string }>("POST", `/api/projects/${projectId}/folders`, { action: "create", section, path }),
+    rename: (projectId: string, section: FolderSection, from: string, to: string) => call<{ path: string }>("POST", `/api/projects/${projectId}/folders`, { action: "rename", section, from, to }),
+    remove: (projectId: string, section: FolderSection, path: string) => call<{ folder: string; movedTo: string; moved: number }>("POST", `/api/projects/${projectId}/folders`, { action: "delete", section, path }),
+    move: (projectId: string, section: FolderSection, ids: string[], folder: string) => call<{ folder: string; moved: number }>("POST", `/api/projects/${projectId}/folders`, { action: "move", section, ids, folder }),
+  },
   patterns: {
     list: (projectId: string) => call<Pattern[]>("GET", `/api/projects/${projectId}/patterns`),
-    create: (projectId: string, b: { name?: string; size?: Size }) => call<Pattern>("POST", `/api/projects/${projectId}/patterns`, b),
+    create: (projectId: string, b: { name?: string; size?: Size; folder?: string }) => call<Pattern>("POST", `/api/projects/${projectId}/patterns`, b),
     get: (id: string) => call<Pattern>("GET", `/api/patterns/${id}`),
     duplicate: (id: string) => call<Pattern>("POST", `/api/patterns/${id}/actions`, { action: "duplicate" }),
     remove: (id: string) => call<{ ok: true }>("DELETE", `/api/patterns/${id}`),
@@ -57,21 +66,21 @@ export const api = {
     update: (id: string, b: { name?: string; tags?: string[] }) => call<Yarn>("PATCH", `/api/yarn/${id}`, b),
     remove: (id: string) => call<{ ok: true }>("DELETE", `/api/yarn/${id}`),
     undelete: (id: string) => call<Yarn>("POST", `/api/yarn/${id}`, { action: "undelete" }),
-    copy: (projectId: string, b: { name: string; text: string }) => call<{ yarn: Yarn; existing: boolean }>("POST", `/api/projects/${projectId}/yarn/copy`, b),
-    fromUrl: (projectId: string, url: string) => call<{ yarn: Yarn; existing: boolean }>("POST", `/api/projects/${projectId}/yarn/url`, { url }),
+    copy: (projectId: string, b: { name: string; text: string; folder?: string }) => call<{ yarn: Yarn; existing: boolean }>("POST", `/api/projects/${projectId}/yarn/copy`, b),
+    fromUrl: (projectId: string, url: string, folder?: string) => call<{ yarn: Yarn; existing: boolean }>("POST", `/api/projects/${projectId}/yarn/url`, { url, folder }),
   },
   swatches: {
     list: (projectId: string) => call<Swatch[]>("GET", `/api/projects/${projectId}/swatches`),
-    create: (projectId: string, b: { template?: string; data?: unknown; activate?: boolean }) => call<Swatch>("POST", `/api/projects/${projectId}/swatches`, b),
+    create: (projectId: string, b: { template?: string; data?: unknown; activate?: boolean; folder?: string }) => call<Swatch>("POST", `/api/projects/${projectId}/swatches`, b),
     update: (id: string, patch: unknown) => call<Swatch>("PATCH", `/api/swatches/${id}`, patch),
     remove: (id: string) => call<{ ok: true }>("DELETE", `/api/swatches/${id}`),
     activate: (id: string) => call<Swatch>("POST", `/api/swatches/${id}`, { action: "activate" }),
     duplicate: (id: string) => call<Swatch>("POST", `/api/swatches/${id}`, { action: "duplicate" }),
-    import: (projectId: string, file: unknown) => call<Swatch>("POST", `/api/projects/${projectId}/swatches/import`, file),
+    import: (projectId: string, file: unknown, folder?: string) => call<Swatch>("POST", `/api/projects/${projectId}/swatches/import${folder ? `?folder=${encodeURIComponent(folder)}` : ""}`, file),
     /** Read a website into a proposal; nothing is saved. `matched`: the fonts this project can draw. */
     fromUrl: (projectId: string, url: string) => call<SiteProposal & { matched: Record<"display" | "body" | "mono", { family: string; yarnId?: string; from: "bundled" | "yarn" } | null> }>("POST", `/api/projects/${projectId}/swatches/from-url`, { url }),
     /** Save a proposal, as the person left it, as a new swatch (not made the project's). */
-    fromSite: (projectId: string, b: { name: string; colors: { role: ColorRole; name: string; hex: string }[]; fonts?: { display?: string; body?: string; mono?: string }; logo?: { url: string; use: "full" | "mark" } }) => call<{ swatch: Swatch; notes: string[] }>("POST", `/api/projects/${projectId}/swatches/from-site`, b),
+    fromSite: (projectId: string, b: { name: string; colors: { role: ColorRole; name: string; hex: string }[]; fonts?: { display?: string; body?: string; mono?: string }; logo?: { url: string; use: "full" | "mark" }; folder?: string }) => call<{ swatch: Swatch; notes: string[] }>("POST", `/api/projects/${projectId}/swatches/from-site`, b),
     colorsFromYarn: (yarnId: string) => call<string[]>("GET", `/api/yarn/${yarnId}/colors`),
   },
   parts: {
@@ -80,8 +89,9 @@ export const api = {
     create: (projectId: string, b: unknown) => call<Part>("POST", `/api/projects/${projectId}/parts`, b),
     update: (id: string, b: unknown) => call<Part>("PATCH", `/api/parts/${id}`, b),
     remove: (id: string) => call<{ usedIn: number }>("DELETE", `/api/parts/${id}`),
-    action: (id: string, action: "duplicate" | "to-library" | "to-project" | "export", projectId?: string) => call<Part>("POST", `/api/parts/${id}`, { action, projectId }),
-    import: (projectId: string, file: unknown, scope: "project" | "library" = "project") => call<Part>("POST", `/api/projects/${projectId}/parts`, { name: "import", file, scope }),
+    /** `folder`, for duplicate: where the copy goes. Left out, it goes next to the original. */
+    action: (id: string, action: "duplicate" | "to-library" | "to-project" | "export", projectId?: string, folder?: string) => call<Part>("POST", `/api/parts/${id}`, { action, projectId, folder }),
+    import: (projectId: string, file: unknown, scope: "project" | "library" = "project", folder?: string) => call<Part>("POST", `/api/projects/${projectId}/parts`, { name: "import", file, scope, folder }),
   },
   voice: {
     config: () => call<VoiceConfig>("GET", "/api/voice/config"),
@@ -184,9 +194,10 @@ export interface UploadHandle { promise: Promise<{ yarn: Yarn; existing: boolean
  * the server can stream it to disk, and cancelling aborts the request, which the
  * server turns into a cleaned-up temp file.
  */
-export function uploadYarn(projectId: string, file: File, onProgress: (fraction: number) => void, opts: { replaceId?: string } = {}): UploadHandle {
+export function uploadYarn(projectId: string, file: File, onProgress: (fraction: number) => void, opts: { replaceId?: string; folder?: string } = {}): UploadHandle {
   const xhr = new XMLHttpRequest();
-  const url = opts.replaceId ? `/api/yarn/${opts.replaceId}/file?filename=${encodeURIComponent(file.name)}` : `/api/projects/${projectId}/yarn?filename=${encodeURIComponent(file.name)}`;
+  const into = opts.folder ? `&folder=${encodeURIComponent(opts.folder)}` : "";
+  const url = opts.replaceId ? `/api/yarn/${opts.replaceId}/file?filename=${encodeURIComponent(file.name)}` : `/api/projects/${projectId}/yarn?filename=${encodeURIComponent(file.name)}${into}`;
   const promise = new Promise<{ yarn: Yarn; existing: boolean }>((resolve, reject) => {
     xhr.open(opts.replaceId ? "PUT" : "POST", url);
     xhr.setRequestHeader("content-type", file.type || "application/octet-stream");

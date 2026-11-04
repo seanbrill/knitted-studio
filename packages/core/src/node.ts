@@ -10,6 +10,7 @@ export * from "./yarn.ts";
 export * from "./swatch.ts";
 export * from "./knits.ts";
 export * from "./parts.ts";
+export * from "./folders.ts";
 export { BUILTIN_PARTS } from "./builtin-parts.ts";
 export { hasTool } from "./proc.ts";
 export * from "./zip.ts";

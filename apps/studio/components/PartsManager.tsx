@@ -2,12 +2,13 @@
 
 import { useMemo, useRef, useState } from "react";
 import { api } from "@knitted/core/client";
-import { hasLintErrors, lintCodePart, type Part, type PartCategory } from "@knitted/core";
+import { foldersIn, hasLintErrors, lintCodePart, nameOf, type Part, type PartCategory } from "@knitted/core";
 import { Button, Chip, ConfirmDialog, Dialog, EmptyState, Field, Input, Select, Skeleton, Textarea, icons, useToast } from "@knitted/ui";
 import { useLive } from "@/lib/hooks";
 import { PartThumb } from "./editor/PartThumb";
+import { FolderCrumbs, FolderDialogs, FolderList, NewFolderButton, useFolders } from "./Folders";
 
-const { Plus, Upload, Download, Copy, Trash2, AlertTriangle } = icons;
+const { Plus, Upload, Download, Copy, Trash2, AlertTriangle, FolderInput } = icons;
 const CATS: { value: PartCategory; label: string }[] = [{ value: "text", label: "Text" }, { value: "media", label: "Media" }, { value: "motion", label: "Motion" }, { value: "frame", label: "Frame" }, { value: "cta", label: "Call to action" }, { value: "other", label: "Other" }];
 const STARTER_HTML = `<div class="card">\n  <span class="k">{{kicker}}</span>\n  <strong>{{title}}</strong>\n</div>`;
 const STARTER_CSS = `.card{position:absolute;inset:0;display:grid;align-content:center;gap:6px;padding:8%;background:#17110b;color:#fffbf6;font:700 5.5vw system-ui;border-radius:12px;animation:in 600ms ease-out both}\n.k{font:500 2.4vw ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;color:#ff9254}\n@keyframes in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}`;
@@ -21,6 +22,9 @@ export function PartsManager({ projectId }: { projectId: string }) {
   const [creating, setCreating] = useState(false);
   const [del, setDel] = useState<{ part: Part; usedIn: number } | null>(null);
   const file = useRef<HTMLInputElement>(null);
+  // Folders sort the parts that are yours. The starter parts stay as they come.
+  const mine = useMemo(() => (parts ?? []).filter((p) => !p.builtin), [parts]);
+  const kit = useFolders(projectId, "parts", parts ? mine : null, { onChanged: refresh });
 
   const act = async (fn: () => Promise<unknown>, msg?: string) => { try { await fn(); await refresh(); if (msg) toast(msg); } catch (e) { toast((e as Error).message); } };
   const download = async (p: Part) => {
@@ -30,14 +34,14 @@ export function PartsManager({ projectId }: { projectId: string }) {
     URL.revokeObjectURL(url);
   };
 
-  if (!parts || !swatch) return <Skeleton height={300} />;
-  const mine = parts.filter((p) => !p.builtin);
+  if (!parts || !swatch || !kit.folders) return <Skeleton height={300} />;
+  const here = mine.filter((p) => p.folder === kit.here);
   const builtin = parts.filter((p) => p.builtin);
 
   const grid = (list: Part[], editable: boolean) => (
     <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: "var(--space-4)", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
       {list.map((p) => (
-        <li key={p.id} className="card" style={{ padding: "var(--space-3)", display: "grid", gap: 8 }}>
+        <li key={p.id} className="card" draggable={editable} onDragStart={editable ? kit.dragThings([p.id]) : undefined} style={{ padding: "var(--space-3)", display: "grid", gap: 8 }}>
           <PartThumb part={p} swatch={swatch} projectId={projectId} width={216} />
           <div>
             <p className="label" style={{ margin: 0 }}>{p.name}</p>
@@ -45,7 +49,9 @@ export function PartsManager({ projectId }: { projectId: string }) {
             {p.slots.length > 0 && <p className="body-sm" style={{ margin: "2px 0 0" }}>{p.slots.map((s) => <Chip key={s.name} className="code">{s.name}{s.locked ? " locked" : ""}</Chip>)}</p>}
           </div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            <Button size="sm" onClick={() => act(() => api.parts.action(p.id, "duplicate", projectId), `Duplicated ${p.name}`)}><Copy size={12} aria-hidden /> Duplicate</Button>
+            {/* A starter part's copy goes in the folder the person is in; one of theirs, next to it. */}
+            <Button size="sm" onClick={() => act(() => api.parts.action(p.id, "duplicate", projectId, p.builtin ? kit.here : undefined), `Duplicated ${p.name}${p.builtin && kit.here ? ` into ${nameOf(kit.here)}` : ""}`)}><Copy size={12} aria-hidden /> Duplicate</Button>
+            {editable && <Button size="sm" aria-label={`Move to folder, ${p.name}`} onClick={() => kit.askMove([p], p.name)}><FolderInput size={12} aria-hidden /> Move to folder</Button>}
             <Button size="sm" onClick={() => download(p)}><Download size={12} aria-hidden /> Export</Button>
             {editable && (p.projectId
               ? <Button size="sm" onClick={() => act(() => api.parts.action(p.id, "to-library"), "Now in the library for every project")}>To library</Button>
@@ -60,36 +66,42 @@ export function PartsManager({ projectId }: { projectId: string }) {
   return (
     <div style={{ display: "grid", gap: "var(--space-8)" }}>
       <section aria-label="Your parts">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-4)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--space-3)", flexWrap: "wrap", marginBottom: "var(--space-4)" }}>
           <h2 className="h2">Your parts</h2>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <NewFolderButton kit={kit} />
             <Button onClick={() => file.current?.click()}><Upload size={14} aria-hidden /> Import</Button>
-            <input ref={file} type="file" accept=".json,application/json" hidden aria-label="Choose a part file" onChange={async (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) await act(async () => api.parts.import(projectId, JSON.parse(await f.text())), "Imported"); }} />
+            <input ref={file} type="file" accept=".json,application/json" hidden aria-label="Choose a part file" onChange={async (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) await act(async () => api.parts.import(projectId, JSON.parse(await f.text()), "project", kit.here), kit.here ? `Imported into ${nameOf(kit.here)}` : "Imported"); }} />
             <Button variant="primary" onClick={() => setCreating(true)}><Plus size={14} aria-hidden /> New code part</Button>
           </div>
         </div>
-        {mine.length === 0 ? <EmptyState title="No parts of your own yet" body="Select stitches in the editor and choose Save as part, or write one in code here." /> : grid(mine, true)}
+        <FolderCrumbs kit={kit} />
+        <FolderList kit={kit} />
+        {mine.length === 0 && kit.folders.length === 0 ? <EmptyState title="No parts of your own yet" body="Select stitches in the editor and choose Save as part, or write one in code here." />
+          : here.length > 0 ? grid(here, true)
+          : kit.here && !kit.gone && foldersIn(kit.folders, kit.here).length === 0 && <EmptyState title={`Nothing in ${nameOf(kit.here)} yet`} body="Drag parts onto this folder, or choose Move to folder on one. A part made, imported or duplicated from the starters here goes in it." />}
       </section>
       <section aria-label="Starter parts">
         <h2 className="h2" style={{ marginBottom: "var(--space-4)" }}>Starter parts</h2>
         {grid(builtin, false)}
       </section>
-      <CodePartDialog open={creating} onOpenChange={setCreating} projectId={projectId} swatch={swatch} onDone={refresh} />
+      <CodePartDialog open={creating} onOpenChange={setCreating} projectId={projectId} folder={kit.here} swatch={swatch} onDone={refresh} />
       <ConfirmDialog open={!!del} onOpenChange={(o) => !o && setDel(null)} title={`Delete ${del?.part.name ?? "part"}?`}
         description={del?.usedIn ? `It is used in ${del.usedIn} ${del.usedIn === 1 ? "pattern" : "patterns"}. Those will show a missing-part gap until you replace it.` : "Nothing uses it."} confirmLabel="Delete part"
         onConfirm={async () => { await api.parts.remove(del!.part.id); await refresh(); toast("Deleted"); }} />
+      <FolderDialogs kit={kit} />
     </div>
   );
 }
 
-function CodePartDialog({ open, onOpenChange, projectId, swatch, onDone }: { open: boolean; onOpenChange: (o: boolean) => void; projectId: string; swatch: Parameters<typeof PartThumb>[0]["swatch"]; onDone: () => void }) {
+function CodePartDialog({ open, onOpenChange, projectId, folder, swatch, onDone }: { open: boolean; onOpenChange: (o: boolean) => void; projectId: string; folder: string; swatch: Parameters<typeof PartThumb>[0]["swatch"]; onDone: () => void }) {
   const [name, setName] = useState(""); const [category, setCategory] = useState<PartCategory>("motion");
   const [html, setHtml] = useState(STARTER_HTML); const [css, setCss] = useState(STARTER_CSS);
   const [slotText, setSlotText] = useState("kicker, title"); const [aspect, setAspect] = useState("2"); const [err, setErr] = useState<string | undefined>();
   const lint = useMemo(() => lintCodePart(html, css), [html, css]);
   const slots = slotText.split(",").map((s) => s.trim()).filter(Boolean).map((n) => ({ name: n, kind: "text" as const, locked: false, default: n === "title" ? "Make it knitted" : n === "kicker" ? "New this week" : "" }));
-  const draft = { id: "draft", projectId, builtin: false, name: name || "Draft", description: "", category, tags: [], kind: "code" as const, stitches: [], html, css, slots, aspect: Number(aspect) || 2, durationMs: 0, version: 1, createdAt: "", updatedAt: "" };
-  const save = async () => { try { await api.parts.create(projectId, { name, category, kind: "code", html, css, slots, aspect: Number(aspect) || 2 }); onOpenChange(false); setName(""); setErr(undefined); onDone(); } catch (e) { setErr((e as Error).message); } };
+  const draft = { id: "draft", projectId, builtin: false, name: name || "Draft", description: "", category, tags: [], kind: "code" as const, stitches: [], html, css, slots, aspect: Number(aspect) || 2, durationMs: 0, version: 1, folder, createdAt: "", updatedAt: "" };
+  const save = async () => { try { await api.parts.create(projectId, { name, category, kind: "code", html, css, slots, aspect: Number(aspect) || 2, folder }); onOpenChange(false); setName(""); setErr(undefined); onDone(); } catch (e) { setErr((e as Error).message); } };
   return (
     <Dialog open={open} onOpenChange={onOpenChange} wide title="New code part" description="Markup and CSS in a sandbox: no scripts, no network. Use {{slot}} where a value goes. Animate with CSS, which the engine drives frame by frame."
       actions={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" disabled={hasLintErrors(lint) || !name.trim()} onClick={save}>Save part</Button></>}>

@@ -17,13 +17,18 @@
 //    propose_swatch adds a NEW swatch the person may choose to use; it never changes
 //    one, and never makes one the project's.
 
-import { applyCommand, instanceOf, motionLint, partFromStitches, preflight, uniqueSlotName, COLOR_ROLES, PRESETS, SIZES, CommandSchema } from "@knitted/core";
-import { activeSwatch, createPart, createSwatch, createSwatchFromProposal, getKnit, getPart, importYarn, importYarnFromUrl, createCopy, knitPath, listKnits, listParts, listYarn, proposeFromWebsite, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
+import { applyCommand, instanceOf, joinFolder, motionLint, parentOf, partFromStitches, preflight, uniqueSlotName, COLOR_ROLES, FOLDER_SECTIONS, PRESETS, SIZES, CommandSchema } from "@knitted/core";
+import { activeSwatch, cleanFolder, createPart, createSwatch, createSwatchFromProposal, folderCounts, getKnit, getPart, importYarn, importYarnFromUrl, createCopy, knitPath, listFolders, listKnits, listParts, listYarn, moveAllToFolder, proposeFromWebsite, renameFolder, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
 
 const obj = (properties, required = []) => ({ type: "object", properties, required, additionalProperties: false });
 const str = (description) => ({ type: "string", description });
 const PROJECT = str("The project id, like pj_01...");
 const PATTERN = str("The pattern id, like pt_01...");
+const FOLDER = (what) => str(`The folder ${what} goes in, as a path from the top of its section, like Royalty free music/Lo-fi. Made when it is not there. Left out, the top.`);
+const SECTION = { type: "string", enum: FOLDER_SECTIONS, description: "Which section the folder is in: each of patterns, yarn, parts, swatches and knits has folders of its own" };
+const IDS = (what) => ({ type: "array", items: { type: "string" }, description: `The ids of the ${what} to move` });
+// Where a thing is filed, said only when it is in a folder: results stay small.
+const filed = (x) => (x.folder ? { folder: x.folder } : {});
 
 // Text that came from outside (a Yarn file, a website) is DATA. It is wrapped, so a
 // model can tell instructions (from its user) from content (from a file), and the
@@ -33,10 +38,10 @@ const untrusted = (label, text) => `<untrusted_data source="${label}">\n${String
 // The tools that only look. They change nothing, so a client may run them without asking
 // (tools/list says readOnlyHint), and they still work while the person has paused the
 // model in the studio. Every other tool changes something.
-export const READ_ONLY = new Set(["list_projects", "get_project", "list_yarn", "get_brand_guidelines", "list_patterns", "get_pattern", "describe_pattern", "list_parts", "list_presets", "list_voices", "preview_pattern", "check_pattern", "get_job", "list_knits"]);
+export const READ_ONLY = new Set(["list_projects", "get_project", "list_yarn", "get_brand_guidelines", "list_patterns", "get_pattern", "describe_pattern", "list_parts", "list_presets", "list_voices", "preview_pattern", "check_pattern", "get_job", "list_knits", "list_folders"]);
 
 function brief(p) {
-  return { id: p.id, name: p.name, size: `${p.size.name} ${p.size.w}x${p.size.h}`, durationMs: p.durationMs, version: p.version };
+  return { id: p.id, name: p.name, size: `${p.size.name} ${p.size.w}x${p.size.h}`, durationMs: p.durationMs, version: p.version, ...filed(p) };
 }
 
 /** A pattern as a short piece of text a model can read cheaply: what is on it, what is locked, what it may fill. */
@@ -109,27 +114,32 @@ export const TOOLS = [
     async handler({ projectId, yarnId }, { store }) { const p = store.updateProject(projectId, { coverYarnId: yarnId || null }, "model"); return { id: p.id, picture: p.coverYarnId }; } },
 
   // ── yarn ──
-  { name: "list_yarn", description: "List the files (Yarn) in a project: images, video, audio, fonts and saved copy. Filter by kind, tag or a search word. Use a Yarn name or id when filling an image slot.", inputSchema: obj({ projectId: PROJECT, kind: { type: "string", enum: ["image", "video", "audio", "font", "copy"] }, tag: str("Only Yarn with this tag"), q: str("Search the names") }, ["projectId"]),
-    async handler({ projectId, kind, tag, q }, { store }) {
-      return listYarn(store, projectId, { kind, tag, q }).slice(0, 60).map((y) => ({ id: y.id, name: y.name, kind: y.kind, tags: y.tags, ...(y.width ? { size: `${y.width}x${y.height}` } : {}), ...(y.durationMs ? { seconds: +(y.durationMs / 1000).toFixed(1) } : {}), ...(y.kind === "copy" ? { text: untrusted(`yarn:${y.name}`, (y.meta.text ?? "").slice(0, 800)) } : {}), ...(y.meta.warnings?.length ? { warnings: y.meta.warnings } : {}) }));
+  { name: "list_yarn", description: "List the files (Yarn) in a project: images, video, audio, fonts and saved copy. Filter by kind, tag, a search word or a folder. Use a Yarn name or id when filling an image slot.", inputSchema: obj({ projectId: PROJECT, kind: { type: "string", enum: ["image", "video", "audio", "font", "copy"] }, tag: str("Only Yarn with this tag"), q: str("Search the names"), folder: str("Only Yarn in this folder and the folders inside it, like Royalty free music") }, ["projectId"]),
+    async handler({ projectId, kind, tag, q, folder }, { store }) {
+      return listYarn(store, projectId, { kind, tag, q, folder }).slice(0, 60).map((y) => ({ id: y.id, name: y.name, kind: y.kind, tags: y.tags, ...filed(y), ...(y.width ? { size: `${y.width}x${y.height}` } : {}), ...(y.durationMs ? { seconds: +(y.durationMs / 1000).toFixed(1) } : {}), ...(y.kind === "copy" ? { text: untrusted(`yarn:${y.name}`, (y.meta.text ?? "").slice(0, 800)) } : {}), ...(y.meta.warnings?.length ? { warnings: y.meta.warnings } : {}) }));
     } },
-  { name: "import_yarn", description: "Add a file to a project's Yarn from a public web address: an image, a video, a sound, a font (to use it in a swatch) or a text file. Or save a piece of text as reusable copy. Local files are not accepted here; ask the person to upload them in the studio. A file that is already there is not added twice: you get the one there, with these tags added.", inputSchema: obj({ projectId: PROJECT, url: str(`A public https link to a ${SUPPORTED} file`), text: str("Copy to save, instead of a file"), name: str("What to call it"), tags: { type: "array", items: { type: "string" }, description: "Tags to give it, like [\"product\"], so a slot can take `tag:product`" } }, ["projectId"]),
-    async handler({ projectId, url, text, name, tags }, { store }) {
+  { name: "import_yarn", description: "Add a file to a project's Yarn from a public web address: an image, a video, a sound, a font (to use it in a swatch) or a text file. Or save a piece of text as reusable copy. Local files are not accepted here; ask the person to upload them in the studio. A file that is already there is not added twice: you get the one there, with these tags added.", inputSchema: obj({ projectId: PROJECT, url: str(`A public https link to a ${SUPPORTED} file`), text: str("Copy to save, instead of a file"), name: str("What to call it"), tags: { type: "array", items: { type: "string" }, description: "Tags to give it, like [\"product\"], so a slot can take `tag:product`" }, folder: FOLDER("it") }, ["projectId"]),
+    async handler({ projectId, url, text, name, tags, folder }, { store }) {
       if (tags !== undefined && !(Array.isArray(tags) && tags.every((t) => typeof t === "string"))) throw new Error("tags is a list of words, like [\"product\", \"shot\"].");
       let r;
-      if (text) r = await createCopy(store, projectId, { name: name ?? "Copy", text, tags }, "model");
-      else if (url) r = await importYarnFromUrl(store, projectId, url, { name, tags, actor: "model" });
+      if (text) r = await createCopy(store, projectId, { name: name ?? "Copy", text, tags, folder }, "model");
+      else if (url) r = await importYarnFromUrl(store, projectId, url, { name, tags, folder, actor: "model" });
       else throw new Error("Give a url to fetch, or text to save.");
-      // The same file twice is the same Yarn, so the tags asked for land on the one there.
+      // The same file twice is the same Yarn, so the tags asked for land on the one there, and it stays where it is filed.
       const y = r.existing && tags?.length ? updateYarn(store, r.yarn.id, { tags: [...r.yarn.tags, ...tags] }) : r.yarn;
-      return { id: y.id, name: y.name, kind: y.kind, tags: y.tags, existing: r.existing };
+      return { id: y.id, name: y.name, kind: y.kind, tags: y.tags, ...filed(y), existing: r.existing };
     } },
   { name: "tag_yarn", description: "Set the tags on a piece of Yarn. Tags let a batch pick from a group, like `tag:product`.", inputSchema: obj({ yarnId: str("The yarn id"), tags: { type: "array", items: { type: "string" } } }, ["yarnId", "tags"]),
     async handler({ yarnId, tags }, { store }) { return { id: yarnId, tags: updateYarn(store, yarnId, { tags }).tags }; } },
   // Undoing a draft of your own is a rename away: deleting stays a person's call (see the top).
-  { name: "rename", description: "Rename a pattern or a piece of Yarn: give its patternId or its yarnId, and the new name. Use it to label a draft of your own, like \"Draft: spring post\"; only a person deletes, in the studio.", inputSchema: obj({ patternId: PATTERN, yarnId: str("A yarn id, from list_yarn"), name: str("The new name") }, ["name"]),
-    async handler({ patternId, yarnId, name }, { store }) {
-      if (!patternId === !yarnId) throw new Error("Give one of patternId or yarnId.");
+  { name: "rename", description: "Rename a pattern, a piece of Yarn or a folder: give its patternId, its yarnId, or a folder's path with the projectId and section it is in, and the new name. A folder's new name may be a whole path, to move it and everything in it: Music/Lo-fi puts it inside Music, /Lo-fi at the top; into a folder that is there already, the two become one. Use it to label a draft of your own, like \"Draft: spring post\"; only a person deletes, in the studio.", inputSchema: obj({ patternId: PATTERN, yarnId: str("A yarn id, from list_yarn"), folder: str("A folder's path, from list_folders, like Royalty free music/Lofi"), section: SECTION, projectId: str("The project the folder is in"), name: str("The new name") }, ["name"]),
+    async handler({ patternId, yarnId, folder, section, projectId, name }, { store }) {
+      if ([patternId, yarnId, folder].filter((x) => x !== undefined && x !== "").length !== 1) throw new Error("Give one of patternId, yarnId or folder.");
+      if (folder) {
+        if (!projectId || !section) throw new Error(`A folder is in one section of one project: give its projectId, and its section (${FOLDER_SECTIONS.join(", ")}).`);
+        const to = String(name).includes("/") ? name : joinFolder(parentOf(cleanFolder(folder)), name);
+        return { folder: renameFolder(store, projectId, section, folder, to, "model"), section };
+      }
       if (patternId) { const r = store.apply(patternId, { type: "setMeta", name }, "model", { label: "Model renamed the pattern" }); return { id: patternId, name: store.getPattern(patternId).name, changed: r.changed }; }
       const y = updateYarn(store, yarnId, { name });
       return { id: y.id, name: y.name };
@@ -146,8 +156,10 @@ export const TOOLS = [
       voice: obj({ summary: str("How the brand sounds, in a sentence or two"), do: { type: "array", items: { type: "string" } }, dont: { type: "array", items: { type: "string" } }, examples: { type: "array", items: { type: "string" } } }),
       rules: { ...obj({ cornerRadius: { type: "number", description: "How round the brand's corners are, as a fraction of the frame's width from 0 to 0.2: 0 is square, 0.012 soft, 0.04 a rounded panel. A stitch uses it with style radius: \"$radius\"." } }), description: "How the brand draws its shapes: {\"cornerRadius\": 0.04}, a fraction of the frame's width from 0 (square) to 0.2. A stitch uses it with style radius: \"$radius\"." },
       logoYarnId: str("An image already in this project's Yarn to use as its logo, instead of the site's"),
+      folder: FOLDER("the swatch"),
     }, ["projectId"]),
-    async handler({ projectId, url, name, colors = [], fonts, voice, rules, logoYarnId }, { store }) {
+    async handler({ projectId, url, name, colors = [], fonts, voice, rules, logoYarnId, folder }, { store }) {
+      cleanFolder(folder);
       const families = fontNames(fonts);
       if (rules !== undefined && (typeof rules !== "object" || rules === null || Array.isArray(rules))) throw new Error("rules is an object, like {\"cornerRadius\": 0.04}.");
       const site = url ? await proposeFromWebsite(url) : null;
@@ -157,7 +169,7 @@ export const TOOLS = [
       const { swatch, notes } = await createSwatchFromProposal(store, projectId, {
         name: name || site?.name || "Proposed brand", colors: [...byRole.values()], fonts: { ...(site?.fontRoles ?? {}), ...families }, voice, rules,
         ...(logoYarnId ? { logos: [{ yarnId: logoYarnId, use: "full" }] } : site?.logo ? { logo: site.logo } : {}),
-      }, { actor: "model", activate: false });
+      }, { actor: "model", activate: false, folder });
       return {
         id: swatch.id, active: false,
         // A name read off a website is the website's words, not an instruction.
@@ -166,6 +178,7 @@ export const TOOLS = [
         fonts: Object.fromEntries(Object.entries(swatch.fonts).map(([slot, f]) => [slot, f.family])),
         cornerRadius: swatch.rules.cornerRadius,
         logo: swatch.logos[0]?.yarnId ?? null,
+        ...filed(swatch),
         notes: [...(site?.notes ?? []), ...notes],
         next: "It is in the Swatch tab and not in use. Tell the person it is ready to look over: only they can make it the project's swatch.",
       };
@@ -178,8 +191,8 @@ export const TOOLS = [
     async handler({ projectId, patternId }, { store }) { return patternIn(store, patternId, projectId); } },
   { name: "describe_pattern", description: "A short text summary of a pattern: what slots it has, which are locked by the brand and which you may fill, what it says now, any animation, and the brand's voice. The cheapest way to understand a pattern.", inputSchema: obj({ patternId: PATTERN }, ["patternId"]),
     async handler({ patternId }, { store }) { return describePattern(store.getPattern(patternId), store); } },
-  { name: "create_pattern", description: "Add an empty pattern to a project. Sizes: " + SIZES.map((s) => `${s.name} ${s.w}x${s.h}`).join(", ") + ".", inputSchema: obj({ projectId: PROJECT, name: str("Name"), size: { type: "string", enum: SIZES.map((s) => s.name) } }, ["projectId"]),
-    async handler({ projectId, name, size }, { store }) { return brief(store.createPattern(projectId, { name, size: SIZES.find((s) => s.name === size) ?? SIZES[0], actor: "model" })); } },
+  { name: "create_pattern", description: "Add an empty pattern to a project. Sizes: " + SIZES.map((s) => `${s.name} ${s.w}x${s.h}`).join(", ") + ".", inputSchema: obj({ projectId: PROJECT, name: str("Name"), size: { type: "string", enum: SIZES.map((s) => s.name) }, folder: FOLDER("the pattern") }, ["projectId"]),
+    async handler({ projectId, name, size, folder }, { store }) { return brief(store.createPattern(projectId, { name, size: SIZES.find((s) => s.name === size) ?? SIZES[0], folder, actor: "model" })); } },
   { name: "duplicate_pattern", description: "Copy a pattern, locks and all.", inputSchema: obj({ patternId: PATTERN }, ["patternId"]),
     async handler({ patternId }, { store }) { return brief(store.duplicatePattern(patternId, "model")); } },
 
@@ -229,7 +242,7 @@ export const TOOLS = [
 
   // ── parts and motion ──
   { name: "list_parts", description: "Reusable parts you can insert: lower thirds, quotes, price tags and the project's own. Each lists its slots.", inputSchema: obj({ projectId: PROJECT }, ["projectId"]),
-    async handler({ projectId }, { store }) { ensureBuiltinParts(store); return listParts(store, projectId).map((p) => ({ id: p.id, name: p.name, category: p.category, slots: p.slots.map((s) => `${s.name}${s.locked ? " [locked]" : ""}`), aspect: +p.aspect.toFixed(2) })); } },
+    async handler({ projectId }, { store }) { ensureBuiltinParts(store); return listParts(store, projectId).map((p) => ({ id: p.id, name: p.name, category: p.category, slots: p.slots.map((s) => `${s.name}${s.locked ? " [locked]" : ""}`), aspect: +p.aspect.toFixed(2), ...filed(p) })); } },
   { name: "insert_part", description: "Put a part into a pattern. Then fill its slots with fill_slots using `instance.slot`.", inputSchema: obj({ patternId: PATTERN, partId: str("From list_parts"), slot: str("A name for this instance"), x: { type: "number" }, y: { type: "number" }, w: { type: "number" }, overrides: { type: "object", additionalProperties: { type: "string" } } }, ["patternId", "partId"]),
     async handler({ patternId, partId, slot, x = 0.1, y = 0.7, w = 0.6, overrides = {} }, { store }) {
       const part = getPart(store, partId); const p = store.getPattern(patternId);
@@ -243,16 +256,16 @@ export const TOOLS = [
   // The studio's Save as part, for a model: what it makes is a new thing of its own, like a
   // pattern it creates. A stitch the brand locked stays locked as a slot of the part, so a
   // part is never a way around a lock.
-  { name: "create_part", description: "Make a reusable part out of stitches already in a pattern, like a footer every pattern repeats, so insert_part can put it anywhere and a change to the part lands everywhere it is used. Each stitch with a slot name becomes a slot of the part; a slot the brand locked stays locked. `replace: true` also swaps those stitches in this pattern for one linked copy of the part. The part belongs to the pattern's project.", inputSchema: obj({ patternId: PATTERN, stitches: { type: "array", items: { type: "string" }, description: "The slot names or ids of the stitches to make it from" }, name: str("What to call the part, like Footer"), description: str("What it is for, in a sentence"), category: { type: "string", enum: ["text", "media", "motion", "frame", "cta", "other"] }, replace: { type: "boolean" } }, ["patternId", "stitches", "name"]),
-    async handler({ patternId, stitches, name, description, category, replace = false }, { store }) {
+  { name: "create_part", description: "Make a reusable part out of stitches already in a pattern, like a footer every pattern repeats, so insert_part can put it anywhere and a change to the part lands everywhere it is used. Each stitch with a slot name becomes a slot of the part; a slot the brand locked stays locked. `replace: true` also swaps those stitches in this pattern for one linked copy of the part. The part belongs to the pattern's project.", inputSchema: obj({ patternId: PATTERN, stitches: { type: "array", items: { type: "string" }, description: "The slot names or ids of the stitches to make it from" }, name: str("What to call the part, like Footer"), description: str("What it is for, in a sentence"), category: { type: "string", enum: ["text", "media", "motion", "frame", "cta", "other"] }, replace: { type: "boolean" }, folder: FOLDER("the part") }, ["patternId", "stitches", "name"]),
+    async handler({ patternId, stitches, name, description, category, replace = false, folder }, { store }) {
       if (!Array.isArray(stitches) || !stitches.length) throw new Error("Give the stitches to make the part from, by slot name or id.");
       const p = store.getPattern(patternId);
       const sel = [...new Set(stitches.map((ref) => stitchRef(p, String(ref))))];
       const locked = sel.filter((s) => s.locked);
       if (replace && locked.length) throw new Error(`${locked.map((s) => s.slot ?? s.id).join(", ")} ${locked.length === 1 ? "is" : "are"} locked by the brand, so only a person can swap ${locked.length === 1 ? "it" : "them"} for a part. Leave out replace to make the part without changing this pattern.`);
       const { draft, box } = partFromStitches(sel, p.size, { name, description, category, lockedSlots: locked.map((s) => s.slot).filter(Boolean) });
-      const part = createPart(store, p.projectId, draft, "model");
-      const out = { id: part.id, name: part.name, slots: part.slots.map((s) => `${s.name}${s.locked ? " [locked]" : ""}`), aspect: +part.aspect.toFixed(2) };
+      const part = createPart(store, p.projectId, { ...draft, folder }, "model");
+      const out = { id: part.id, name: part.name, slots: part.slots.map((s) => `${s.name}${s.locked ? " [locked]" : ""}`), aspect: +part.aspect.toFixed(2), ...filed(part) };
       if (!replace) return out;
       const slot = uniqueSlotName(part.name, p.stitches.filter((s) => !sel.includes(s)).map((s) => s.slot));
       const inst = instanceOf(part, box, slot);
@@ -300,8 +313,27 @@ export const TOOLS = [
     async handler({ jobId }, { store }) { const j = store.getJob(jobId); return { jobId: j.id, status: j.status, progress: j.progress && { done: j.progress.done, total: j.progress.total, current: j.progress.current }, result: j.result, error: j.error }; } },
   { name: "cancel_job", description: "Stop a running job.", inputSchema: obj({ jobId: str("The job id") }, ["jobId"]),
     async handler({ jobId }, { store, engine }) { return { status: engine.cancelJob(store, jobId).status }; } },
-  { name: "list_knits", description: "What has been knitted in a project, newest first.", inputSchema: obj({ projectId: PROJECT }, ["projectId"]),
-    async handler({ projectId }, { store }) { return listKnits(store, projectId, { limit: 30 }).map((k) => ({ id: k.id, label: k.label, format: k.format, size: `${k.width}x${k.height}`, path: knitPath(store, k) })); } },
+  { name: "list_knits", description: "What has been knitted in a project, newest first.", inputSchema: obj({ projectId: PROJECT, folder: str("Only knits in this folder and the folders inside it") }, ["projectId"]),
+    async handler({ projectId, folder }, { store }) { return listKnits(store, projectId, { limit: 30, folder }).map((k) => ({ id: k.id, label: k.label, format: k.format, size: `${k.width}x${k.height}`, path: knitPath(store, k), ...filed(k) })); } },
+
+  // ── folders ──
+  // Each section of a project has folders of its own, which hold things and other folders.
+  // Filing a thing changes nothing about it. There is no tool to delete a folder: a person
+  // does that in the studio, and what was in it moves up, so nothing is lost either way.
+  { name: "list_folders", description: "How a project's things are sorted: each section (patterns, yarn, parts, swatches, knits) has folders of its own, which can hold folders. Each folder is a path like Royalty free music/Lo-fi, with how many things are in it, not counting the folders inside. Give a section for just that one.", inputSchema: obj({ projectId: PROJECT, section: SECTION }, ["projectId"]),
+    async handler({ projectId, section }, { store }) {
+      store.getProject(projectId);
+      const of = (sec) => { const n = folderCounts(store, projectId, sec); return { top: n.get("") ?? 0, folders: listFolders(store, projectId, sec).map((path) => ({ path, items: n.get(path) ?? 0 })) }; };
+      return section ? { section, ...of(section) } : Object.fromEntries(FOLDER_SECTIONS.map((sec) => [sec, of(sec)]));
+    } },
+  { name: "move_to_folder", description: "File things into a folder, to sort a project the way its person thinks of it: one folder per campaign, a folder for royalty free music with one inside for each kind. Give the folder as a path, like Royalty free music/Lo-fi, or \"\" for the top; it is made when it is not there, in each section the things are from. Give the ids of what to move, of one kind or several. Moving changes nothing else about them. To move or rename a folder itself, use rename.", inputSchema: obj({ projectId: PROJECT, folder: str("The folder's path, like Royalty free music/Lo-fi, or \"\" for the top"), yarnIds: IDS("Yarn"), patternIds: IDS("patterns"), partIds: IDS("parts (not the starter parts)"), swatchIds: IDS("swatches"), knitIds: IDS("knits") }, ["projectId"]),
+    async handler({ projectId, folder, yarnIds, patternIds, partIds, swatchIds, knitIds }, { store }) {
+      if (folder === undefined || folder === null) throw new Error("move_to_folder needs folder: a path like Royalty free music/Lo-fi, or \"\" for the top.");
+      const groups = { yarn: yarnIds, patterns: patternIds, parts: partIds, swatches: swatchIds, knits: knitIds };
+      for (const [sec, ids] of Object.entries(groups)) if (ids !== undefined && !(Array.isArray(ids) && ids.every((x) => typeof x === "string"))) throw new Error(`${{ yarn: "yarnIds", patterns: "patternIds", parts: "partIds", swatches: "swatchIds", knits: "knitIds" }[sec]} is a list of ids, like ["yr_01..."].`);
+      if (!Object.values(groups).some((ids) => ids?.length)) throw new Error("Give the ids of what to move: yarnIds, patternIds, partIds, swatchIds or knitIds.");
+      return { moved: moveAllToFolder(store, projectId, groups, folder, "model") };
+    } },
 ];
 
 export const toolByName = Object.fromEntries(TOOLS.map((t) => [t.name, t]));

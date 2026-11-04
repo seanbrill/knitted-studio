@@ -3,15 +3,17 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, uploadYarn, yarnFileUrl, yarnThumbUrl } from "@knitted/core/client";
-import type { Yarn, YarnKind } from "@knitted/core";
+import { isInside, nameOf, type Yarn, type YarnKind } from "@knitted/core";
 import {
   Button, Chip, ConfirmDialog, Dialog, Drawer, DropZone, EmptyState, Field, Input, Menu, SegmentedControl, Skeleton, Textarea,
   ToggleChip, icons, useToast,
 } from "@knitted/ui";
 import { formatBytes, timeAgo, useLive } from "@/lib/hooks";
 import { useUploads, type UploadItem } from "@/lib/uploads";
+import { FolderCrumbs, FolderDialogs, FolderList, InFolder, NewFolderButton, counted, useFolders } from "./Folders";
 
-const { Upload, Plus, Search, FileText, Music, Film, Type, Image: ImageIcon, X, AlertTriangle, Trash2, Download, Link2: LinkIcon, RotateCcw } = icons;
+const { Upload, Plus, Search, FileText, Music, Film, Type, Image: ImageIcon, X, AlertTriangle, Trash2, Download, Link2: LinkIcon, RotateCcw, FolderInput } = icons;
+const spoken = (path: string) => path.split("/").join(" / ");
 
 const KINDS: { value: "all" | YarnKind; label: string }[] = [
   { value: "all", label: "All" }, { value: "image", label: "Images" }, { value: "video", label: "Video" },
@@ -72,7 +74,7 @@ function UploadTray({ items, onCancel, onClear }: { items: UploadItem[]; onCance
               </div>
             )}
             {i.status === "done" && <span style={{ color: "var(--success)" }}>Added</span>}
-            {i.status === "existing" && <span style={{ color: "var(--ink-muted)" }}>Already in Yarn, using the existing one</span>}
+            {i.status === "existing" && <span style={{ color: "var(--ink-muted)" }}>{i.folder === undefined || i.folder === i.into ? "Already in Yarn, using the existing one" : `Already in Yarn, ${i.folder ? `in ${spoken(i.folder)}` : "at the top"}, using that one`}</span>}
             {i.status === "cancelled" && <span style={{ color: "var(--ink-muted)" }}>Cancelled</span>}
             {i.status === "error" && <span className="field-error"><AlertTriangle size={13} aria-hidden /> {i.error}</span>}
           </li>
@@ -96,9 +98,17 @@ export function YarnView({ projectId }: { projectId: string }) {
   const fileInput = useRef<HTMLInputElement>(null);
 
   const { data, refresh } = useLive(() => api.yarn.list(projectId, { kind: kind === "all" ? undefined : kind, q: q || undefined, tag }), [projectId, kind, q, tag]);
-  const { data: all } = useLive(() => api.yarn.list(projectId), [projectId]);
-  const uploads = useUploads(projectId, refresh);
+  const { data: all, refresh: refreshAll } = useLive(() => api.yarn.list(projectId), [projectId]);
+  const reload = useCallback(async () => { await Promise.all([refresh(), refreshAll()]); }, [refresh, refreshAll]);
+  const kit = useFolders(projectId, "yarn", all, { onChanged: reload });
+  const uploads = useUploads(projectId, reload);
   const allTags = useMemo(() => [...new Set((all ?? []).flatMap((y) => y.tags))].sort(), [all]);
+  // A search or a filter looks in the folder the person is in and every folder inside it;
+  // otherwise the folder shows what is in it, with its folders above.
+  const filtering = !!(q || tag || kind !== "all");
+  const shown = useMemo(() => (data ?? []).filter((y) => (filtering ? isInside(y.folder, kit.here) : y.folder === kit.here)), [data, filtering, kit.here]);
+  // What is selected and still in sight: moving it away, or opening another folder, lets it go.
+  const picked = shown.filter((y) => selected.has(y.id));
 
   // Paste an image (a screenshot) straight in.
   useEffect(() => {
@@ -106,11 +116,11 @@ export function YarnView({ projectId }: { projectId: string }) {
       const el = document.activeElement;
       if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) return;
       const files = [...(e.clipboardData?.files ?? [])].map((f) => f.name && f.name !== "image.png" ? f : new File([f], `Pasted image ${new Date().toLocaleTimeString().replace(/[:\s]/g, "-")}.png`, { type: f.type }));
-      if (files.length) { e.preventDefault(); uploads.add(files); }
+      if (files.length) { e.preventDefault(); uploads.add(files, kit.here); }
     };
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
-  }, [uploads]);
+  }, [uploads, kit.here]);
 
   const hasFiles = (e: React.DragEvent) => [...e.dataTransfer.types].includes("Files");
   const toggle = (id: string) => setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
@@ -125,68 +135,85 @@ export function YarnView({ projectId }: { projectId: string }) {
       onDragEnter={(e) => { if (hasFiles(e)) { e.preventDefault(); setOver(true); } }}
       onDragOver={(e) => { if (hasFiles(e)) e.preventDefault(); }}
       onDragLeave={(e) => { if (e.currentTarget === e.target) setOver(false); }}
-      onDrop={(e) => { if (hasFiles(e)) { e.preventDefault(); setOver(false); uploads.add([...e.dataTransfer.files]); } }}
+      onDrop={(e) => { if (hasFiles(e)) { e.preventDefault(); setOver(false); uploads.add([...e.dataTransfer.files], kit.here); } }}
       style={{ position: "relative", minHeight: 420 }}
     >
-      {over && <div aria-hidden style={{ position: "absolute", inset: -8, zIndex: 20, border: "2px dashed var(--ember)", background: "var(--tint)", borderRadius: "var(--radius-lg)", display: "grid", placeItems: "center" }}><span className="h2">Drop to add to Yarn</span></div>}
+      {over && <div aria-hidden style={{ position: "absolute", inset: -8, zIndex: 20, border: "2px dashed var(--ember)", background: "var(--tint)", borderRadius: "var(--radius-lg)", display: "grid", placeItems: "center" }}><span className="h2">Drop to add to {kit.here ? nameOf(kit.here) : "Yarn"}</span></div>}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--space-3)", flexWrap: "wrap", marginBottom: "var(--space-4)" }}>
         <h2 className="h2">Yarn</h2>
-        <div style={{ display: "flex", gap: "var(--space-2)" }}>
+        <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
+          <NewFolderButton kit={kit} />
           <Button onClick={() => setUrlOpen(true)}><LinkIcon size={14} aria-hidden /> From a link</Button>
           <Button onClick={() => setCopyOpen(true)}><FileText size={14} aria-hidden /> New copy</Button>
           <Button variant="primary" onClick={() => fileInput.current?.click()}><Upload size={14} aria-hidden /> Upload</Button>
-          <input ref={fileInput} type="file" multiple hidden aria-label="Choose files to upload" onChange={(e) => { uploads.add([...(e.target.files ?? [])]); e.target.value = ""; }} />
+          <input ref={fileInput} type="file" multiple hidden aria-label="Choose files to upload" onChange={(e) => { uploads.add([...(e.target.files ?? [])], kit.here); e.target.value = ""; }} />
         </div>
       </div>
 
+      <FolderCrumbs kit={kit} />
       <div style={{ display: "flex", gap: "var(--space-3)", alignItems: "center", flexWrap: "wrap", marginBottom: "var(--space-4)" }}>
         <SegmentedControl<"all" | YarnKind> label="Kind" value={kind} onChange={setKind} options={KINDS} />
         <div style={{ position: "relative", width: 220 }}>
           <Search size={15} aria-hidden style={{ position: "absolute", left: 10, top: 10, color: "var(--ink-muted)" }} />
-          <Input aria-label="Search yarn" placeholder="Search yarn" value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 32 }} />
+          <Input aria-label={kit.here ? `Search ${nameOf(kit.here)} and the folders in it` : "Search yarn"} placeholder={kit.here ? `Search ${nameOf(kit.here)}` : "Search yarn"} value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 32 }} />
         </div>
         {allTags.map((t) => <ToggleChip key={t} pressed={tag === t} onClick={() => setTag(tag === t ? undefined : t)}>{t}</ToggleChip>)}
       </div>
 
-      {selected.size > 0 && (
-        <div role="toolbar" aria-label="Selection" style={{ display: "flex", gap: "var(--space-3)", alignItems: "center", padding: "var(--space-2) var(--space-3)", background: "var(--tint)", borderRadius: "var(--radius-md)", marginBottom: "var(--space-4)" }}>
-          <span className="label">{selected.size} selected</span>
-          <Button size="sm" onClick={async () => { const t = window.prompt("Tag to add"); if (t) { for (const y of data ?? []) if (selected.has(y.id)) await api.yarn.update(y.id, { tags: [...y.tags, t] }); await refresh(); } }}>Add tag</Button>
+      {picked.length > 0 && (
+        <div role="toolbar" aria-label="Selection" style={{ display: "flex", gap: "var(--space-3)", alignItems: "center", flexWrap: "wrap", padding: "var(--space-2) var(--space-3)", background: "var(--tint)", borderRadius: "var(--radius-md)", marginBottom: "var(--space-4)" }}>
+          <span className="label">{picked.length} selected</span>
+          <Button size="sm" onClick={() => kit.askMove(picked, counted(picked.length, "yarn"))}><FolderInput size={13} aria-hidden /> Move to folder</Button>
+          <Button size="sm" onClick={async () => { const t = window.prompt("Tag to add"); if (t) { for (const y of picked) await api.yarn.update(y.id, { tags: [...y.tags, t] }); await refresh(); } }}>Add tag</Button>
           <Button size="sm" variant="danger" onClick={() => setBulkDelete(true)}><Trash2 size={13} aria-hidden /> Delete</Button>
+          {picked.length < shown.length && <Button size="sm" variant="ghost" onClick={() => setSelected(new Set(shown.map((y) => y.id)))}>Select all {shown.length}</Button>}
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
         </div>
       )}
 
-      {!data ? (
+      {filtering ? (kit.here && <p className="body-sm" style={{ margin: "0 0 var(--space-3)", color: "var(--ink-muted)" }}>Looking in {nameOf(kit.here)} and the folders in it.</p>) : <FolderList kit={kit} />}
+
+      {!data || !all || !kit.folders ? (
         <div style={{ display: "grid", gap: "var(--space-4)", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}>{[0, 1, 2, 3].map((i) => <Skeleton key={i} height={170} />)}</div>
-      ) : data.length === 0 ? (
-        q || tag || kind !== "all" ? <EmptyState title="Nothing matches" body="Try a different filter or search." /> : (
-          <DropZone onFiles={uploads.add}>
+      ) : shown.length === 0 ? (
+        filtering ? <EmptyState title="Nothing matches" body={kit.here ? `Nothing in ${nameOf(kit.here)} or the folders in it matches. Try a different filter or search.` : "Try a different filter or search."} />
+        : all.length === 0 && kit.folders.length === 0 ? (
+          <DropZone onFiles={(f) => uploads.add(f, kit.here)}>
             <ImageIcon size={32} aria-hidden />
             <p className="h3" style={{ margin: "var(--space-3) 0 4px", color: "var(--ink)" }}>Add your first Yarn</p>
             <p className="body-sm" style={{ margin: "0 0 var(--space-4)" }}>Drop photos, logos, video, audio, fonts or text here. You can also paste a screenshot.</p>
             <Button variant="primary" onClick={() => fileInput.current?.click()}>Choose files</Button>
           </DropZone>
-        )
+        ) : kit.here && !kit.gone && kit.countIn(kit.here) === 0 && !kit.folders.some((f) => f !== kit.here && isInside(f, kit.here)) ? (
+          <DropZone onFiles={(f) => uploads.add(f, kit.here)}>
+            <ImageIcon size={32} aria-hidden />
+            <p className="h3" style={{ margin: "var(--space-3) 0 4px", color: "var(--ink)" }}>Nothing in {nameOf(kit.here)} yet</p>
+            <p className="body-sm" style={{ margin: "0 0 var(--space-4)" }}>Drop files here to add them to this folder, or drag Yarn onto it from another one.</p>
+            <Button variant="primary" onClick={() => fileInput.current?.click()}>Choose files</Button>
+          </DropZone>
+        ) : null
       ) : (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: "var(--space-4)", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}>
-          {data.map((y) => {
+        <ul aria-label={kit.here ? `Yarn in ${nameOf(kit.here)}` : "Yarn"} style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: "var(--space-4)", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}>
+          {shown.map((y) => {
             // One string for what is SHOWN and what is announced, so they cannot disagree.
             const facts = `${y.kind}${y.width ? ` · ${y.width}x${y.height}` : ""}${y.durationMs ? ` · ${(y.durationMs / 1000).toFixed(1)}s` : ""}`;
+            // Gathered from the folders inside this one: say which.
+            const from = y.folder !== kit.here ? y.folder : "";
             return (
-            <li key={y.id} className="yarn-card" data-selected={selected.has(y.id)}>
+            <li key={y.id} className="yarn-card" data-selected={selected.has(y.id)} draggable onDragStart={kit.dragThings(selected.has(y.id) ? picked.map((x) => x.id) : [y.id])}>
               <input type="checkbox" className="yarn-check" aria-label={`Select ${y.name}`} checked={selected.has(y.id)} onChange={() => toggle(y.id)} />
               <div className="card card-link" style={{ position: "relative", padding: "var(--space-2)", outline: selected.has(y.id) ? "2px solid var(--ember)" : undefined }}>
                 {/* The whole card is one empty button that carries the name, so the
                     announced name and the visible text cannot disagree. */}
-                <button aria-label={`${y.name} ${facts}`} onClick={() => setDetail(y.id)} style={{ position: "absolute", inset: 0, zIndex: 1, background: "transparent", border: 0, borderRadius: "var(--radius-md)", cursor: "pointer" }} />
+                <button aria-label={`${y.name} ${facts}${from ? `, in ${spoken(from)}` : ""}`} onClick={() => setDetail(y.id)} style={{ position: "absolute", inset: 0, zIndex: 1, background: "transparent", border: 0, borderRadius: "var(--radius-md)", cursor: "pointer" }} />
                 <div aria-hidden style={{ aspectRatio: "1 / 1", borderRadius: "var(--radius-sm)", overflow: "hidden" }}><YarnThumb y={y} /></div>
                 <p className="label" aria-hidden style={{ margin: "var(--space-2) 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{y.name}</p>
                 <p className="eyebrow" aria-hidden style={{ margin: "2px 0 0", display: "flex", gap: 6, alignItems: "center" }}>
                   {facts}
                   {y.meta.warnings?.length ? <span title={y.meta.warnings[0]} style={{ color: "var(--danger)" }}><AlertTriangle size={12} aria-hidden /></span> : null}
                 </p>
+                {from && <span aria-hidden style={{ display: "block", marginTop: 2 }}><InFolder path={from} /></span>}
               </div>
             </li>
             );
@@ -195,16 +222,17 @@ export function YarnView({ projectId }: { projectId: string }) {
       )}
 
       <UploadTray items={uploads.items} onCancel={uploads.cancel} onClear={uploads.clearFinished} />
-      <YarnDrawer id={detail} projectId={projectId} onClose={() => setDetail(null)} onChanged={refresh} onDelete={removeOne} />
-      <NewCopyDialog open={copyOpen} onOpenChange={setCopyOpen} projectId={projectId} onDone={refresh} />
-      <FromUrlDialog open={urlOpen} onOpenChange={setUrlOpen} projectId={projectId} onDone={refresh} />
-      <ConfirmDialog open={bulkDelete} onOpenChange={setBulkDelete} title={`Delete ${selected.size} yarn?`} description="You can undo it for a while. Patterns that use them will show a missing-yarn marker." confirmLabel="Delete"
-        onConfirm={async () => { for (const id of selected) await api.yarn.remove(id); setSelected(new Set()); await refresh(); toast("Deleted"); }} />
+      <YarnDrawer id={detail} projectId={projectId} onClose={() => setDetail(null)} onChanged={reload} onDelete={removeOne} onMove={(y) => kit.askMove([y], y.name)} />
+      <NewCopyDialog open={copyOpen} onOpenChange={setCopyOpen} projectId={projectId} folder={kit.here} onDone={reload} />
+      <FromUrlDialog open={urlOpen} onOpenChange={setUrlOpen} projectId={projectId} folder={kit.here} onDone={reload} />
+      <ConfirmDialog open={bulkDelete} onOpenChange={setBulkDelete} title={`Delete ${picked.length} yarn?`} description="You can undo it for a while. Patterns that use them will show a missing-yarn marker." confirmLabel="Delete"
+        onConfirm={async () => { for (const y of picked) await api.yarn.remove(y.id); setSelected(new Set()); await reload(); toast("Deleted"); }} />
+      <FolderDialogs kit={kit} />
     </div>
   );
 }
 
-function YarnDrawer({ id, projectId, onClose, onChanged, onDelete }: { id: string | null; projectId: string; onClose: () => void; onChanged: () => void; onDelete: (y: Yarn) => Promise<void> }) {
+function YarnDrawer({ id, projectId, onClose, onChanged, onDelete, onMove }: { id: string | null; projectId: string; onClose: () => void; onChanged: () => void; onDelete: (y: Yarn) => Promise<void>; onMove: (y: Yarn) => void }) {
   const toast = useToast();
   const { data, refresh } = useLive(() => (id ? api.yarn.get(id) : Promise.resolve(null)), [id]);
   const [name, setName] = useState("");
@@ -240,6 +268,11 @@ function YarnDrawer({ id, projectId, onClose, onChanged, onDelete }: { id: strin
           </Field>
           {y.meta.warnings?.map((w) => <p key={w} className="field-error" style={{ margin: 0 }}><AlertTriangle size={14} aria-hidden /> {w}</p>)}
           <dl className="body-sm" style={{ display: "grid", gridTemplateColumns: "100px 1fr", gap: "6px 12px", margin: 0 }}>
+            <dt style={{ color: "var(--ink-muted)" }}>Folder</dt>
+            <dd style={{ margin: 0, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              {y.folder ? spoken(y.folder) : "The top of Yarn"}
+              <button type="button" className="link" onClick={() => onMove(y)}>Move</button>
+            </dd>
             <dt style={{ color: "var(--ink-muted)" }}>Size</dt><dd style={{ margin: 0 }}>{formatBytes(y.bytes)}</dd>
             {y.width && <><dt style={{ color: "var(--ink-muted)" }}>Dimensions</dt><dd style={{ margin: 0 }}>{y.width} x {y.height}</dd></>}
             {y.durationMs && <><dt style={{ color: "var(--ink-muted)" }}>Length</dt><dd style={{ margin: 0 }}>{(y.durationMs / 1000).toFixed(1)}s</dd></>}
@@ -277,9 +310,9 @@ function YarnDrawer({ id, projectId, onClose, onChanged, onDelete }: { id: strin
   );
 }
 
-function NewCopyDialog({ open, onOpenChange, projectId, onDone }: { open: boolean; onOpenChange: (o: boolean) => void; projectId: string; onDone: () => void }) {
+function NewCopyDialog({ open, onOpenChange, projectId, folder, onDone }: { open: boolean; onOpenChange: (o: boolean) => void; projectId: string; folder: string; onDone: () => void }) {
   const [name, setName] = useState(""); const [text, setText] = useState(""); const [err, setErr] = useState<string | undefined>();
-  const save = async () => { try { await api.yarn.copy(projectId, { name: name || "Copy", text }); onOpenChange(false); setName(""); setText(""); setErr(undefined); onDone(); } catch (e) { setErr((e as Error).message); } };
+  const save = async () => { try { await api.yarn.copy(projectId, { name: name || "Copy", text, folder }); onOpenChange(false); setName(""); setText(""); setErr(undefined); onDone(); } catch (e) { setErr((e as Error).message); } };
   return (
     <Dialog open={open} onOpenChange={onOpenChange} title="New copy" description="Headlines, captions, hashtags: words you want to reuse across posts."
       actions={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" onClick={save}>Save copy</Button></>}>
@@ -291,9 +324,9 @@ function NewCopyDialog({ open, onOpenChange, projectId, onDone }: { open: boolea
   );
 }
 
-function FromUrlDialog({ open, onOpenChange, projectId, onDone }: { open: boolean; onOpenChange: (o: boolean) => void; projectId: string; onDone: () => void }) {
+function FromUrlDialog({ open, onOpenChange, projectId, folder, onDone }: { open: boolean; onOpenChange: (o: boolean) => void; projectId: string; folder: string; onDone: () => void }) {
   const [url, setUrl] = useState(""); const [err, setErr] = useState<string | undefined>(); const [busy, setBusy] = useState(false);
-  const go = async () => { setBusy(true); try { await api.yarn.fromUrl(projectId, url); onOpenChange(false); setUrl(""); setErr(undefined); onDone(); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); } };
+  const go = async () => { setBusy(true); try { await api.yarn.fromUrl(projectId, url, folder); onOpenChange(false); setUrl(""); setErr(undefined); onDone(); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); } };
   return (
     <Dialog open={open} onOpenChange={onOpenChange} title="Add from a link" description="knitted fetches this one file when you press Add. Nothing else is contacted."
       actions={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" disabled={busy || !url} onClick={go}>{busy ? "Fetching..." : "Add"}</Button></>}>

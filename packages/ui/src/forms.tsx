@@ -35,10 +35,21 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTML
   },
 );
 
+/**
+ * A list to choose one from. Options with a `group` are listed under it, in the order the
+ * groups first appear, after the ones with none: a Yarn file under the folder it is in.
+ */
 export function Select({ value, onValueChange, options, placeholder, id, "aria-label": ariaLabel }: {
-  value: string; onValueChange: (v: string) => void; options: { value: string; label: string }[];
+  value: string; onValueChange: (v: string) => void; options: { value: string; label: string; group?: string }[];
   placeholder?: string; id?: string; "aria-label"?: string;
 }) {
+  const item = (o: { value: string; label: string }) => (
+    <S.Item key={o.value} value={o.value} className="select-item">
+      <S.ItemText>{o.label}</S.ItemText>
+      <S.ItemIndicator style={{ marginLeft: "auto" }}><Check size={14} /></S.ItemIndicator>
+    </S.Item>
+  );
+  const groups = [...new Set(options.map((o) => o.group).filter((g): g is string => !!g))];
   return (
     <S.Root value={value} onValueChange={onValueChange}>
       <S.Trigger id={id} className="select-trigger" aria-label={ariaLabel}>
@@ -48,11 +59,12 @@ export function Select({ value, onValueChange, options, placeholder, id, "aria-l
       <S.Portal>
         <S.Content className="select-content" position="popper" sideOffset={4}>
           <S.Viewport>
-            {options.map((o) => (
-              <S.Item key={o.value} value={o.value} className="select-item">
-                <S.ItemText>{o.label}</S.ItemText>
-                <S.ItemIndicator style={{ marginLeft: "auto" }}><Check size={14} /></S.ItemIndicator>
-              </S.Item>
+            {options.filter((o) => !o.group).map(item)}
+            {groups.map((g) => (
+              <S.Group key={g}>
+                <S.Label className="select-label">{g}</S.Label>
+                {options.filter((o) => o.group === g).map(item)}
+              </S.Group>
             ))}
           </S.Viewport>
         </S.Content>

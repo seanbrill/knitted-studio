@@ -19,7 +19,7 @@ export const FALLBACK_SWATCH: Swatch = {
     { role: "background", name: "Warm white", hex: "#fffbf6" }, { role: "text", name: "Warm black", hex: "#17110b" },
   ],
   fonts: { display: DEFAULT_FONT("Bricolage Grotesque"), body: DEFAULT_FONT("Geist"), mono: DEFAULT_FONT("Geist Mono") },
-  logos: [], voice: { summary: "", do: [], dont: [], examples: [] }, rules: { cornerRadius: 0.012 }, createdAt: "", updatedAt: "",
+  logos: [], voice: { summary: "", do: [], dont: [], examples: [] }, rules: { cornerRadius: 0.012 }, folder: "", createdAt: "", updatedAt: "",
 };
 
 export function colorFor(swatch: Swatch, role: ColorRole): string {

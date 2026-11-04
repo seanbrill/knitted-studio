@@ -180,8 +180,8 @@ test("rename labels a pattern or a piece of Yarn, one at a time", async () => {
   assert.equal(store.getPattern(photos.id).name, "Draft: photos");
   await tools.rename({ yarnId: product.id, name: "Bottle, front" });
   assert.equal(listYarn(store, project.id).find((y) => y.id === product.id).name, "Bottle, front");
-  await assert.rejects(tools.rename({ name: "x" }), /one of patternId or yarnId/);
-  await assert.rejects(tools.rename({ patternId: photos.id, yarnId: product.id, name: "x" }), /one of patternId or yarnId/);
+  await assert.rejects(tools.rename({ name: "x" }), /one of patternId, yarnId or folder/);
+  await assert.rejects(tools.rename({ patternId: photos.id, yarnId: product.id, name: "x" }), /one of patternId, yarnId or folder/);
 });
 
 test("add_stitch answers with the new stitch's id, as the other tools that make things do", async () => {
@@ -366,4 +366,45 @@ test("the studio names a model by what its client said it is", async () => {
   assert.equal(clientLabel(""), "A model");
   assert.equal(clientLabel(undefined), "A model");
   assert.equal(clientLabel("x".repeat(100)).length, 40);
+});
+
+// ── Folders: a model sorts a project the way its person thinks of it ──
+
+test("a model files things into folders, and filing one changes nothing else about it", async () => {
+  const at = { projectId: project.id };
+  const before = store.getPattern(photos.id);
+  const r = await tools.move_to_folder({ ...at, folder: "Royalty free music/Lo-fi", yarnIds: [hero.id], patternIds: [photos.id] });
+  assert.deepEqual(r.moved, { yarn: { folder: "Royalty free music/Lo-fi", moved: 1 }, patterns: { folder: "Royalty free music/Lo-fi", moved: 1 } });
+  const after = store.getPattern(photos.id);
+  assert.deepEqual([after.folder, after.version, after.stitches], ["Royalty free music/Lo-fi", before.version, before.stitches], "the pattern is the same, only filed");
+  assert.deepEqual([lastCall().summary, lastCall().where], ["Filing 2 things into \"Royalty free music/Lo-fi\"", { projectId: project.id, section: "yarn" }]);
+  assert.ok(store.activity(project.id).some((a) => a.actor === "model" && a.action === "folder.filed" && a.subject === "1 file into Royalty free music/Lo-fi"), "the person can see what the model sorted");
+
+  // The lists say where each thing is; a folder's path is found whatever its case.
+  assert.deepEqual((await tools.list_yarn({ ...at, folder: "royalty free MUSIC" })).map((y) => [y.id, y.folder]), [[hero.id, "Royalty free music/Lo-fi"]]);
+  assert.equal((await tools.list_patterns(at)).find((p) => p.id === photos.id).folder, "Royalty free music/Lo-fi");
+  assert.equal((await tools.list_patterns(at)).find((p) => p.id === pattern.id).folder, undefined, "at the top, nothing is said");
+  assert.deepEqual(await tools.list_folders({ ...at, section: "yarn" }), { section: "yarn", top: listYarn(store, project.id).length - 1, folders: [{ path: "Royalty free music", items: 0 }, { path: "Royalty free music/Lo-fi", items: 1 }] });
+  assert.deepEqual(Object.keys(await tools.list_folders(at)), ["patterns", "yarn", "parts", "swatches", "knits"]);
+
+  // Renamed in place, or moved by its whole path, a folder takes what is in it along. Each section is its own.
+  assert.deepEqual(await tools.rename({ ...at, section: "yarn", folder: "Royalty free music/Lo-fi", name: "Chill" }), { folder: "Royalty free music/Chill", section: "yarn" });
+  assert.equal(lastCall().summary, "Renaming the folder \"Royalty free music/Lo-fi\" to \"Chill\"");
+  assert.equal((await tools.rename({ ...at, section: "yarn", folder: "Royalty free music/Chill", name: "/Chill" })).folder, "Chill");
+  assert.equal(listYarn(store, project.id).find((y) => y.id === hero.id).folder, "Chill");
+  assert.equal(store.getPattern(photos.id).folder, "Royalty free music/Lo-fi", "the Patterns folders did not move");
+
+  // All or none, and what is missing is said.
+  await assert.rejects(tools.move_to_folder({ ...at, folder: "Elsewhere", yarnIds: [hero.id], patternIds: ["pt_nonesuch"] }), /pt_nonesuch is not one of this project's patterns/);
+  assert.equal(listYarn(store, project.id).find((y) => y.id === hero.id).folder, "Chill", "nothing moved");
+  await assert.rejects(tools.move_to_folder({ ...at, folder: "Elsewhere" }), /Give the ids of what to move/);
+  await assert.rejects(tools.move_to_folder({ ...at, yarnIds: [hero.id] }), /needs folder/);
+  await assert.rejects(tools.rename({ ...at, folder: "Chill", name: "Calm" }), /its section/);
+  await assert.rejects(tools.rename({ ...at, section: "yarn", folder: "Nonesuch", name: "Calm" }), /no folder "Nonesuch" in Yarn/);
+
+  // Made in a folder, and back to the top.
+  assert.equal((await tools.create_pattern({ ...at, name: "Filed", folder: "Launch/Week 1" })).folder, "Launch/Week 1");
+  assert.deepEqual((await tools.import_yarn({ ...at, text: "Spring is here", name: "Spring line", folder: "Launch" })).folder, "Launch");
+  await tools.move_to_folder({ ...at, folder: "", yarnIds: [hero.id] });
+  assert.deepEqual([lastCall().summary, listYarn(store, project.id).find((y) => y.id === hero.id).folder], ["Filing 1 file at the top", ""]);
 });

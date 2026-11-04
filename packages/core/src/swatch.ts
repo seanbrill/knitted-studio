@@ -11,9 +11,11 @@ import { newId } from "./ids.ts";
 import { NotFoundError, ValidationError, type Store } from "./store.ts";
 import { assertPublicUrl, dominantColors, getYarn, importYarn, importYarnFromUrl, listYarn, uploadTempPath, yarnPath } from "./yarn.ts";
 import { looksLikeSvg } from "./svg.ts";
+import { cleanFolder, fileInto } from "./folders.ts";
 import { baseOf, logosOf, readSite, sameFamily, stylesheetsOf, svgColors, type SiteLogo, type SiteProposal } from "./site.ts";
 
-export type SwatchData = Omit<Swatch, "id" | "projectId" | "createdAt" | "updatedAt">;
+/** A swatch's brand, which is what its file carries. Where it is filed is the project's, and is not part of it. */
+export type SwatchData = Omit<Swatch, "id" | "projectId" | "folder" | "createdAt" | "updatedAt">;
 type Row = Record<string, unknown>;
 
 const font = (family: string): FontRef => ({ family });
@@ -99,8 +101,9 @@ export function cleanSwatchData(raw: Partial<SwatchData>, base: SwatchData = SWA
 
 // ── CRUD ─────────────────────────────────────────────────────────────────────
 function toSwatch(r: Row): Swatch {
-  return { id: r.id as string, projectId: r.project_id as string, ...(JSON.parse(r.data as string) as SwatchData), createdAt: r.created_at as string, updatedAt: r.updated_at as string };
+  return { id: r.id as string, projectId: r.project_id as string, ...(JSON.parse(r.data as string) as SwatchData), folder: (r.folder as string) ?? "", createdAt: r.created_at as string, updatedAt: r.updated_at as string };
 }
+const dataOf = ({ id: _i, projectId: _p, folder: _f, createdAt: _c, updatedAt: _u, ...data }: Swatch): SwatchData => data;
 export function getSwatch(store: Store, id: string): Swatch {
   const r = store.db.prepare("select * from swatches where id = ?").get(id) as Row | undefined;
   if (!r) throw new NotFoundError("That swatch is not here.");
@@ -115,23 +118,24 @@ export function activeSwatch(store: Store, projectId: string): Swatch {
   return listSwatches(store, projectId)[0] ?? { ...FALLBACK_SWATCH, projectId };
 }
 
-/** Insert a swatch row. Runs inside the caller's transaction when there is one. */
-export function insertSwatch(store: Store, projectId: string, data: SwatchData): string {
+/** Insert a swatch row, filed in `folder`, which is there already. Runs inside the caller's transaction when there is one. */
+export function insertSwatch(store: Store, projectId: string, data: SwatchData, folder = ""): string {
   const id = newId("sw"); const t = new Date().toISOString();
-  store.db.prepare("insert into swatches (id, project_id, name, data, created_at, updated_at) values (?, ?, ?, ?, ?, ?)").run(id, projectId, data.name, JSON.stringify(data), t, t);
+  store.db.prepare("insert into swatches (id, project_id, name, data, folder, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)").run(id, projectId, data.name, JSON.stringify(data), folder, t, t);
   return id;
 }
 
 /**
  * `activate`: true makes it the project's swatch; false never does; left out, it does
- * only when the project has none.
+ * only when the project has none. `folder`: the folder in the Swatch tab it goes in.
  */
-export function createSwatch(store: Store, projectId: string, input: { template?: string; data?: Partial<SwatchData>; activate?: boolean; actor?: Actor } = {}): Swatch {
+export function createSwatch(store: Store, projectId: string, input: { template?: string; data?: Partial<SwatchData>; folder?: string; activate?: boolean; actor?: Actor } = {}): Swatch {
   store.getProject(projectId);
   const base = SWATCH_TEMPLATES[input.template ?? "starter"]?.data ?? SWATCH_TEMPLATES.starter.data;
   const data = cleanSwatchData({ ...base, ...(input.data ?? {}) }, base);
+  cleanFolder(input.folder);
   const id = store.write(() => {
-    const sid = insertSwatch(store, projectId, data);
+    const sid = insertSwatch(store, projectId, data, fileInto(store, projectId, "swatches", input.folder));
     const hasActive = !!store.getProject(projectId).swatchId;
     if (input.activate ?? !hasActive) store.db.prepare("update projects set swatch_id = ?, updated_at = ? where id = ?").run(sid, new Date().toISOString(), projectId);
     store.logRow(projectId, input.actor ?? "human", "swatch.created", data.name, null);
@@ -142,7 +146,7 @@ export function createSwatch(store: Store, projectId: string, input: { template?
 
 export function updateSwatch(store: Store, id: string, patch: Partial<SwatchData>): Swatch {
   const cur = getSwatch(store, id);
-  const { id: _i, projectId: _p, createdAt: _c, updatedAt: _u, ...curData } = cur;
+  const curData = dataOf(cur);
   const data = cleanSwatchData({ ...curData, ...patch }, curData);
   store.write(() => {
     store.db.prepare("update swatches set name = ?, data = ?, updated_at = ? where id = ?").run(data.name, JSON.stringify(data), new Date().toISOString(), id);
@@ -151,10 +155,11 @@ export function updateSwatch(store: Store, id: string, patch: Partial<SwatchData
   return getSwatch(store, id);
 }
 
+/** The copy goes next to the original, in its folder. */
 export function duplicateSwatch(store: Store, id: string): Swatch {
   const cur = getSwatch(store, id);
-  const { id: _i, projectId, createdAt: _c, updatedAt: _u, ...data } = cur;
-  return createSwatch(store, projectId, { data: { ...data, name: `${data.name} copy` } });
+  const data = dataOf(cur);
+  return createSwatch(store, cur.projectId, { data: { ...data, name: `${data.name} copy` }, folder: cur.folder });
 }
 
 export function setActiveSwatch(store: Store, projectId: string, swatchId: string): void {
@@ -178,7 +183,7 @@ export function deleteSwatch(store: Store, id: string): void {
 
 /** Copy one of this project's swatches into another project (logos are not carried; the Yarn belongs to the first project). */
 export function copySwatchToProject(store: Store, id: string, projectId: string): Swatch {
-  const { id: _i, projectId: _p, createdAt: _c, updatedAt: _u, ...data } = getSwatch(store, id);
+  const data = dataOf(getSwatch(store, id));
   return createSwatch(store, projectId, { data: { ...data, logos: [] } });
 }
 
@@ -202,11 +207,13 @@ export async function exportSwatch(store: Store, id: string) {
     if (y.bytes > MAX_LOGO_BYTES) continue;
     logos.push({ use: l.use, name: y.name, filename: y.originalName, dataUrl: `data:${y.mime};base64,${(await readFile(yarnPath(store, y))).toString("base64")}` });
   }
-  const { id: _i, projectId: _p, createdAt: _c, updatedAt: _u, logos: _l, ...data } = s;
+  const { logos: _l, ...data } = dataOf(s);
   return { format: "knitted-swatch", version: 1, swatch: data, logos };
 }
 
-export async function importSwatch(store: Store, projectId: string, file: unknown): Promise<Swatch> {
+/** A swatch from a file, into `folder` in the Swatch tab. */
+export async function importSwatch(store: Store, projectId: string, file: unknown, folder?: string): Promise<Swatch> {
+  cleanFolder(folder);
   const f = file as { format?: string; version?: number; swatch?: Partial<SwatchData>; logos?: { use: LogoUse; name: string; filename: string; dataUrl: string }[] };
   if (f?.format !== "knitted-swatch" || !f.swatch) throw new ValidationError("That is not a knitted swatch file.");
   if ((f.version ?? 1) > 1) throw new ValidationError("That swatch was made by a newer knitted. Update the app to import it.");
@@ -222,7 +229,7 @@ export async function importSwatch(store: Store, projectId: string, file: unknow
     const { yarn } = await importYarn(store, projectId, tmp, l.filename || `${l.name}.png`, { name: l.name, tags: ["logo"], actor: "import" });
     logos.push({ yarnId: yarn.id, use: l.use });
   }
-  return createSwatch(store, projectId, { data: { ...f.swatch, logos } as Partial<SwatchData> });
+  return createSwatch(store, projectId, { data: { ...f.swatch, logos } as Partial<SwatchData>, folder });
 }
 
 // ── from a website ───────────────────────────────────────────────────────────
@@ -364,8 +371,9 @@ export function matchFonts(store: Store, projectId: string, wanted: SwatchPropos
  * the project's swatch only when `activate` is true: a model proposes, and the person
  * decides in the studio.
  */
-export async function createSwatchFromProposal(store: Store, projectId: string, input: SwatchProposal, { actor = "human", activate }: { actor?: "human" | "model" | "import"; activate?: boolean } = {}): Promise<{ swatch: Swatch; notes: string[] }> {
+export async function createSwatchFromProposal(store: Store, projectId: string, input: SwatchProposal, { actor = "human", activate, folder }: { actor?: "human" | "model" | "import"; activate?: boolean; folder?: string } = {}): Promise<{ swatch: Swatch; notes: string[] }> {
   store.getProject(projectId);
+  cleanFolder(folder);
   const radius = input.rules?.cornerRadius;
   if (radius !== undefined && !(typeof radius === "number" && radius >= 0 && radius <= 0.2)) throw new ValidationError("cornerRadius is a fraction of the frame's width, from 0 to 0.2, like 0.04.");
   const { fonts, notes } = matchFonts(store, projectId, input.fonts);
@@ -385,6 +393,6 @@ export async function createSwatchFromProposal(store: Store, projectId: string, 
   const base = SWATCH_TEMPLATES.blank.data;
   const voice = { ...base.voice, ...(input.voice ?? {}) } as SwatchData["voice"];
   const rules = { ...base.rules, ...(radius !== undefined ? { cornerRadius: radius } : {}) };
-  const swatch = createSwatch(store, projectId, { template: "blank", data: { name: input.name, colors: input.colors, fonts, logos, voice, rules }, activate, actor });
+  const swatch = createSwatch(store, projectId, { template: "blank", data: { name: input.name, colors: input.colors, fonts, logos, voice, rules }, folder, activate, actor });
   return { swatch, notes };
 }
