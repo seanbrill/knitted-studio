@@ -2,6 +2,19 @@
   "note": "Written by hand, newest first. Add an entry with each release (docs/RELEASING.md).",
   "entries": [
     {
+      "version": "0.1.4",
+      "date": "2026-11-04",
+      "title": "Folders",
+      "items": [
+        "Sort every section of a project into folders, and folders inside them: Patterns, Yarn, Swatch, Parts and Knits. Make one with New folder, then drag things onto it or choose Move to folder. Rename, move or delete a folder from its menu. Deleting a folder deletes nothing in it: what it held moves up a level.",
+        "Whatever you make or add goes into the folder you are in, uploads and pasted screenshots included. A search in Yarn looks in the folder you are in and every folder inside it, and says which folder each file is in.",
+        "The editor's Yarn, Parts and Patterns panels show the same folders, and the lists for choosing a file group them by folder. In Knits, Download folder makes a zip with the folders inside it kept as folders.",
+        "Your model can sort a project too, with list_folders, move_to_folder and rename, and can put what it makes straight into a folder.",
+        "The bar for the browser download no longer jumps back to the start near the end.",
+        "The first time 0.1.4 opens your library, it adds folders to it, after keeping a copy as it was, listed in Settings, Storage. Older versions will not open the library after that, so restore that copy to go back."
+      ]
+    },
+    {
       "version": "0.1.3",
       "date": "2026-11-04",
       "title": "Watch your model work",
