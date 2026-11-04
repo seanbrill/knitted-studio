@@ -115,7 +115,9 @@ export function ensureBrowser() {
       const install = (s.install = { state: "running", progress: null });
       const fail = (message) => { install.state = "failed"; install.progress = null; install.error = message; return new RendererUnavailable(message); };
       try {
-        await installBrowser({ onProgress: (p) => { install.progress = p; } });
+        // The installer fetches the browser, then Playwright's own small ffmpeg, each counting
+        // from 0: the bar does not go back to the start for the second.
+        await installBrowser({ onProgress: (p) => { install.progress = Math.max(install.progress ?? 0, p); } });
       } catch (e) {
         throw fail(`knitted could not download its browser: ${clause(e?.message ?? e)}. Check the internet connection and try again.`);
       }
