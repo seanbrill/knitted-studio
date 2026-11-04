@@ -307,3 +307,63 @@ test("create_part makes a part of a pattern's stitches, and a slot the brand loc
   await assert.rejects(tools.create_part({ patternId: post.id, stitches: ["nonesuch"], name: "X" }), /No stitch "nonesuch"/);
 });
 
+// ── Watching a model work: each call is shown as it runs, and the person can pause it ──
+
+const { agentState, setAgentPaused } = await import("@knitted/core/node");
+const lastCall = () => agentState(store).calls.at(-1);
+
+test("each call is shown in words while it runs, pointing at the stitches it works on", async () => {
+  await tools.fill_slots({ patternId: pattern.id, slots: { headline: "Watched" } });
+  const c = lastCall();
+  assert.deepEqual([c.client, c.tool, c.summary, c.edits, c.state], ["A model", "fill_slots", "Filling headline on Story", true, "done"]);
+  assert.deepEqual(c.where, { projectId: project.id, patternId: pattern.id, stitchIds: ["a"] });
+  // Partly refused, it still did the rest: the canvas marks what it changed, never the locked stitch.
+  await tools.fill_slots({ patternId: pattern.id, slots: { headline: "Again", eyebrow: "no" } });
+  assert.deepEqual([lastCall().state, lastCall().where.stitchIds], ["done", ["a"]]);
+  assert.match(lastCall().note, /^eyebrow: .*locked/i);
+  await tools.fill_slots({ patternId: pattern.id, slots: { eyebrow: "no" } });
+  assert.deepEqual([lastCall().state, lastCall().where.stitchIds], ["refused", undefined]);
+  await assert.rejects(tools.get_pattern({ patternId: "pt_nonesuch" }));
+  assert.deepEqual([lastCall().state, lastCall().edits, lastCall().summary], ["failed", false, "Reading a pattern"]);
+  assert.ok(lastCall().note.length > 0, "a failure says why");
+});
+
+test("paused, a model's changes are refused and it is told to wait, but it can still look and stop its own job", async () => {
+  setAgentPaused(store, true);
+  try {
+    const before = saved().stitches[0].content;
+    await assert.rejects(tools.fill_slots({ patternId: pattern.id, slots: { headline: "While paused" } }), /paused you in the studio.*press Resume/);
+    assert.equal(saved().stitches[0].content, before, "nothing changed");
+    assert.deepEqual([lastCall().state, lastCall().note], ["refused", "Paused in the studio."]);
+    const wire = (await rpc("tools/call", { name: "apply_batch", arguments: { patternId: pattern.id, commands: [] } })).result;
+    assert.equal(wire.isError, true);
+    assert.match(wire.content[0].text, /paused you in the studio/, "the model reads why, as a result");
+    assert.equal((await tools.get_pattern({ patternId: pattern.id })).id, pattern.id);
+    const stop = await tools.cancel_job({ jobId: "jb_nonesuch" }).then(() => "", (e) => e.message);
+    assert.doesNotMatch(stop, /paused/);
+  } finally { setAgentPaused(store, false); }
+  assert.deepEqual((await tools.fill_slots({ patternId: pattern.id, slots: { headline: "Resumed" } })).filled, ["headline"]);
+});
+
+test("the tools marked read-only change nothing, so a pause that lets them through holds", async () => {
+  const { READ_ONLY } = await import("@knitted/mcp/tools");
+  const { TOOLS } = await import("@knitted/mcp/context");
+  assert.deepEqual([...READ_ONLY].filter((n) => !TOOLS.some((t) => t.name === n)), [], "every name is a real tool");
+  const listed = (await rpc("tools/list")).result.tools;
+  assert.deepEqual(listed.filter((t) => t.annotations.readOnlyHint).map((t) => t.name).sort(), [...READ_ONLY].sort());
+  await tools.list_parts({ projectId: project.id }); // the first look puts the built-in parts on the shelf
+  const rev = store.rev();
+  // preview_pattern draws in a browser: test/e2e/renderer.e2e.mjs covers it.
+  for (const name of [...READ_ONLY].filter((n) => n !== "preview_pattern")) await tools[name]({ ...ids, jobId: "jb_nonesuch" }).catch(() => {});
+  assert.equal(store.rev(), rev);
+});
+
+test("the studio names a model by what its client said it is", async () => {
+  const { clientLabel } = await import("@knitted/mcp/context");
+  assert.equal(clientLabel("claude-code"), "Claude Code");
+  assert.equal(clientLabel("Cursor"), "Cursor");
+  assert.equal(clientLabel("notch-agent"), "notch-agent");
+  assert.equal(clientLabel(""), "A model");
+  assert.equal(clientLabel(undefined), "A model");
+  assert.equal(clientLabel("x".repeat(100)).length, 40);
+});

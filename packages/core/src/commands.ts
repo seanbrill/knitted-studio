@@ -238,3 +238,72 @@ export function applyCommand(pattern: Pattern, cmd: Command, actor: Actor): Appl
 
 /** Commands a given actor is allowed to even attempt through the model interface. */
 export const MODEL_COMMANDS: Command["type"][] = ["addStitch", "updateStitch", "removeStitch", "reorder", "setSize", "fillSlot", "setMeta", "batch"];
+
+// ── two writers on one pattern ───────────────────────────────────────────────
+//
+// A person and a model can edit the same pattern at once. When one's change lands under
+// the other's, these say whether a change can be carried over without undoing the other:
+// a command, and the difference between two versions, each reduced to what they touch,
+// field by field ("whole" is what belongs to the pattern rather than a stitch).
+
+/** What a command or a difference touches: stitch id to field names ("*" for all of it), and the pattern as a whole. */
+export interface Touch { stitches: Map<string, Set<string>>; whole: boolean; }
+
+const ALL = new Set(["*"]);
+const mark = (t: Touch, id: string, fields: Iterable<string>) => {
+  const cur = t.stitches.get(id);
+  if (cur?.has("*")) return;
+  const add = new Set(fields);
+  t.stitches.set(id, add.has("*") ? ALL : new Set([...(cur ?? []), ...add]));
+};
+
+/** What `cmd` would change if it were applied to `p`. */
+export function touches(p: Pattern, cmd: Command, t: Touch = { stitches: new Map(), whole: false }): Touch {
+  switch (cmd.type) {
+    case "addStitch": mark(t, cmd.stitch.id, ["*"]); break;
+    case "removeStitch": mark(t, cmd.id, ["*"]); break;
+    case "updateStitch": mark(t, cmd.id, Object.keys(cmd.patch)); break;
+    case "setLocked": mark(t, cmd.id, ["locked"]); break;
+    case "setMotion": mark(t, cmd.stitchId, ["motion"]); break;
+    case "reorder": t.whole = true; break;
+    case "setSize": case "setMeta": case "setAudio": t.whole = true; break;
+    case "fillSlot": {
+      const [inst, sub] = cmd.slot.split(".", 2);
+      const s = p.stitches.find((x) => x.slot === (sub ? inst : cmd.slot));
+      if (s) mark(t, s.id, [sub ? `overrides.${sub}` : "content"]);
+      break;
+    }
+    case "batch": for (const c of cmd.commands) touches(p, c, t); break;
+  }
+  return t;
+}
+
+/** What differs between two versions of a pattern, in the same terms. */
+export function changedBetween(a: Pattern, b: Pattern): Touch {
+  const t: Touch = { stitches: new Map(), whole: false };
+  const before = new Map(a.stitches.map((s) => [s.id, s]));
+  const after = new Map(b.stitches.map((s) => [s.id, s]));
+  for (const id of new Set([...before.keys(), ...after.keys()])) {
+    const x = before.get(id), y = after.get(id);
+    if (!x || !y) { mark(t, id, ["*"]); continue; }
+    const fields = [...new Set([...Object.keys(x), ...Object.keys(y)])].filter((k) => k !== "overrides" && JSON.stringify(x[k as keyof Stitch]) !== JSON.stringify(y[k as keyof Stitch]));
+    for (const k of new Set([...Object.keys(x.overrides ?? {}), ...Object.keys(y.overrides ?? {})])) if (x.overrides?.[k] !== y.overrides?.[k]) fields.push(`overrides.${k}`);
+    if (JSON.stringify(a.motion?.tracks?.[id] ?? []) !== JSON.stringify(b.motion?.tracks?.[id] ?? [])) fields.push("motion");
+    if (fields.length) mark(t, id, fields);
+  }
+  const order = (p: Pattern) => p.stitches.map((s) => s.id).filter((id) => before.has(id) && after.has(id)).join();
+  t.whole = JSON.stringify([a.size, a.name, a.durationMs, a.motion?.audio ?? []]) !== JSON.stringify([b.size, b.name, b.durationMs, b.motion?.audio ?? []]) || order(a) !== order(b);
+  return t;
+}
+
+/** Whether two touches meet: the same field of the same stitch, or both the pattern as a whole. */
+export function clashes(a: Touch, b: Touch): boolean {
+  if (a.whole && b.whole) return true;
+  for (const [id, fields] of a.stitches) {
+    const other = b.stitches.get(id);
+    if (!other) continue;
+    if (fields.has("*") || other.has("*")) return true;
+    for (const f of fields) if (other.has(f)) return true;
+  }
+  return false;
+}

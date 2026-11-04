@@ -5,7 +5,8 @@ import { api, subscribeChanges } from "@knitted/core/client";
 import type { Part, Pattern, Swatch, Yarn } from "@knitted/core";
 import { Dialog, IconButton, Kbd, icons, useToast } from "@knitted/ui";
 import { manifestFamilies } from "@/lib/editor/fonts";
-import { useEditor } from "@/lib/editor/store";
+import { namesOf, useEditor } from "@/lib/editor/store";
+import { agentNow, whoChanged } from "@/lib/agent";
 import { Canvas } from "./Canvas";
 import { FillForm } from "./FillForm";
 import { HistoryDrawer } from "./HistoryDrawer";
@@ -41,24 +42,38 @@ export function EditorShell({ projectId, pattern, swatch, yarn, parts, patterns,
   const refreshYarn = useCallback(async () => st.setYarn(await api.yarn.list(projectId)), [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
   const refreshParts = useCallback(async () => st.setParts(await api.parts.list(projectId)), [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Another process (a model, MCP) changed the library: pick it up, unless we are mid-gesture or mid-save.
+  // Another process (a model, MCP) changed the library: pick it up. Mid-gesture or mid-save
+  // it waits its turn rather than skipping, so a model's change is never missed; a save that
+  // lands under it is carried over onto it instead (lib/editor/store.ts, rebase).
   useEffect(() => {
     let t: ReturnType<typeof setTimeout>;
-    const off = subscribeChanges(() => {
-      clearTimeout(t);
-      t = setTimeout(async () => {
-        const s = useEditor.getState();
-        if (!s.pattern || s.draft || s.status === "saving") return;
-        try {
-          const fresh = await api.patterns.get(s.pattern.id);
-          if (fresh.version > s.serverVersion) { await s.reload(); s.say("Updated: this pattern was changed somewhere else."); }
-          const sw = (await api.swatches.list(projectId)).find((x) => x.id === s.swatch.id);
-          if (sw && sw.updatedAt !== s.swatch.updatedAt) s.setSwatch(sw);
-          void refreshYarn();
-          void refreshParts();
-        } catch { /* a transient read: the next change event tries again */ }
-      }, 200);
-    });
+    const check = async () => {
+      const s = useEditor.getState();
+      if (!s.pattern) return;
+      if (s.draft || s.status === "saving") { t = setTimeout(check, 400); return; }
+      try {
+        const fresh = await api.patterns.get(s.pattern.id);
+        if (fresh.version > useEditor.getState().serverVersion) {
+          const steps = s.undoStack.length + s.redoStack.length;
+          // Null when a save of the person's is carrying it over instead: that says so itself.
+          const theirs = await s.reload();
+          if (theirs) {
+            const now = useEditor.getState();
+            const who = whoChanged(agentNow(), s.pattern.id, Date.now());
+            const what = namesOf(theirs, now.pattern);
+            // Their change is on the canvas, marked with their name: a toast only when Undo changed under the person.
+            if (now.undoStack.length + now.redoStack.length < steps) now.say(`${who ?? "Someone else"} changed ${what}. Undo will leave that alone.`);
+            else if (who) now.announce(`${who} changed ${what}.`);
+            else now.say("Updated: this pattern was changed somewhere else.");
+          }
+        }
+        const sw = (await api.swatches.list(projectId)).find((x) => x.id === s.swatch.id);
+        if (sw && sw.updatedAt !== s.swatch.updatedAt) s.setSwatch(sw);
+        void refreshYarn();
+        void refreshParts();
+      } catch { /* a transient read: the next change event tries again */ }
+    };
+    const off = subscribeChanges(() => { clearTimeout(t); t = setTimeout(check, 200); });
     return () => { off(); clearTimeout(t); };
   }, [projectId, refreshYarn, refreshParts]);
 
@@ -102,6 +117,7 @@ export function EditorShell({ projectId, pattern, swatch, yarn, parts, patterns,
           {st.mode === "fill" ? <FillForm /> : <Inspector fonts={fonts} onSavePart={() => setSavePart(true)} />}
         </div>
       </div>
+      <div className="sr-only" role="status" data-testid="editor-announcement">{st.announcement}</div>
       <HistoryDrawer open={history} onOpenChange={setHistory} />
       <SavePartDialog open={savePart} onOpenChange={setSavePart} projectId={projectId} />
       <KnitDialog open={knit} onOpenChange={setKnit} pattern={st.pattern} projectId={projectId} />

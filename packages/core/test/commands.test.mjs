@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyCommand } from "../src/commands.ts";
+import { applyCommand, changedBetween, clashes, touches } from "../src/commands.ts";
 
 const base = () => ({
   id: "pt_1", projectId: "pj_1", name: "Launch", size: { name: "Story", w: 1080, h: 1920 }, durationMs: 0, version: 1, updatedAt: "",
@@ -131,4 +131,59 @@ test("commands never mutate their input", () => {
   const frozen = JSON.parse(JSON.stringify(p));
   applyCommand(p, { type: "batch", commands: [{ type: "updateStitch", id: "a", patch: { x: 0.9 } }, { type: "removeStitch", id: "c" }] }, "human");
   assert.deepEqual(p, frozen);
+});
+
+// ── Two writers on one pattern ───────────────────────────────────────────────
+// When a model's change lands under a person's unsaved one, the editor carries the
+// person's over if the two touch different fields, and says so if they do not.
+
+const fields = (t) => Object.fromEntries([...t.stitches].map(([id, f]) => [id, [...f].sort()]));
+const fill = (p, slot, content) => applyCommand(p, { type: "fillSlot", slot, content }, "model").pattern;
+const clip = { id: "k1", startMs: 0, endMs: 500, preset: "fade-in" };
+
+test("a command touches the fields it names, on the stitch it names", () => {
+  const p = base();
+  assert.deepEqual(fields(touches(p, { type: "updateStitch", id: "a", patch: { x: 0.2, y: 0.3 } })), { a: ["x", "y"] });
+  assert.deepEqual(fields(touches(p, { type: "fillSlot", slot: "headline", content: "Hi" })), { a: ["content"] });
+  assert.deepEqual(fields(touches(p, { type: "removeStitch", id: "c" })), { c: ["*"] });
+  assert.deepEqual(fields(touches(p, { type: "setMotion", stitchId: "a", clips: [clip] })), { a: ["motion"] });
+  const both = touches(p, { type: "batch", commands: [{ type: "updateStitch", id: "a", patch: { w: 0.6 } }, { type: "updateStitch", id: "a", patch: { h: 0.2 } }, { type: "reorder", id: "b", toIndex: 0 }] });
+  assert.deepEqual(fields(both), { a: ["h", "w"] });
+  assert.equal(both.whole, true, "the order of the stitches belongs to the pattern");
+});
+
+test("what differs between two versions is found field by field", () => {
+  const a = base();
+  const b = structuredClone(a);
+  b.stitches[0].content = "Changed";
+  b.stitches[2].x = 0.5;
+  b.stitches.push({ id: "d", kind: "shape", slot: "rule", x: 0, y: 0, w: 1, h: 0.01, locked: false });
+  b.motion = { tracks: { b: [clip] } };
+  const t = changedBetween(a, b);
+  assert.deepEqual(fields(t), { a: ["content"], b: ["motion"], c: ["x"], d: ["*"] });
+  assert.equal(t.whole, false, "a stitch added at the end is not a reorder");
+  assert.equal(changedBetween(a, structuredClone(a)).stitches.size, 0);
+  const turned = structuredClone(a);
+  turned.stitches.reverse();
+  assert.equal(changedBetween(a, turned).whole, true);
+  assert.equal(changedBetween(a, { ...a, name: "Renamed" }).whole, true);
+});
+
+test("a person moving the headline while a model rewrites it is no clash; both rewriting it is", () => {
+  const p = base();
+  const model = changedBetween(p, fill(p, "headline", "From the model"));
+  assert.equal(clashes(touches(p, { type: "updateStitch", id: "a", patch: { x: 0.3 } }), model), false);
+  assert.equal(clashes(touches(p, { type: "updateStitch", id: "a", patch: { content: "Mine" } }), model), true);
+  assert.equal(clashes(touches(p, { type: "removeStitch", id: "a" }), model), true, "a stitch removed meets any change to it");
+  assert.equal(clashes(touches(p, { type: "setMeta", name: "Mine" }), model), false);
+  assert.equal(clashes(touches(p, { type: "setMeta", name: "Mine" }), changedBetween(p, { ...p, name: "Theirs" })), true);
+});
+
+test("a part's slots are told apart, so filling one is no clash with filling another", () => {
+  const p = base();
+  p.stitches.push({ id: "f", kind: "part", slot: "footer", partId: "pa_1", x: 0, y: 0.9, w: 1, h: 0.1, locked: false, overrides: { legal: "Old terms" } });
+  const theirs = changedBetween(p, { ...p, stitches: p.stitches.map((s) => (s.id === "f" ? { ...s, overrides: { legal: "New terms" } } : s)) });
+  assert.deepEqual(fields(theirs), { f: ["overrides.legal"] });
+  assert.equal(clashes(touches(p, { type: "fillSlot", slot: "footer.wordmark", content: "knitted" }), theirs), false);
+  assert.equal(clashes(touches(p, { type: "fillSlot", slot: "footer.legal", content: "Mine" }), theirs), true);
 });

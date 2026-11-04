@@ -20,7 +20,7 @@
 
 import { readFileSync } from "node:fs";
 import { getStore } from "@knitted/core/node";
-import { runTool, toolContext, TOOLS } from "./context.mjs";
+import { clientLabel, runTool, toolContext, TOOLS } from "./context.mjs";
 import { answer } from "./protocol.mjs";
 
 // The version initialize reports. The studio's build inlines it; a clone reads the app's own.
@@ -32,7 +32,9 @@ try { process.env.KNITTED_VERSION ||= JSON.parse(readFileSync(new URL("../../../
 const store = () => getStore();
 
 // A fresh context per call: the store is a process-wide singleton, and limits are per conversation.
-const call = async (name, args) => runTool(name, args, await toolContext({ store: store() }));
+// The client is the one this process serves, named by what it said when it connected.
+let client;
+const call = async (name, args) => runTool(name, args, await toolContext({ store: store(), client: clientLabel(client) }));
 
 /** The tools as plain async functions, one per registry entry, so tests and scripts can call them without MCP. */
 export const tools = Object.fromEntries(TOOLS.map((t) => [t.name, (args) => call(t.name, args)]));
@@ -60,6 +62,7 @@ if (process.argv[1] && process.argv[1].endsWith("server.mjs")) {
       } catch {
         continue;
       }
+      if (msg?.method === "initialize" && typeof msg.params?.clientInfo?.name === "string") client = msg.params.clientInfo.name;
       const reply = await answer(msg, call);
       if (reply) process.stdout.write(JSON.stringify(reply) + "\n");
     }

@@ -73,7 +73,7 @@ export async function runAgent({ store, projectId, patternId, prompt, mode = "ed
   if (mode === "suggest" && patternId) { suggestion = store.duplicatePattern(patternId, "model"); workId = suggestion.id; }
   const baseline = workId ? store.revisions(workId, 1)[0]?.id ?? null : null;
 
-  const ctx = await toolContext({ store, limits: { maxKnits, knitted: 0 } });
+  const ctx = await toolContext({ store, limits: { maxKnits, knitted: 0 }, client: "Your model" });
   const brand = activeSwatch(store, projectId);
   const intro = workId
     ? `${prompt}\n\nYou are working on this pattern (project ${projectId}, pattern ${workId}):\n${await runTool("describe_pattern", { patternId: workId }, ctx)}`

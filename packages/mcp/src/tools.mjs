@@ -30,6 +30,11 @@ const PATTERN = str("The pattern id, like pt_01...");
 // system prompt says never to follow the second kind.
 const untrusted = (label, text) => `<untrusted_data source="${label}">\n${String(text).replace(/<\/?untrusted_data[^>]*>/g, "")}\n</untrusted_data>`;
 
+// The tools that only look. They change nothing, so a client may run them without asking
+// (tools/list says readOnlyHint), and they still work while the person has paused the
+// model in the studio. Every other tool changes something.
+export const READ_ONLY = new Set(["list_projects", "get_project", "list_yarn", "get_brand_guidelines", "list_patterns", "get_pattern", "describe_pattern", "list_parts", "list_presets", "list_voices", "preview_pattern", "check_pattern", "get_job", "list_knits"]);
+
 function brief(p) {
   return { id: p.id, name: p.name, size: `${p.size.name} ${p.size.w}x${p.size.h}`, durationMs: p.durationMs, version: p.version };
 }

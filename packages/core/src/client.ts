@@ -3,7 +3,7 @@
 // The editor, the dashboard and the settings page all go through this, so a
 // route's shape lives in one place and a change to it is a type error here.
 
-import type { Actor, ColorRole, Part, Pattern, Project, Refusal, Size, Swatch, Yarn } from "./types.ts";
+import type { Actor, AgentState, ColorRole, Part, Pattern, Project, Refusal, Size, Swatch, Yarn } from "./types.ts";
 import type { SiteProposal } from "./site.ts";
 import type { KnitIssue, KnitRecord } from "./knits.ts";
 import type { Command } from "./commands.ts";
@@ -113,6 +113,10 @@ export const api = {
     start: (b: { projectId: string; patternId?: string; prompt: string; mode?: "edit" | "suggest" }) => call<AgentJob>("POST", "/api/agent", b),
     job: (id: string) => call<AgentJob>("GET", `/api/jobs/${id}`),
     cancel: (id: string) => call<AgentJob>("DELETE", `/api/jobs/${id}`),
+    /** What models have been doing lately; subscribeAgent keeps up with it. */
+    activity: () => call<AgentState>("GET", "/api/agent/activity"),
+    /** While paused, a model's edits are refused and it is told to wait for the person. */
+    pause: (paused: boolean) => call<AgentState>("POST", "/api/agent/activity", { paused }),
   },
   fonts: () => call<{ family: string; category: string; file: string; style: string; weight: [number, number]; license: string }[]>("GET", "/api/fonts"),
   storage: () => call<{ root: string; bytes: number; projects: number }>("GET", "/api/storage"),
@@ -130,23 +134,41 @@ export const api = {
 // a navigation) waited forever behind them and looked like a hang. Listeners
 // share a single EventSource, which closes when the last one leaves.
 const listeners = new Set<(rev: number) => void>();
+const watchers = new Set<(s: AgentState) => void>();
 let source: EventSource | null = null;
+let lastAgent: AgentState | null = null;
+
+function open() {
+  if (source) return;
+  source = new EventSource("/api/events");
+  source.addEventListener("changed", (e) => {
+    const rev = Number(JSON.parse((e as MessageEvent).data).rev);
+    for (const l of [...listeners]) l(rev);
+  });
+  source.addEventListener("agent", (e) => {
+    lastAgent = JSON.parse((e as MessageEvent).data) as AgentState;
+    for (const w of [...watchers]) w(lastAgent);
+  });
+}
+function closeIfDone() {
+  if (listeners.size === 0 && watchers.size === 0 && source) { source.close(); source = null; lastAgent = null; }
+}
 
 /** Subscribe to "something changed in the library". Returns an unsubscribe. */
 export function subscribeChanges(onChange: (rev: number) => void): () => void {
   if (typeof EventSource === "undefined") return () => {};
   listeners.add(onChange);
-  if (!source) {
-    source = new EventSource("/api/events");
-    source.addEventListener("changed", (e) => {
-      const rev = Number(JSON.parse((e as MessageEvent).data).rev);
-      for (const l of [...listeners]) l(rev);
-    });
-  }
-  return () => {
-    listeners.delete(onChange);
-    if (listeners.size === 0 && source) { source.close(); source = null; }
-  };
+  open();
+  return () => { listeners.delete(onChange); closeIfDone(); };
+}
+
+/** Subscribe to what models are doing, on the same stream: called with the whole state each time it moves. */
+export function subscribeAgent(onState: (s: AgentState) => void): () => void {
+  if (typeof EventSource === "undefined") return () => {};
+  watchers.add(onState);
+  open();
+  if (lastAgent) onState(lastAgent);
+  return () => { watchers.delete(onState); closeIfDone(); };
 }
 
 export const yarnFileUrl = (y: Pick<Yarn, "id" | "hash">) => `/api/yarn/${y.id}/file?v=${y.hash.slice(0, 10)}`;

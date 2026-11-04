@@ -7,10 +7,18 @@
 // command then goes to the server in order. Undo is not a separate mechanism:
 // `applyCommand` already returns the inverse of whatever it did, and undo is
 // just dispatching that.
+//
+// A model can edit the same pattern at the same time (MCP, Ask). When its change lands
+// first, the person's unsaved changes are carried over onto it, and Undo lets go of any
+// step that would put back what the model just changed: neither undoes the other by
+// accident. Only a change to the very same thing, at the very same moment, is dropped,
+// and the person is told (see `rebase`).
 
 import { create } from "zustand";
 import { api, ApiError } from "@knitted/core/client";
-import { applyCommand, type Actor, type Command, type Part, type Pattern, type Refusal, type Stitch, type Swatch, type Yarn } from "@knitted/core";
+import { applyCommand, changedBetween, clashes, touches, type Actor, type Command, type Part, type Pattern, type Refusal, type Stitch, type Swatch, type Touch, type Yarn } from "@knitted/core";
+import { agentNow, whoChanged } from "../agent";
+import { stopFollowing } from "../follow";
 
 export type EditMode = "pattern" | "fill";
 export type SaveStatus = "saved" | "saving" | "error";
@@ -48,13 +56,26 @@ export interface EditorState {
   dispatch(cmd: Command, opts?: { label?: string; coalesce?: boolean; history?: boolean }): Refusal[];
   undo(): void;
   redo(): void;
-  reload(): Promise<void>;
+  /**
+   * Take the pattern as the server has it now, and say what someone else changed. Null when
+   * it did nothing: another pattern opened, or a change of the person's went out meanwhile,
+   * whose save meets theirs and carries it over (`rebase`).
+   */
+  reload(): Promise<Touch | null>;
   say(text: string, refusals?: Refusal[]): void;
+  /** Said to a screen reader when a model changes the pattern, without a toast for everyone else. */
+  announcement: string;
+  announce(text: string): void;
 }
 
 let noticeId = 0;
-let queue: Promise<void> = Promise.resolve();
-let pending = 0;
+// The pattern as the server last confirmed it, and the person's changes it has not saved
+// yet, in order. They are saved one at a time: two in flight at once could land swapped.
+// `gen` moves on when another pattern opens, so an answer for the last one is ignored.
+let base: Pattern | null = null;
+let unsaved: { cmd: Command; actor: "human" | "fill"; label?: string; coalesce?: boolean }[] = [];
+let saving = false;
+let gen = 0;
 
 export const useEditor = create<EditorState>((set, get) => ({
   pattern: undefined as unknown as Pattern,
@@ -72,10 +93,11 @@ export const useEditor = create<EditorState>((set, get) => ({
   status: "saved",
   serverVersion: 0,
   notice: null,
+  announcement: "",
 
   init: ({ pattern, swatch, yarn, parts = [] }) => {
-    pending = 0; queue = Promise.resolve();
-    set({ pattern, swatch, yarn: Object.fromEntries(yarn.map((y) => [y.id, y])), parts: Object.fromEntries(parts.map((x) => [x.id, x])), serverVersion: pattern.version, selection: [], draft: null, undoStack: [], redoStack: [], status: "saved", mode: "pattern", zoom: "fit", playhead: 0, playing: false, notice: null });
+    gen++; base = pattern; unsaved = []; saving = false;
+    set({ pattern, swatch, yarn: Object.fromEntries(yarn.map((y) => [y.id, y])), parts: Object.fromEntries(parts.map((x) => [x.id, x])), serverVersion: pattern.version, selection: [], draft: null, undoStack: [], redoStack: [], status: "saved", mode: "pattern", zoom: "fit", playhead: 0, playing: false, notice: null, announcement: "" });
   },
   setYarn: (y) => set({ yarn: Object.fromEntries(y.map((x) => [x.id, x])) }),
   setParts: (p) => set({ parts: Object.fromEntries(p.map((x) => [x.id, x])) }),
@@ -92,6 +114,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   setPlayhead: (playhead) => set({ playhead: Math.max(0, playhead) }),
   setPlaying: (playing) => set({ playing }),
   say: (text, refusals) => set({ notice: { id: ++noticeId, text, refusals } }),
+  announce: (announcement) => set({ announcement }),
 
   dispatch: (cmd, opts = {}) => {
     const s = get();
@@ -99,6 +122,8 @@ export const useEditor = create<EditorState>((set, get) => ({
     const r = applyCommand(s.pattern, cmd, actor);
     if (r.refusals.length) get().say(r.refusals[0].why.includes("locked") ? "Locked by the pattern. Switch to Pattern mode to change it." : r.refusals[0].why, r.refusals);
     if (!r.changed || !r.inverse) return r.refusals;
+    // A change of their own: Follow stops pulling them somewhere else.
+    stopFollowing();
 
     const entry: HistoryEntry = { label: opts.label ?? cmd.type, undo: r.inverse, redo: cmd };
     set((st) => ({
@@ -108,30 +133,8 @@ export const useEditor = create<EditorState>((set, get) => ({
       // Anything selected that no longer exists is dropped.
       selection: st.selection.filter((id) => r.pattern.stitches.some((x) => x.id === id)),
     }));
-
-    // Saved in order, one at a time: two in flight at once could land swapped.
-    pending++;
-    queue = queue.then(async () => {
-      try {
-        const res = await api.patterns.apply(get().pattern.id, cmd, { actor, expectVersion: get().serverVersion, label: opts.label, coalesce: opts.coalesce });
-        set({ serverVersion: res.pattern.version });
-        pending--;
-        if (pending === 0) {
-          // The server is the authority. If it disagrees with what we showed, take its version.
-          const mine = JSON.stringify(get().pattern.stitches), theirs = JSON.stringify(res.pattern.stitches);
-          set({ status: "saved", ...(mine !== theirs ? { pattern: res.pattern } : {}) });
-        }
-      } catch (e) {
-        pending = 0;
-        if (e instanceof ApiError && e.kind === "conflict") {
-          get().say("This pattern changed somewhere else, so it was reloaded. Your last change was not applied.");
-          await get().reload();
-        } else {
-          set({ status: "error" });
-          get().say((e as Error).message || "That change could not be saved.");
-        }
-      }
-    });
+    unsaved.push({ cmd, actor, label: opts.label, coalesce: opts.coalesce });
+    void save();
     return r.refusals;
   },
 
@@ -153,11 +156,96 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
 
   reload: async () => {
+    const g = gen;
     const fresh = await api.patterns.get(get().pattern.id);
-    pending = 0;
-    set({ pattern: fresh, serverVersion: fresh.version, status: "saved", draft: null });
+    if (g !== gen || saving || unsaved.length) return null;
+    const theirs = base ? changedBetween(base, fresh) : null;
+    base = fresh; unsaved = [];
+    set((s) => ({ pattern: fresh, serverVersion: fresh.version, status: "saved", draft: null, ...(theirs ? keepHistory(s, theirs, fresh) : {}) }));
+    return theirs;
   },
 }));
+
+/** Send the person's changes, in order, until none are left. */
+async function save() {
+  if (saving) return;
+  saving = true;
+  const g = gen;
+  let tries = 0;
+  try {
+    while (unsaved.length) {
+      const u = unsaved[0];
+      try {
+        const res = await api.patterns.apply(useEditor.getState().pattern.id, u.cmd, { actor: u.actor, expectVersion: base!.version, label: u.label, coalesce: u.coalesce });
+        if (g !== gen) return;
+        unsaved.shift();
+        base = res.pattern;
+        tries = 0;
+        useEditor.setState({ serverVersion: res.pattern.version });
+      } catch (e) {
+        if (g !== gen) return;
+        // Someone else's change landed first: carry this one over onto it, and send it again.
+        // A pattern that changes under it ten times running is given up on, and said.
+        const problem = e instanceof ApiError && e.kind === "conflict" && ++tries <= 10 ? await rebase().then(() => null, (x: unknown) => x) : e;
+        if (g !== gen) return;
+        if (!problem) continue;
+        unsaved = [];
+        useEditor.setState({ status: "error" });
+        useEditor.getState().say((problem as Error).message || "That change could not be saved.");
+        return;
+      }
+    }
+    // The server is the authority. If it disagrees with what we showed, take its version.
+    const mine = JSON.stringify(useEditor.getState().pattern.stitches), theirs = JSON.stringify(base!.stitches);
+    useEditor.setState({ status: "saved", ...(mine !== theirs ? { pattern: base! } : {}) });
+  } finally {
+    if (g === gen) saving = false;
+  }
+}
+
+/**
+ * Someone else's change landed first: a model, or another window. Take the pattern as it
+ * is now and carry the person's unsaved changes over onto it, each one unless it would
+ * undo what the other just did. Those few are dropped, and the person is told which.
+ */
+async function rebase() {
+  const g = gen;
+  const id = useEditor.getState().pattern.id;
+  const fresh = await api.patterns.get(id);
+  if (g !== gen) return;
+  const theirs = changedBetween(base!, fresh);
+  let p = fresh;
+  const kept: typeof unsaved = [], lost: typeof unsaved = [];
+  for (const u of unsaved) {
+    // One that changes nothing now (the other made the same change) is simply done.
+    const r = applyCommand(p, u.cmd, u.actor);
+    if (clashes(touches(p, u.cmd), theirs)) lost.push(u);
+    else if (r.changed) { kept.push(u); p = r.pattern; }
+  }
+  base = fresh; unsaved = kept;
+  const st = useEditor.getState();
+  useEditor.setState({ pattern: p, serverVersion: fresh.version, selection: st.selection.filter((x) => p.stitches.some((s) => s.id === x)), ...keepHistory(st, theirs, fresh) });
+  const who = whoChanged(agentNow(), id, Date.now()) ?? "Someone else";
+  if (lost.length) {
+    const names = namesOf(lost.reduce((t, u) => touches(fresh, u.cmd, t), { stitches: new Map(), whole: false } as Touch), fresh);
+    st.say(`${who} changed ${names} just as you did, so your change to it was not kept. The rest of your changes were.`);
+  } else st.announce(`${who} changed ${namesOf(theirs, fresh)}. Your changes were kept.`);
+}
+
+/** Undo and Redo steps that would put back what someone else just changed are let go; the rest stay. */
+function keepHistory(s: Pick<EditorState, "undoStack" | "redoStack">, theirs: Touch, p: Pattern) {
+  const keep = (e: HistoryEntry) => !clashes(touches(p, e.undo, touches(p, e.redo)), theirs);
+  return { undoStack: s.undoStack.filter(keep), redoStack: s.redoStack.filter(keep) };
+}
+
+/** What a touch is, in words: "headline and photo", or "the pattern" for its size, name or timing. */
+export function namesOf(t: Touch, p: Pattern): string {
+  const names = [...t.stitches.keys()].map((id) => { const s = p.stitches.find((x) => x.id === id); return s ? s.slot ?? `a ${s.kind}` : "a stitch"; });
+  const all = [...new Set(names), ...(t.whole ? ["the pattern"] : [])];
+  if (!all.length) return "the pattern";
+  const shown = all.length > 3 ? [...all.slice(0, 2), `${all.length - 2} more`] : all;
+  return shown.length === 1 ? shown[0] : `${shown.slice(0, -1).join(", ")} and ${shown[shown.length - 1]}`;
+}
 
 /** Stitches with any in-flight gesture applied, for drawing. */
 export function liveStitches(s: Pick<EditorState, "pattern" | "draft">): Stitch[] {
@@ -165,4 +253,4 @@ export function liveStitches(s: Pick<EditorState, "pattern" | "draft">): Stitch[
   return d ? s.pattern.stitches.map((x) => (d[x.id] ? ({ ...x, ...d[x.id] } as Stitch) : x)) : s.pattern.stitches;
 }
 
-export const isPending = () => pending > 0;
+export const isPending = () => saving || unsaved.length > 0;

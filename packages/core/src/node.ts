@@ -15,3 +15,4 @@ export { hasTool } from "./proc.ts";
 export * from "./zip.ts";
 export * from "./secrets.ts";
 export * from "./backup.ts";
+export * from "./agent.ts";

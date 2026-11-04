@@ -8,12 +8,17 @@
 // no sessions and no stream from the server, which the transport allows.
 
 import { answer } from "@knitted/mcp/protocol";
-import { runTool, toolContext } from "@knitted/mcp/context";
+import { clientLabel, runTool, toolContext } from "@knitted/mcp/context";
 import { isMcpKey } from "@/lib/mcp-key";
 import { fail, store } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
 type Ctx = { params: Promise<{ key: string }> };
+
+// Who connected last, from initialize's clientInfo, so the studio can say "Claude Code is
+// filling headline". With no sessions there is no telling two clients apart; the last to
+// connect names the calls, and a client that never said gets "A model".
+const g = globalThis as unknown as { __knittedMcpClient?: string };
 
 const rpcError = (code: number, message: string, status: number) => Response.json({ jsonrpc: "2.0", id: null, error: { code, message } }, { status });
 
@@ -26,10 +31,15 @@ export async function POST(req: Request, { params }: Ctx) {
   let msg: unknown;
   try { msg = await req.json(); } catch { return rpcError(-32700, "That was not JSON.", 400); }
   const s = store();
-  const call = async (name: string, args: Record<string, unknown>) => runTool(name, args, await toolContext({ store: s }));
+  const call = async (name: string, args: Record<string, unknown>) => runTool(name, args, await toolContext({ store: s, client: clientLabel(g.__knittedMcpClient) }));
   const messages: unknown[] = Array.isArray(msg) ? msg : [msg];
   const replies: unknown[] = [];
-  for (const m of messages) { const r = await answer(m, call); if (r) replies.push(r); }
+  for (const m of messages) {
+    const init = m as { method?: string; params?: { clientInfo?: { name?: unknown } } };
+    if (init?.method === "initialize" && typeof init.params?.clientInfo?.name === "string") g.__knittedMcpClient = init.params.clientInfo.name;
+    const r = await answer(m, call);
+    if (r) replies.push(r);
+  }
   // Only notifications, which get no reply.
   if (!replies.length) return new Response(null, { status: 202 });
   return Response.json(Array.isArray(msg) ? replies : replies[0]);

@@ -5,6 +5,7 @@ import { useState } from "react";
 import { SIZES, type Size } from "@knitted/core";
 import { Button, Dialog, Field, IconButton, Input, SegmentedControl, Select, SwatchChip, Wordmark, icons } from "@knitted/ui";
 import { useEditor, type EditMode } from "@/lib/editor/store";
+import { ModelPresence } from "../ModelPresence";
 
 const { ArrowLeft, Undo2, Redo2, ZoomIn, ZoomOut, Clock, Command, Film } = icons as unknown as Record<string, React.ComponentType<{ size?: number }>>;
 const Clk = Clock ?? Command;
@@ -24,6 +25,7 @@ export function TopBar({ projectId, timeline, onTimeline, onHistory, onShortcuts
       <input aria-label="Pattern name" defaultValue={pattern.name} key={pattern.name} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== pattern.name) st.dispatch({ type: "setMeta", name: v }, { label: "Rename" }); else e.target.value = pattern.name; }} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
         className="label" style={{ background: "transparent", border: "1px solid transparent", borderRadius: 6, padding: "4px 6px", color: "var(--ink)", font: "inherit", fontWeight: 600, width: Math.max(8, pattern.name.length + 1) + "ch", maxWidth: 260 }} />
       <span role="status" aria-live="polite" className="body-sm" style={{ color: status === "error" ? "var(--danger)" : "var(--ink-muted)", minWidth: 64 }}>{status === "saving" ? "Saving..." : status === "error" ? "Not saved" : "Saved"}</span>
+      <ModelPresence variant="bar" patternId={pattern.id} />
 
       <div style={{ flex: 1 }} />
       <SegmentedControl<EditMode> label="Mode" value={mode} onChange={st.setMode} options={[{ value: "pattern", label: "Pattern" }, { value: "fill", label: "Fill" }]} />

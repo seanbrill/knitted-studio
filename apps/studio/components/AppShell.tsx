@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { CommandPalette, IconButton, LogoMark, Wordmark, icons, useTheme, type CommandAction } from "@knitted/ui";
+import { ModelPresence } from "./ModelPresence";
 
 const { Home, LayoutGrid, Settings, Moon, Sun, Plus, Command } = icons;
 
@@ -84,6 +85,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           );
         })}
         <div style={{ flex: 1 }} />
+        <ModelPresence variant={collapsed ? "rail-collapsed" : "rail"} />
         <button
           onClick={() => setTheme(theme === "day" ? "night" : "day")}
           className="icon-btn"

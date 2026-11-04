@@ -197,6 +197,28 @@ export interface Knit {
 }
 
 export type PartKind = "stitches" | "code";
+/** Where a model's call works: what the studio points at and highlights while it does. */
+export interface AgentWhere { projectId?: string; patternId?: string; stitchIds?: string[]; yarnId?: string; partId?: string; swatchId?: string; jobId?: string; }
+/** One call a model made, as the studio shows it: who, what, where, and how it ended. */
+export interface AgentCall {
+  id: string;
+  /** Which model: "Claude Code", or "Your model" for the studio's own. */
+  client: string;
+  tool: string;
+  /** What it is doing, in words: "Filling headline on Story". */
+  summary: string;
+  /** Whether it changes anything. Reading, checking and previewing do not. */
+  edits: boolean;
+  where: AgentWhere;
+  state: "running" | "done" | "refused" | "failed";
+  /** Why it was refused or failed, in a line. */
+  note?: string;
+  startedAt: string;
+  endedAt?: string;
+}
+/** What models have been doing lately, oldest first, and whether the person has paused them. */
+export interface AgentState { paused: boolean; calls: AgentCall[]; }
+
 export type PartCategory = "text" | "media" | "motion" | "frame" | "cta" | "other";
 export interface PartSlot { name: string; kind: "text" | "image"; default?: string; locked: boolean; }
 

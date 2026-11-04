@@ -5,6 +5,7 @@ import { yarnFileUrl, yarnThumbUrl } from "@knitted/core/client";
 import { bounds, center, intersects, resizeBox, rotatePt, snapMove, toFrac, toPx, union, angleTo, type Box, type Command, type Guide, type Handle, type Stitch } from "@knitted/core";
 import { bodyHtml, pageFor } from "@knitted/render/pure";
 import { liveStitches, useEditor } from "@/lib/editor/store";
+import { marksOn, useAgent, useNow } from "@/lib/agent";
 import { resolveStyle, compileMotion } from "@knitted/core";
 
 const HANDLES: Handle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
@@ -87,7 +88,7 @@ export function Canvas({ projectId }: { projectId: string }) {
   };
 
   const selected = stitches.filter((s) => selection.includes(s.id));
-  const group: Box | null = useMemo(() => union(selected.map(stitchBox)), [selected, stitchBox]); // eslint-disable-line react-hooks/exhaustive-deps
+  const group: Box | null = useMemo(() => union(selected.map(stitchBox)), [selected, stitchBox]);
 
   // ── gestures ───────────────────────────────────────────────────────────────
   const down = (e: React.PointerEvent) => {
@@ -215,6 +216,7 @@ export function Canvas({ projectId }: { projectId: string }) {
               const b = stitchBox(s);
               return <div key={`lock-${s.id}`} aria-hidden style={{ position: "absolute", left: b.x * scale, top: b.y * scale, width: b.w * scale, height: b.h * scale, transform: `rotate(${b.rotate ?? 0}deg)`, border: "1.5px dashed var(--ember)", opacity: 0.55, pointerEvents: "none", borderRadius: 2 }} />;
             })}
+            <ModelMarks patternId={pattern.id} stitches={stitches} box={stitchBox} scale={scale} />
             {selected.map((s) => outline(s, "select"))}
             {group && showHandles && !editing && (
               <div aria-hidden style={{ position: "absolute", left: group.x * scale, top: group.y * scale, width: group.w * scale, height: group.h * scale, transform: single ? `rotate(${stitchBox(single).rotate ?? 0}deg)` : undefined, pointerEvents: "none" }}>
@@ -254,4 +256,29 @@ function TextEditor({ id, scale, onDone }: { id: string; scale: number; onDone: 
       style={{ position: "absolute", left: b.x * scale, top: b.y * scale, width: b.w * scale, minHeight: b.h * scale, resize: "none", padding: 0, margin: 0, border: "2px solid var(--ember)", outline: "none", background: "rgba(255,255,255,.88)", color: "#17110b",
         fontFamily: `"${st.fontFamily ?? "Geist"}", sans-serif`, fontSize: Number(st.fontSize ?? 0.05) * pattern.size.w * scale, fontWeight: Number(st.fontWeight ?? 700), lineHeight: Number(st.lineHeight ?? 1.05), letterSpacing: `${Number(st.letterSpacing ?? -0.02)}em` }} />
   );
+}
+
+/**
+ * The stitches a model is changing, or changed a moment ago, outlined in red with its name,
+ * so a person watching sees where it works and does not edit the same thing at once. Its
+ * own component, so only it redraws as the moment passes.
+ */
+function ModelMarks({ patternId, stitches, box, scale }: { patternId: string; stitches: Stitch[]; box: (s: Stitch) => Box; scale: number }) {
+  const agent = useAgent();
+  const now = useNow((t) => !!marksOn(agent, patternId, t), 500);
+  const marks = marksOn(agent, patternId, now);
+  if (!marks) return null;
+  return stitches.filter((s) => marks.ids.includes(s.id)).map((s, i) => {
+    const b = box(s);
+    return (
+      <div key={`model-${s.id}`} data-testid={`model-${s.id}`} aria-hidden style={{ position: "absolute", left: b.x * scale, top: b.y * scale, width: b.w * scale, height: b.h * scale, transform: `rotate(${b.rotate ?? 0}deg)`, border: "2px solid var(--red)", borderRadius: 2, pointerEvents: "none" }}>
+        {i === 0 && (
+          <span style={{ position: "absolute", left: -2, bottom: "100%", marginBottom: 2, display: "inline-flex", alignItems: "center", gap: 5, background: "var(--red)", color: "var(--on-red)", fontSize: 11, fontWeight: 600, lineHeight: "16px", padding: "1px 6px", borderRadius: 4, whiteSpace: "nowrap" }}>
+            {marks.running && <span className="working" style={{ width: 6, height: 6, borderRadius: "50%" }} />}
+            {marks.who}
+          </span>
+        )}
+      </div>
+    );
+  });
 }
