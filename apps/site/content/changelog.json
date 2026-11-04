@@ -2,6 +2,21 @@
   "note": "Written by hand, newest first. Add an entry with each release (docs/RELEASING.md).",
   "entries": [
     {
+      "version": "0.1.3",
+      "date": "2026-11-04",
+      "title": "Watch your model work",
+      "items": [
+        "See what your model is doing while it works: its name and what it is doing, in the side bar and in the editor's top bar, with each stitch it changes outlined and named for a moment. Open it for a list of what it did and anything that was refused.",
+        "Follow takes you where your model is working and keeps up as it moves. Pause holds its changes until you resume it, and tells it to wait for you.",
+        "You and your model can edit the same pattern at once. A change of yours that lands at the same moment as its change is kept, and Undo takes back only your own. Before, the editor reloaded and your last change was lost.",
+        "The desktop app downloads the browser it knits with by itself, the first time it starts, instead of waiting for you to press Download it.",
+        "check_pattern warns when most of a picture would be cut off because its box is a very different shape, and its low-resolution warning measures the side that is stretched most.",
+        "A font in a WOFF2 file is known by its real family name, whatever the file is called, so a brand's own font is found for its swatch.",
+        "Your model can make a part from a pattern's stitches, tag Yarn as it adds it, and set the brand's corner radius when it proposes a swatch. Fonts given as {\"family\": ...} no longer stop a proposal, and a pattern id is enough for every pattern tool.",
+        "A model connecting over MCP is told which version of knitted it is talking to, and which tools only read."
+      ]
+    },
+    {
       "version": "0.1.2",
       "date": "2026-11-03",
       "title": "Knitting in the desktop app, and brands from a website",
