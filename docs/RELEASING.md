@@ -1,6 +1,6 @@
 # Releasing
 
-1. `npm run lint && npm run typecheck && npm test && npm run test:render && npm run test:e2e`
+1. `npm run lint && npm run typecheck && npm test && npm run test:render && npm run build:app && npm run test:e2e` (the link tests run the built server, as the desktop app does)
 2. Bump `version` in the root and `apps/studio/package.json`, add the version to the changelog (`apps/site/content/changelog.json`).
 3. On a Mac, `npm run release`. It builds the installers for macOS (Apple silicon and Intel), Windows (x64) and Linux (x64 and ARM), and uploads them with a `SHA256SUMS.txt` to `v<version>` in the FileFreak release folder. Then it builds the site and deploys it, and checks that the live `/releases.json` lists the new version, so the Download page shows it (with the older versions below) and installed apps are offered it. Only a Mac can build all three, because electron-builder builds macOS apps only on macOS. Running a version again replaces its files.
 
