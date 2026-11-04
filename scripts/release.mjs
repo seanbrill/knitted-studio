@@ -54,11 +54,12 @@ const built = await readFile(join(root, "dist/desktop/SHA256SUMS.txt"), "utf8");
 let release;
 try {
   const folder = (await versionsIn(fetch)).find((v) => v.version === version);
-  if (!folder) fail(`the release folder shows no v${version}. Make it public in FileFreak, so the apps and the site can see it.`);
-  release = await releaseIn(fetch, folder);
+  if (folder) release = await releaseIn(fetch, folder);
 } catch (e) {
   fail(`the release folder could not be read the way the apps read it: ${e.message}`);
 }
+if (!release) fail(`the release folder shows no v${version}. Make it public in FileFreak, so the apps and the site can see it.`);
+if (!release.finished) fail(`v${version} has no SHA256SUMS.txt in the release folder, so the apps take it for a release still going up.`);
 for (const [platform, arch] of [["darwin", "arm64"], ["darwin", "x64"], ["win32", "x64"], ["linux", "x64"], ["linux", "arm64"]]) {
   const file = fileFor(release, platform, arch);
   if (!file) fail(`v${version} has no file the ${platform} ${arch} app can update itself with.`);

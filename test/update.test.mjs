@@ -102,14 +102,14 @@ test("the website still publishes the list, for copies before 0.1.2 and for when
 const hash = (name) => createHash("sha256").update(name).digest("hex");
 let ids = 0;
 const uid = () => `00000000-0000-4000-8000-${String(++ids).padStart(12, "0")}`;
-function fileFreak(versions, { page = 200, sums = true } = {}) {
+function fileFreak(versions, { page = 200, goingUp = [], unlisted = [] } = {}) {
   const lists = new Map([[RELEASES, []]]), raws = new Map(), asked = [];
   for (const [version, names] of Object.entries(versions)) {
     const folder = { id: uid(), kind: "folder", name: `v${version}`, parentId: RELEASES };
     const files = names.map((name) => ({ id: uid(), kind: "file", name, parentId: folder.id, sizeBytes: 1e8 }));
-    if (sums) {
+    if (!goingUp.includes(version)) {
       files.push({ id: uid(), kind: "file", name: "SHA256SUMS.txt", parentId: folder.id, sizeBytes: 600 });
-      raws.set(files.at(-1).id, names.map((n) => `${hash(n)}  ${n}`).join("\n") + "\n");
+      raws.set(files.at(-1).id, names.filter((n) => !unlisted.includes(n)).map((n) => `${hash(n)}  ${n}`).join("\n") + "\n");
     }
     lists.get(RELEASES).push(folder);
     lists.set(folder.id, files);
@@ -160,10 +160,19 @@ test("a listing in pages is read to its end", async () => {
   assert.equal((await latest(ff.fetch, "0.1.0", "darwin", "arm64")).version, "0.1.6");
 });
 
-test("a version without SHA256SUMS.txt is offered, but does not install itself", async () => {
-  const found = await latest(fileFreak({ "0.1.1": ALL("0.1.1") }, { sums: false }).fetch, "0.1.0", "darwin", "arm64");
+test("a version still going up, with no SHA256SUMS.txt yet, is not offered", async () => {
+  // The folder is made before the build, and its SHA256SUMS.txt is sent after every installer.
+  const ff = fileFreak({ "0.1.1": ALL("0.1.1"), "0.1.2": ALL("0.1.2").slice(0, 3) }, { goingUp: ["0.1.2"] });
+  assert.equal((await latest(ff.fetch, "0.1.0", "darwin", "arm64")).version, "0.1.1");
+  assert.equal(await latest(ff.fetch, "0.1.1", "darwin", "arm64"), null);
+});
+
+test("a file SHA256SUMS.txt does not list is offered, but does not install itself", async () => {
+  const ff = fileFreak({ "0.1.1": ALL("0.1.1") }, { unlisted: ["knitted-0.1.1-mac-arm64.zip"] });
+  const found = await latest(ff.fetch, "0.1.0", "darwin", "arm64");
   assert.equal(found.version, "0.1.1");
   assert.ok(!checkable(found.file));
+  assert.ok(checkable((await latest(ff.fetch, "0.1.0", "darwin", "x64")).file), "the files it does list still install");
 });
 
 test("an answer that is not the folder's listing is refused, not taken for no update", async () => {

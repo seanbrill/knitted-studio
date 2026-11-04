@@ -123,7 +123,11 @@ export async function versionsIn(fetch, folder = RELEASES) {
   return (await listing(fetch, folder)).filter((i) => i.kind === "folder" && VERSION.test(i.name)).map((i) => ({ version: i.name.replace(/^v/, ""), id: i.id }));
 }
 
-/** A version's installers, as the site's list has them, each with the SHA-256 its folder's SHA256SUMS.txt records. */
+/**
+ * A version's installers, as the site's list has them, each with the SHA-256 its folder's
+ * SHA256SUMS.txt records. publish-release.mjs sends that file last, so until it is there
+ * the version is still going up (finished: false).
+ */
 export async function releaseIn(fetch, { version, id }) {
   const files = (await listing(fetch, id)).filter((i) => i.kind === "file");
   const sums = files.find((i) => i.name === "SHA256SUMS.txt");
@@ -134,6 +138,7 @@ export async function releaseIn(fetch, { version, id }) {
   }
   return {
     version,
+    finished: !!sums,
     files: files.filter((i) => systemOf(i.name)).map((i) => ({ system: systemOf(i.name), arch: archOf(i.name), name: i.name, url: raw(i.id), sha256: hashes.get(i.name) ?? "not recorded" })),
   };
 }
@@ -141,7 +146,9 @@ export async function releaseIn(fetch, { version, id }) {
 /** pickUpdate, from the release folder itself. Only the versions it may offer are opened, newest first. */
 export async function latest(fetch, current, platform, arch, folder = RELEASES) {
   for (const v of offered(await versionsIn(fetch, folder), current)) {
-    const found = pickUpdate([await releaseIn(fetch, v)], current, platform, arch);
+    const release = await releaseIn(fetch, v);
+    if (!release.finished) continue;
+    const found = pickUpdate([release], current, platform, arch);
     if (found) return found;
   }
   return null;
