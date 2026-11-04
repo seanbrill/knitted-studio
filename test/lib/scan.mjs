@@ -46,6 +46,19 @@ const CDN = [
   /cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com/,
 ];
 
+/**
+ * Lines that import a Node built-in at run time, `await import("node:stream")`. Bundled,
+ * that becomes a stand-in namespace that copies names only from an object, and some
+ * built-ins (node:stream) export a function, so the names come back undefined. One
+ * marked webpackIgnore is left to Node, which has the names, so it is not counted.
+ */
+export function findDynamicNodeImports(text) {
+  return text
+    .split("\n")
+    .map((t, i) => ({ line: i + 1, text: t.trim() }))
+    .filter((l) => /\bimport\s*\(\s*["']node:/.test(l.text));
+}
+
 /** Lines that load code, styles or fonts from a third-party origin. */
 export function findCdnReferences(text) {
   return text

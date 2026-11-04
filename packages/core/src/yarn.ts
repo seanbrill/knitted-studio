@@ -7,8 +7,10 @@
 // and stored under an id so renaming never touches the disk.
 
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { createReadStream, createWriteStream } from "node:fs";
 import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { basename, extname, join } from "node:path";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
@@ -353,14 +355,13 @@ export async function importYarnFromUrl(store: Store, projectId: string, rawUrl:
   if (declared > max) throw new ValidationError("That file is too large to import from a link. Download it and upload it instead.");
   const tmp = uploadTempPath(store, projectId);
   await mkdir(join(tmp, ".."), { recursive: true });
-  const { createWriteStream } = await import("node:fs");
-  const { Readable } = await import("node:stream");
-  const { pipeline } = await import("node:stream/promises");
   let got = 0;
-  const limit = new (await import("node:stream")).Transform({ transform(c, _e, cb) { got += c.length; if (got > max) cb(new ValidationError("That file is too large to import from a link.")); else cb(null, c); } });
+  const limit = new Transform({ transform(c, _e, cb) { got += c.length; if (got > max) cb(new ValidationError("That file is too large to import from a link.")); else cb(null, c); } });
   try { await pipeline(Readable.fromWeb(res.body as never), limit, createWriteStream(tmp)); }
   catch (e) { await rm(tmp, { force: true }); throw e; }
+  // The path as the link spells it: "Hero%20photo.png" is called Hero photo.
   let name = basename(url.pathname) || "download";
+  try { name = decodeURIComponent(name); } catch { /* not valid percent-encoding: keep it as written */ }
   if (!extname(name)) {
     const ct = (res.headers.get("content-type") ?? "").split(";")[0].trim();
     const ext = Object.entries(EXT).find(([, v]) => v.mime === ct)?.[0];

@@ -10,7 +10,7 @@ import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, rename, rm, stat } from "node:fs/promises";
 import { dirname } from "node:path";
-import { Readable } from "node:stream";
+import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
 export class DownloadError extends Error { constructor(m, kind = "download") { super(m); this.kind = kind; } }
@@ -39,7 +39,7 @@ export async function downloadFile(url, dest, { sha256: want, onProgress, signal
   const total = have + Number(res.headers.get("content-length") ?? 0);
   let done = have;
   const out = createWriteStream(part, { flags: resumed ? "a" : "w" });
-  const tick = new (await import("node:stream")).Transform({ transform(c, _e, cb) { done += c.length; onProgress?.(done, total); cb(null, c); } });
+  const tick = new Transform({ transform(c, _e, cb) { done += c.length; onProgress?.(done, total); cb(null, c); } });
   await pipeline(Readable.fromWeb(res.body), tick, out, { signal });
   if (want) {
     const got = await sha256(part);

@@ -203,6 +203,54 @@ test("importing from a local server is refused end to end", async () => {
   finally { srv.close(); }
 });
 
+// ── URL import that works ───────────────────────────────────────────────────
+// The guard above refuses every address a test could serve from, so these answer
+// from a stand-in for fetch instead. The address is a public one (203.0.113.0/24, kept
+// for documentation, so nothing real is behind it): the guard runs as it does for anyone.
+async function fromLink(url, answer, opts) {
+  const real = globalThis.fetch;
+  const asked = [];
+  globalThis.fetch = async (u, init) => { asked.push(String(u)); return answer(String(u), init); };
+  try { return { asked, result: await importYarnFromUrl(store, project.id, url, opts) }; }
+  finally { globalThis.fetch = real; }
+}
+const leftovers = () => { const d = join(store.paths.yarnDir(project.id), ".tmp"); return existsSync(d) ? readdirSync(d).length : 0; };
+
+test("a picture from a link becomes Yarn, streamed to disk", async () => {
+  const body = await png(640, 480, { r: 20, g: 120, b: 200 });
+  const { result } = await fromLink("https://203.0.113.7/brand/Hero%20photo.png", () => new Response(body, { headers: { "content-type": "image/png", "content-length": String(body.length) } }));
+  assert.equal(result.yarn.kind, "image");
+  assert.equal(result.yarn.name, "Hero photo");
+  assert.deepEqual([result.yarn.width, result.yarn.height], [640, 480]);
+  assert.ok(existsSync(yarnPath(store, result.yarn)));
+});
+
+test("a link without a file extension is named from what the server says it sent", async () => {
+  const body = await png(64, 64, { r: 200, g: 20, b: 20 });
+  const { result } = await fromLink("https://203.0.113.7/download?id=42", () => new Response(body, { headers: { "content-type": "image/png; charset=binary" } }));
+  assert.equal(result.yarn.kind, "image");
+  assert.equal(result.yarn.mime, "image/png");
+});
+
+test("a redirect is followed only to another public address", async () => {
+  const body = await png(32, 32);
+  const { asked, result } = await fromLink("https://203.0.113.7/old.png", (u) => (u.endsWith("/old.png")
+    ? new Response(null, { status: 301, headers: { location: "https://203.0.113.8/new.png" } })
+    : new Response(body, { headers: { "content-type": "image/png" } })));
+  assert.deepEqual(asked, ["https://203.0.113.7/old.png", "https://203.0.113.8/new.png"]);
+  assert.equal(result.yarn.kind, "image");
+  await assert.rejects(fromLink("https://203.0.113.7/sneaky.png", () => new Response(null, { status: 302, headers: { location: "http://192.168.1.1/router.png" } })), /your own computer or network/);
+});
+
+test("a file bigger than the limit is refused, whether or not the server says its size", async () => {
+  const body = await png(256, 256);
+  await assert.rejects(fromLink("https://203.0.113.7/big.png", () => new Response(body, { headers: { "content-length": String(body.length) } }), { maxBytes: 100 }), /too large/);
+  // No size given: it is counted as it streams, and the part already written is removed.
+  const before = leftovers();
+  await assert.rejects(fromLink("https://203.0.113.7/big.png", () => new Response(new Blob([body]).stream(), { headers: { "content-type": "image/png" } }), { maxBytes: 100 }), /too large/);
+  assert.equal(leftovers(), before);
+});
+
 // ── A project's picture, on its card ────────────────────────────────────────
 test("a project's picture is one of its own images, and its card in the list gets it", async () => {
   const p = store.createProject({ name: "Pictured" });
