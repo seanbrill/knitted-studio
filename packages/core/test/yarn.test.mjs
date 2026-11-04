@@ -114,6 +114,19 @@ test("a font's family comes from its tables, not its filename", async () => {
   assert.equal(result.yarn.kind, "font");
   assert.equal(result.yarn.meta.family, "Instrument Serif");
 });
+// Field report 2: woff2 is what Google Fonts serves, under a hash for a filename, and its
+// family used to come from that filename, so a swatch asking for the font never found it.
+test("a woff2 font's family comes from its tables too, whatever the file is called", async () => {
+  const font = (f) => readFileSync(join(process.cwd(), "packages/fonts/files", f));
+  const { result } = await imp("2V0cKI0OB5U7WaJCxne5blYKArHM.woff2", font("instrument-serif-latin-400-italic.woff2"));
+  assert.deepEqual([result.yarn.kind, result.yarn.meta.family, result.yarn.meta.weight], ["font", "Instrument Serif", 400]);
+  // A variable font's name carries its default weight; the family is every weight of it.
+  assert.equal((await imp("archivo-latin-wght-normal.woff2", font("archivo-latin-wght-normal.woff2"))).result.yarn.meta.family, "Archivo");
+  assert.equal((await imp("b.woff2", font("bricolage-grotesque-latin-wght-normal.woff2"))).result.yarn.meta.family, "Bricolage Grotesque");
+  // One whose tables will not open is still a font, and goes by the name it was given.
+  const broken = Buffer.concat([font("bebas-neue-latin-400-normal.woff2").subarray(0, 60), Buffer.alloc(64)]);
+  assert.equal((await imp("2V0cKI0OB5U7WaJCxne5blYKArHM.woff2", broken, { name: "Chango" })).result.yarn.meta.family, "Chango");
+});
 test("random bytes named .ttf are not a font", async () => {
   await assert.rejects(imp("fake.ttf", Buffer.from("not a font at all, definitely")), /not a font/);
 });

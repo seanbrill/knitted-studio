@@ -97,7 +97,7 @@ test("initialize answers in the client's own protocol version when it has it, an
   const r = (await rpc("initialize", { protocolVersion: "1999-01-01" })).result;
   assert.equal(r.protocolVersion, "2025-06-18", "a version it does not know gets the newest it does");
   assert.equal(r.serverInfo.name, "knitted-studio");
-  assert.equal(r.instructions, INSTRUCTIONS);
+  assert.ok(r.instructions.startsWith(INSTRUCTIONS));
   assert.match(r.instructions, /list_projects/);
   assert.match(r.instructions, /locked/);
 });
@@ -233,3 +233,77 @@ test("propose_swatch reads a website, and the colours a model gives win over the
     assert.equal(r.active, false);
   } finally { globalThis.fetch = real; }
 });
+
+// ── Field reports 2 and 3: what a model reached for on a complete run ──
+
+test("initialize says which knitted this is, so a client can tell the build it is talking to", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const { version } = JSON.parse(await readFile(new URL("../apps/studio/package.json", import.meta.url), "utf8"));
+  const r = (await rpc("initialize", { protocolVersion: "2025-06-18" })).result;
+  assert.equal(r.serverInfo.version, version);
+  assert.match(r.instructions, new RegExp(`This is knitted ${version.replace(/\./g, "\\.")}\\.$`));
+});
+
+test("a pattern id is enough for every pattern tool, and a project id that is not the pattern's is refused", async () => {
+  const { TOOLS } = await import("@knitted/mcp/context");
+  assert.deepEqual(TOOLS.filter((t) => t.inputSchema.properties.patternId && t.inputSchema.required.includes("projectId")).map((t) => t.name), []);
+  assert.equal((await tools.get_pattern({ patternId: pattern.id })).id, pattern.id);
+  assert.deepEqual((await tools.fill_slots({ patternId: pattern.id, slots: { headline: "By its id alone" } })).filled, ["headline"]);
+  assert.equal(saved().stitches[0].content, "By its id alone");
+  const elsewhere = store.createProject({ name: "Elsewhere" });
+  for (const name of ["get_pattern", "fill_slots", "knit_pattern"]) {
+    await assert.rejects(tools[name]({ projectId: elsewhere.id, patternId: pattern.id, slots: {} }), /is in project .*Leave out projectId/, name);
+  }
+});
+
+test("import_yarn takes tags, and the same file twice gets the new tags on the one already there", async () => {
+  const r = await tools.import_yarn({ projectId: project.id, text: "Spring is here.", name: "Spring line", tags: ["Spring", "launch"] });
+  assert.deepEqual([r.kind, r.tags, r.existing], ["copy", ["spring", "launch"], false]);
+  const again = await tools.import_yarn({ projectId: project.id, text: "Spring is here.", name: "Spring line", tags: ["hero"] });
+  assert.deepEqual([again.id, again.tags, again.existing], [r.id, ["spring", "launch", "hero"], true]);
+  assert.deepEqual(listYarn(store, project.id, { tag: "hero" }).map((y) => y.id), [r.id]);
+  assert.ok(store.activity(project.id).some((a) => a.action === "yarn.imported" && a.subject === "Spring line" && a.actor === "model"), "the activity says a model saved it");
+  await assert.rejects(tools.import_yarn({ projectId: project.id, text: "x", tags: "product" }), /tags is a list of words/);
+});
+
+test("propose_swatch takes fonts in the shape a swatch stores them, and the brand's corner radius", async () => {
+  const colors = [{ role: "primary", hex: "#b16cf8" }, { role: "text", hex: "#ffffff" }, { role: "background", hex: "#150829" }];
+  const r = await tools.propose_swatch({ projectId: project.id, colors, fonts: { display: { family: "Bricolage Grotesque" }, body: "Inter" }, rules: { cornerRadius: 0.04 } });
+  assert.deepEqual(r.fonts, { display: "Bricolage Grotesque", body: "Inter" });
+  assert.equal(r.cornerRadius, 0.04);
+  await assert.rejects(tools.propose_swatch({ projectId: project.id, colors, fonts: { display: 7 } }), /fonts\.display is not a family name\. Give fonts as family names/);
+  await assert.rejects(tools.propose_swatch({ projectId: project.id, colors, rules: { cornerRadius: "round" } }), /cornerRadius is a fraction of the frame's width/);
+});
+
+test("create_part makes a part of a pattern's stitches, and a slot the brand locked stays locked wherever it goes", async () => {
+  const { listParts } = await import("@knitted/core/node");
+  const post = store.createPattern(project.id, {
+    name: "Post", size: { name: "Post", w: 1080, h: 1350 },
+    stitches: [
+      { id: "h", kind: "text", slot: "headline", x: 0.1, y: 0.1, w: 0.8, h: 0.2, locked: false, content: "Hi" },
+      { id: "r", kind: "shape", slot: "rule", x: 0.1, y: 0.808, w: 0.8, h: 0.0015, locked: false },
+      { id: "w", kind: "text", slot: "wordmark", x: 0.1, y: 0.814, w: 0.3, h: 0.028, locked: false, content: "notch.fm" },
+      { id: "g", kind: "text", slot: "legal", x: 0.1, y: 0.846, w: 0.8, h: 0.02, locked: true, content: "Terms apply." },
+    ],
+  });
+  const parts = () => listParts(store, project.id).filter((p) => !p.builtin).length;
+  const before = parts();
+  await assert.rejects(tools.create_part({ patternId: post.id, stitches: ["rule", "wordmark", "legal"], name: "Footer", replace: true }), /legal is locked by the brand, so only a person can swap it for a part/);
+  assert.equal(parts(), before, "a refused call makes nothing");
+  const footer = await tools.create_part({ patternId: post.id, stitches: ["rule", "wordmark", "legal"], name: "Footer", category: "frame" });
+  assert.deepEqual(footer.slots, ["wordmark", "legal [locked]"]);
+  assert.equal(store.getPattern(post.id).stitches.length, 4, "without replace the pattern is left as it was");
+  assert.ok(store.activity(project.id).some((a) => a.action === "part.created" && a.subject === "Footer" && a.actor === "model"));
+  // Inserted anywhere, its locked slot is still the brand's.
+  const ins = await tools.insert_part({ patternId: pattern.id, partId: footer.id, slot: "footer" });
+  const fill = await tools.fill_slots({ patternId: pattern.id, slots: { "footer.wordmark": "notch", "footer.legal": "No terms" } });
+  assert.deepEqual([ins.inserted, fill.filled, fill.refused.map((x) => x.slot)], ["footer", ["footer.wordmark"], ["footer.legal"]]);
+  // With replace, the stitches become one linked copy of the part.
+  const bar = await tools.create_part({ patternId: post.id, stitches: ["rule", "wordmark"], name: "Wordmark bar", replace: true });
+  const now = store.getPattern(post.id).stitches;
+  assert.deepEqual(now.map((s) => s.slot), ["headline", "legal", "wordmark_bar"]);
+  assert.deepEqual([bar.instance, now[2].partId, now[2].kind], ["wordmark_bar", bar.id, "part"]);
+  assert.ok(Math.abs(now[2].y - 0.808) < 1e-9 && Math.abs(now[2].w - 0.8) < 1e-9, "the instance sits where the stitches were");
+  await assert.rejects(tools.create_part({ patternId: post.id, stitches: ["nonesuch"], name: "X" }), /No stitch "nonesuch"/);
+});
+

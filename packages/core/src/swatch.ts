@@ -320,6 +320,7 @@ export interface SwatchProposal {
   logo?: { url: string; use: LogoUse };
   logos?: SwatchData["logos"];
   voice?: Partial<SwatchData["voice"]>;
+  rules?: Partial<SwatchData["rules"]>;
 }
 type FontSlot = "display" | "body" | "mono";
 export type FontMatch = { family: string; yarnId?: string; from: "bundled" | "yarn" } | null;
@@ -332,14 +333,19 @@ export type FontMatch = { family: string; yarnId?: string; from: "bundled" | "ya
 export function matchFonts(store: Store, projectId: string, wanted: SwatchProposal["fonts"] = {}): { fonts: SwatchData["fonts"]; matched: Record<FontSlot, FontMatch>; notes: string[] } {
   const own = listYarn(store, projectId, { kind: "font" });
   const bundled = fontManifest.map((f) => f.family);
+  // The family read from the file and the name it was given are both its names: either one finds it.
+  const ownNames = own.flatMap((y) => [y.meta.family, y.name].filter((n): n is string => !!n));
   const find = (family?: string): FontMatch => {
     if (!family?.trim()) return null;
-    const mine = sameFamily(family, own.map((y) => y.meta.family ?? y.name));
-    const y = mine ? own.find((x) => (x.meta.family ?? x.name) === mine) : undefined;
+    const mine = sameFamily(family, ownNames);
+    const y = mine ? own.find((x) => x.meta.family === mine || x.name === mine) : undefined;
     if (y) return { family: y.meta.family ?? y.name, yarnId: y.id, from: "yarn" };
     const b = sameFamily(family, bundled);
     return b ? { family: b, from: "bundled" } : null;
   };
+  // knitted stores a font as {family}, so a proposal copied from a swatch may say it that way.
+  const familyOf = (v: unknown): string | undefined => (typeof v === "string" ? v : typeof (v as { family?: unknown })?.family === "string" ? (v as { family: string }).family : undefined);
+  wanted = { display: familyOf(wanted.display), body: familyOf(wanted.body), mono: familyOf(wanted.mono) };
   const matched = { display: find(wanted.display), body: find(wanted.body), mono: find(wanted.mono) };
   const ref = (m: FontMatch): FontRef | undefined => (m ? (m.yarnId ? { family: m.family, yarnId: m.yarnId } : { family: m.family }) : undefined);
   const body = ref(matched.body) ?? { family: "Inter" };
@@ -360,6 +366,8 @@ export function matchFonts(store: Store, projectId: string, wanted: SwatchPropos
  */
 export async function createSwatchFromProposal(store: Store, projectId: string, input: SwatchProposal, { actor = "human", activate }: { actor?: "human" | "model" | "import"; activate?: boolean } = {}): Promise<{ swatch: Swatch; notes: string[] }> {
   store.getProject(projectId);
+  const radius = input.rules?.cornerRadius;
+  if (radius !== undefined && !(typeof radius === "number" && radius >= 0 && radius <= 0.2)) throw new ValidationError("cornerRadius is a fraction of the frame's width, from 0 to 0.2, like 0.04.");
   const { fonts, notes } = matchFonts(store, projectId, input.fonts);
   const logos: SwatchData["logos"] = [];
   for (const l of input.logos ?? []) {
@@ -376,6 +384,7 @@ export async function createSwatchFromProposal(store: Store, projectId: string, 
   }
   const base = SWATCH_TEMPLATES.blank.data;
   const voice = { ...base.voice, ...(input.voice ?? {}) } as SwatchData["voice"];
-  const swatch = createSwatch(store, projectId, { template: "blank", data: { name: input.name, colors: input.colors, fonts, logos, voice }, activate, actor });
+  const rules = { ...base.rules, ...(radius !== undefined ? { cornerRadius: radius } : {}) };
+  const swatch = createSwatch(store, projectId, { template: "blank", data: { name: input.name, colors: input.colors, fonts, logos, voice, rules }, activate, actor });
   return { swatch, notes };
 }

@@ -18,9 +18,13 @@
 // brand decided it, and "the model may override the brand if it is confident"
 // is how brand consistency dies quietly. Unlocking is a human act in the UI.
 
+import { readFileSync } from "node:fs";
 import { getStore } from "@knitted/core/node";
 import { runTool, toolContext, TOOLS } from "./context.mjs";
 import { answer } from "./protocol.mjs";
+
+// The version initialize reports. The studio's build inlines it; a clone reads the app's own.
+try { process.env.KNITTED_VERSION ||= JSON.parse(readFileSync(new URL("../../../apps/studio/package.json", import.meta.url), "utf8")).version; } catch { /* "unknown" */ }
 
 // The same store the studio uses. Nothing here is a model-only path: a model's
 // edit and a person's edit are one operation on one document, so each sees the

@@ -146,11 +146,11 @@ export async function purgeDeletedYarn(store: Store, olderThanMs = 24 * 3600_000
   return rows.length;
 }
 
-export async function createCopy(store: Store, projectId: string, input: { name: string; text: string }): Promise<{ yarn: Yarn; existing: boolean }> {
+export async function createCopy(store: Store, projectId: string, input: { name: string; text: string; tags?: string[] }, actor: ImportOptions["actor"] = "human"): Promise<{ yarn: Yarn; existing: boolean }> {
   const text = String(input.text ?? "");
   if (!text.trim()) throw new ValidationError("Write some copy first.");
   const tmp = await writeTemp(store, projectId, Buffer.from(text, "utf8"));
-  return importYarn(store, projectId, tmp, `${input.name || "Copy"}.txt`, { name: input.name || "Copy" });
+  return importYarn(store, projectId, tmp, `${input.name || "Copy"}.txt`, { name: input.name || "Copy", tags: input.tags, actor });
 }
 
 async function writeTemp(store: Store, projectId: string, data: Buffer): Promise<string> {
@@ -282,7 +282,8 @@ export async function importYarn(store: Store, projectId: string, tmpPath: strin
     } else if (spec.kind === "font") {
       const f = readFont(await readFile(tmpPath));
       if (!f) throw new ValidationError("That file is not a font that knitted can read.");
-      meta.family = f.family ?? displayName(originalName);
+      // A file with no readable name goes by the name it was given, then its filename (often a hash).
+      meta.family = f.family || opts.name?.trim() || displayName(originalName);
       meta.weight = f.weight;
     } else if (spec.kind === "copy") {
       const text = await readFile(tmpPath, "utf8");

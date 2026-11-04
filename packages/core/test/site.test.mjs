@@ -8,7 +8,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
-import { activeSwatch, createSwatchFromProposal, importYarn, listYarn, matchFonts, openStore, proposeFromWebsite, uploadTempPath } from "../src/node.ts";
+import { activeSwatch, createSwatchFromProposal, importYarn, listYarn, matchFonts, openStore, proposeFromWebsite, updateYarn, uploadTempPath } from "../src/node.ts";
 import { cleanFamily, cssRules, logosOf, modeOf, nameOf, pageIsDark, parseColor, readSite, sameFamily, svgColors, varRole } from "../src/site.ts";
 
 const store = openStore(join(mkdtempSync(join(tmpdir(), "knitted-site-")), "k.db"));
@@ -268,6 +268,33 @@ test("a proposal's fonts become the project's own font or a bundled one; the res
   const neither = matchFonts(store, p.id, { display: "Chango", body: "Open Sans" });
   assert.deepEqual(neither.fonts, { display: { family: "Inter" }, body: { family: "Inter" } });
   assert.equal(neither.notes.length, 2);
+});
+
+// Field report 2, read off a real library: {"name": "Chango", "meta": {"family": "2V0cKI0OB5U7WaJCxne5blYKArHM"}}.
+test("a font is found by the name it was given as well as the family in its file", async () => {
+  const p = store.createProject({ name: "Hash-named font" });
+  const tmp = uploadTempPath(store, p.id);
+  (await import("node:fs")).mkdirSync(join(tmp, ".."), { recursive: true });
+  // Tables that will not open, so the family is the filename, as before woff2 could be read.
+  (await import("node:fs")).writeFileSync(tmp, Buffer.concat([Buffer.from("wOF2"), Buffer.alloc(120)]));
+  const { yarn } = await importYarn(store, p.id, tmp, "2V0cKI0OB5U7WaJCxne5blYKArHM.woff2");
+  updateYarn(store, yarn.id, { name: "Chango" });
+  assert.equal(listYarn(store, p.id, { kind: "font" })[0].meta.family, "2V0cKI0OB5U7WaJCxne5blYKArHM");
+  const m = matchFonts(store, p.id, { display: "Chango" });
+  assert.deepEqual(m.matched.display, { family: "2V0cKI0OB5U7WaJCxne5blYKArHM", yarnId: yarn.id, from: "yarn" }, "the family the page draws with is the file's");
+  assert.deepEqual(m.notes, []);
+  // The shape a swatch stores its fonts in is a family name too.
+  assert.equal(matchFonts(store, p.id, { display: { family: "Chango" } }).matched.display?.yarnId, yarn.id);
+});
+
+test("a proposal can say how round the brand's corners are, within what a swatch allows", async () => {
+  const p = store.createProject({ name: "Corners" });
+  const colors = [{ role: "primary", hex: "#b16cf8" }, { role: "background", hex: "#150829" }, { role: "text", hex: "#ffffff" }];
+  const { swatch } = await createSwatchFromProposal(store, p.id, { name: "Rounded", colors, rules: { cornerRadius: 0.04 } }, { actor: "model", activate: false });
+  assert.equal(swatch.rules.cornerRadius, 0.04);
+  const before = listYarn(store, p.id).length;
+  await assert.rejects(createSwatchFromProposal(store, p.id, { name: "Too round", colors, rules: { cornerRadius: 4 }, logo: { url: "https://203.0.113.9/icon.png", use: "full" } }), /fraction of the frame's width, from 0 to 0\.2/);
+  assert.equal(listYarn(store, p.id).length, before, "nothing was brought in for a proposal that was refused");
 });
 
 test("a model's proposal is saved as a new swatch, never made the project's, and its logo comes in as Yarn", async () => {

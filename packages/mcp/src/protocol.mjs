@@ -27,10 +27,14 @@ export async function answer(msg, call) {
   }
 }
 
+// Which knitted this is, so a client can tell the build it is talking to. The studio's
+// build inlines it (next.config.mjs); the stdio server reads it when it starts (server.mjs).
+const appVersion = () => process.env.KNITTED_VERSION || "unknown";
+
 async function result(msg, call) {
   if (msg.method === "initialize") {
     const asked = msg.params?.protocolVersion;
-    return { protocolVersion: VERSIONS.includes(asked) ? asked : VERSIONS[0], capabilities: { tools: {} }, serverInfo: { name: "knitted-studio", version: "0.2.0" }, instructions: INSTRUCTIONS };
+    return { protocolVersion: VERSIONS.includes(asked) ? asked : VERSIONS[0], capabilities: { tools: {} }, serverInfo: { name: "knitted-studio", version: appVersion() }, instructions: `${INSTRUCTIONS} This is knitted ${appVersion()}.` };
   }
   if (msg.method === "ping") return {};
   if (msg.method === "tools/list") {

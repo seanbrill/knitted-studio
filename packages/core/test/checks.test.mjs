@@ -38,3 +38,30 @@ test("nothing knitted ships uses a style nothing draws", () => {
   const stray = [...new Set(styles.flatMap(Object.keys))].filter((k) => !STYLE_KEYS.includes(k));
   assert.deepEqual(stray, []);
 });
+
+// Field report 3: a phone capture (554x1200) in a landscape box on a 1080x1350 Post.
+// The softness warning was right and pointed at the symptom; the cause was the shape.
+const shot = (w, h, style = {}, yarn = { width: 554, height: 1200, mime: "image/png" }) => preflight(
+  { id: "pt", projectId: "pj", name: "P", size: { name: "Post", w: 1080, h: 1350 }, version: 1, stitches: [{ id: "st_1", kind: "image", slot: "shot", x: 0.08, y: 0.1, w, h, locked: false, yarnId: "yn_1", style }] },
+  FALLBACK_SWATCH, { yarn: { yn_1: { id: "yn_1", kind: "image", ...yarn } } });
+const codes = (issues) => issues.map((i) => i.code).sort();
+
+test("a picture in a box of a very different shape is mostly cut off, and the check says how much", () => {
+  const before = shot(0.84, 0.42);
+  assert.deepEqual(codes(before), ["cropped", "low-res"]);
+  assert.match(before.find((i) => i.code === "cropped").message, /Only 29% of the shot image is in its box\. The box is 3\.5 times wider, in proportion/);
+  assert.match(before.find((i) => i.code === "low-res").message, /554px wide but is drawn 907px wide/);
+  // The report's fix: a box closer to the picture's shape still crops half of it, legitimately.
+  assert.deepEqual(codes(shot(0.5, 0.42)), []);
+  // Contain shows all of it; a picture that is the box's shape loses nothing.
+  assert.deepEqual(codes(shot(0.84, 0.42, { fit: "contain" })), []);
+  assert.deepEqual(codes(shot(0.84, 0.42, {}, { width: 1800, height: 1125, mime: "image/png" })), []);
+});
+
+test("softness is measured on the side that is stretched, so a wide picture in a tall box is caught", () => {
+  const tall = shot(0.5, 0.8, {}, { width: 2000, height: 500, mime: "image/jpeg" });
+  assert.match(tall.find((i) => i.code === "low-res").message, /500px tall but is drawn 1080px tall/);
+  assert.match(tall.find((i) => i.code === "cropped").message, /times taller, in proportion/);
+  // A vector never looks soft, but it is cut off like anything else.
+  assert.deepEqual(codes(shot(0.5, 0.8, {}, { width: 200, height: 50, mime: "image/svg+xml" })), ["cropped"]);
+});

@@ -84,7 +84,7 @@
   },
   {
     "name": "import_yarn",
-    "summary": "Add a file to a project's Yarn from a public web address: an image, a video, a sound, a font (to use it in a swatch) or a text file. Or save a piece of text as reusable copy. Local files are not accepted here; ask the person to upload them in the studio.",
+    "summary": "Add a file to a project's Yarn from a public web address: an image, a video, a sound, a font (to use it in a swatch) or a text file. Or save a piece of text as reusable copy. Local files are not accepted here; ask the person to upload them in the studio. A file that is already there is not added twice: you get the one there, with these tags added.",
     "params": [
       {
         "name": "projectId",
@@ -109,6 +109,12 @@
         "type": "string",
         "required": false,
         "description": "What to call it"
+      },
+      {
+        "name": "tags",
+        "type": "string[]",
+        "required": false,
+        "description": "Tags to give it, like [\"product\"], so a slot can take `tag:product`"
       }
     ]
   },
@@ -207,6 +213,12 @@
         "description": ""
       },
       {
+        "name": "rules",
+        "type": "object",
+        "required": false,
+        "description": "How the brand draws its shapes: {\"cornerRadius\": 0.04}, a fraction of the frame's width from 0 (square) to 0.2. A stitch uses it with style radius: \"$radius\"."
+      },
+      {
         "name": "logoYarnId",
         "type": "string",
         "required": false,
@@ -233,7 +245,7 @@
       {
         "name": "projectId",
         "type": "string",
-        "required": true,
+        "required": false,
         "description": "The project id, like pj_01..."
       },
       {
@@ -299,7 +311,7 @@
       {
         "name": "projectId",
         "type": "string",
-        "required": true,
+        "required": false,
         "description": "The project id, like pj_01..."
       },
       {
@@ -527,6 +539,48 @@
     ]
   },
   {
+    "name": "create_part",
+    "summary": "Make a reusable part out of stitches already in a pattern, like a footer every pattern repeats, so insert_part can put it anywhere and a change to the part lands everywhere it is used. Each stitch with a slot name becomes a slot of the part; a slot the brand locked stays locked. `replace: true` also swaps those stitches in this pattern for one linked copy of the part. The part belongs to the pattern's project.",
+    "params": [
+      {
+        "name": "patternId",
+        "type": "string",
+        "required": true,
+        "description": "The pattern id, like pt_01..."
+      },
+      {
+        "name": "stitches",
+        "type": "string[]",
+        "required": true,
+        "description": "The slot names or ids of the stitches to make it from"
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "required": true,
+        "description": "What to call the part, like Footer"
+      },
+      {
+        "name": "description",
+        "type": "string",
+        "required": false,
+        "description": "What it is for, in a sentence"
+      },
+      {
+        "name": "category",
+        "type": "string",
+        "required": false,
+        "description": "One of text, media, motion, frame, cta, other."
+      },
+      {
+        "name": "replace",
+        "type": "boolean",
+        "required": false,
+        "description": ""
+      }
+    ]
+  },
+  {
     "name": "list_presets",
     "summary": "The animation presets available to set_motion.",
     "params": []
@@ -639,7 +693,7 @@
       {
         "name": "projectId",
         "type": "string",
-        "required": true,
+        "required": false,
         "description": "The project id, like pj_01..."
       },
       {

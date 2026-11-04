@@ -3,7 +3,7 @@
 import { newId } from "./ids.ts";
 import { BUILTIN_PARTS, BUILTIN_VERSION } from "./builtin-parts.ts";
 import { NotFoundError, ValidationError, type Store } from "./store.ts";
-import type { Part, PartCategory, PartKind, PartSlot, Stitch } from "./types.ts";
+import type { Actor, Part, PartCategory, PartKind, PartSlot, Stitch } from "./types.ts";
 import { hasLintErrors, lintCodePart } from "./parts-pure.ts";
 
 type Row = Record<string, unknown>;
@@ -70,14 +70,14 @@ function clean(i: PartInput): Required<Omit<PartInput, "html" | "css">> & { html
   return { name, description: String(i.description ?? "").slice(0, 400), category: CATEGORIES.includes(i.category as PartCategory) ? i.category as PartCategory : "other", tags: (i.tags ?? []).slice(0, 12), kind, stitches: i.stitches ?? [], html: i.html, css: i.css, slots, aspect, durationMs: Math.max(0, Math.round(i.durationMs ?? 0)) };
 }
 
-export function createPart(store: Store, projectId: string | null, input: PartInput): Part {
+export function createPart(store: Store, projectId: string | null, input: PartInput, actor: Actor = "human"): Part {
   if (projectId) store.getProject(projectId);
   const c = clean(input);
   const id = newId("pa"), t = new Date().toISOString();
   store.write(() => {
     store.db.prepare("insert into parts (id, project_id, builtin, name, description, category, tags, kind, data, slots, aspect, duration_ms, version, created_at, updated_at) values (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)")
       .run(id, projectId, c.name, c.description, c.category, JSON.stringify(c.tags), c.kind, JSON.stringify({ stitches: c.stitches, html: c.html, css: c.css }), JSON.stringify(c.slots), c.aspect, c.durationMs, t, t);
-    if (projectId) store.logRow(projectId, "human", "part.created", c.name, null);
+    if (projectId) store.logRow(projectId, actor, "part.created", c.name, null);
   });
   return getPart(store, id);
 }

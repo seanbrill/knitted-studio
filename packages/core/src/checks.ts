@@ -53,9 +53,20 @@ export function preflight(p: Pattern, sw: Swatch, o: PreflightOpts): KnitIssue[]
       if (s.yarnId) {
         const y = o.yarn[s.yarnId];
         if (!y || y.deletedAt) { add({ level: "error", code: "missing-yarn", stitchId: s.id, slot: s.slot, message: `The ${name} uses Yarn that was deleted. Choose another file for it.` }); continue; }
-        // Rendered size in pixels at this scale, against the file's own pixels.
-        const wantW = s.w * p.size.w * scale;
-        if (y.width && y.mime !== "image/svg+xml" && y.width < wantW * 0.8) add({ level: "warning", code: "low-res", stitchId: s.id, slot: s.slot, message: `The ${name} image is ${y.width}px wide but is drawn ${Math.round(wantW)}px wide, so it will look soft. Use a larger file.` });
+        // The box in pixels at this scale, against the file's own pixels.
+        const boxW = s.w * p.size.w * scale, boxH = s.h * p.size.h * scale;
+        const fit = st.fit === "contain" || st.fit === "fill" ? st.fit : "cover";
+        if (y.width) {
+          const sx = boxW / y.width, sy = y.height ? boxH / y.height : sx;
+          // How far the file is enlarged. Cover and fill stretch it to the box's longer reach; contain to its shorter.
+          const up = fit === "contain" ? Math.min(sx, sy) : Math.max(sx, sy);
+          const across = up === sx ? `${y.width}px wide but is drawn ${Math.round(boxW)}px wide` : `${y.height}px tall but is drawn ${Math.round(boxH)}px tall`;
+          if (y.mime !== "image/svg+xml" && up > 1.25) add({ level: "warning", code: "low-res", stitchId: s.id, slot: s.slot, message: `The ${name} image is ${across}, so it will look soft. Use a larger file.` });
+          // Cover crops whatever is not the box's shape. A box three times the picture's
+          // proportions shows a third of it: a band of the picture, not the picture.
+          const shown = Math.min(sx, sy) / Math.max(sx, sy);
+          if (fit === "cover" && y.height && shown < 1 / 3) add({ level: "warning", code: "cropped", stitchId: s.id, slot: s.slot, message: `Only ${Math.round(shown * 100)}% of the ${name} image is in its box. The box is ${(1 / shown).toFixed(1)} times ${sx > sy ? "wider" : "taller"}, in proportion, than the image, so the rest is cut off. Use an image closer to the box's shape, change the box's shape, or set Fit to Contain.` });
+        }
       } else if (s.slot && s.slot !== "backdrop") {
         add({ level: "warning", code: "empty-image-slot", stitchId: s.id, slot: s.slot, message: `The ${name} slot has no image yet, so it will be empty in the knit.` });
       }

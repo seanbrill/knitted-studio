@@ -17,8 +17,8 @@
 //    propose_swatch adds a NEW swatch the person may choose to use; it never changes
 //    one, and never makes one the project's.
 
-import { applyCommand, motionLint, preflight, COLOR_ROLES, PRESETS, SIZES, CommandSchema } from "@knitted/core";
-import { activeSwatch, createSwatch, createSwatchFromProposal, getKnit, getPart, importYarn, importYarnFromUrl, createCopy, knitPath, listKnits, listParts, listYarn, proposeFromWebsite, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
+import { applyCommand, instanceOf, motionLint, partFromStitches, preflight, uniqueSlotName, COLOR_ROLES, PRESETS, SIZES, CommandSchema } from "@knitted/core";
+import { activeSwatch, createPart, createSwatch, createSwatchFromProposal, getKnit, getPart, importYarn, importYarnFromUrl, createCopy, knitPath, listKnits, listParts, listYarn, proposeFromWebsite, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
 
 const obj = (properties, required = []) => ({ type: "object", properties, required, additionalProperties: false });
 const str = (description) => ({ type: "string", description });
@@ -73,6 +73,25 @@ function stitchRef(p, ref) {
   return s;
 }
 
+/** A pattern by its id, which is enough on its own. A projectId given as well has to be the pattern's. */
+function patternIn(store, patternId, projectId) {
+  const p = store.getPattern(patternId);
+  if (projectId && p.projectId !== projectId) throw new Error(`Pattern ${patternId} is in project ${p.projectId}, not ${projectId}. Leave out projectId, or give that one.`);
+  return p;
+}
+
+// A swatch stores a font as {family}, so a model holding one may pass that straight back.
+const FONT_SHAPE = "Give fonts as family names, like {\"display\": \"Chango\", \"body\": \"Inter\"}.";
+function fontNames(fonts) {
+  if (fonts == null) return {};
+  if (typeof fonts !== "object" || Array.isArray(fonts)) throw new Error(FONT_SHAPE);
+  return Object.fromEntries(Object.entries(fonts).map(([slot, v]) => {
+    const family = typeof v === "string" ? v : typeof v?.family === "string" ? v.family : null;
+    if (family === null) throw new Error(`fonts.${slot} is not a family name. ${FONT_SHAPE}`);
+    return [slot, family];
+  }));
+}
+
 export const TOOLS = [
   // ── projects ──
   { name: "list_projects", description: "List the projects in this studio: id, name and how many patterns each has. Start here when you do not know a project id.", inputSchema: obj({}),
@@ -89,12 +108,16 @@ export const TOOLS = [
     async handler({ projectId, kind, tag, q }, { store }) {
       return listYarn(store, projectId, { kind, tag, q }).slice(0, 60).map((y) => ({ id: y.id, name: y.name, kind: y.kind, tags: y.tags, ...(y.width ? { size: `${y.width}x${y.height}` } : {}), ...(y.durationMs ? { seconds: +(y.durationMs / 1000).toFixed(1) } : {}), ...(y.kind === "copy" ? { text: untrusted(`yarn:${y.name}`, (y.meta.text ?? "").slice(0, 800)) } : {}), ...(y.meta.warnings?.length ? { warnings: y.meta.warnings } : {}) }));
     } },
-  { name: "import_yarn", description: "Add a file to a project's Yarn from a public web address: an image, a video, a sound, a font (to use it in a swatch) or a text file. Or save a piece of text as reusable copy. Local files are not accepted here; ask the person to upload them in the studio.", inputSchema: obj({ projectId: PROJECT, url: str(`A public https link to a ${SUPPORTED} file`), text: str("Copy to save, instead of a file"), name: str("What to call it") }, ["projectId"]),
-    async handler({ projectId, url, text, name }, { store }) {
-      if (text) { const r = await createCopy(store, projectId, { name: name ?? "Copy", text }); return { id: r.yarn.id, name: r.yarn.name, existing: r.existing }; }
-      if (!url) throw new Error("Give a url to fetch, or text to save.");
-      const r = await importYarnFromUrl(store, projectId, url, { name, actor: "model" });
-      return { id: r.yarn.id, name: r.yarn.name, kind: r.yarn.kind, existing: r.existing };
+  { name: "import_yarn", description: "Add a file to a project's Yarn from a public web address: an image, a video, a sound, a font (to use it in a swatch) or a text file. Or save a piece of text as reusable copy. Local files are not accepted here; ask the person to upload them in the studio. A file that is already there is not added twice: you get the one there, with these tags added.", inputSchema: obj({ projectId: PROJECT, url: str(`A public https link to a ${SUPPORTED} file`), text: str("Copy to save, instead of a file"), name: str("What to call it"), tags: { type: "array", items: { type: "string" }, description: "Tags to give it, like [\"product\"], so a slot can take `tag:product`" } }, ["projectId"]),
+    async handler({ projectId, url, text, name, tags }, { store }) {
+      if (tags !== undefined && !(Array.isArray(tags) && tags.every((t) => typeof t === "string"))) throw new Error("tags is a list of words, like [\"product\", \"shot\"].");
+      let r;
+      if (text) r = await createCopy(store, projectId, { name: name ?? "Copy", text, tags }, "model");
+      else if (url) r = await importYarnFromUrl(store, projectId, url, { name, tags, actor: "model" });
+      else throw new Error("Give a url to fetch, or text to save.");
+      // The same file twice is the same Yarn, so the tags asked for land on the one there.
+      const y = r.existing && tags?.length ? updateYarn(store, r.yarn.id, { tags: [...r.yarn.tags, ...tags] }) : r.yarn;
+      return { id: y.id, name: y.name, kind: y.kind, tags: y.tags, existing: r.existing };
     } },
   { name: "tag_yarn", description: "Set the tags on a piece of Yarn. Tags let a batch pick from a group, like `tag:product`.", inputSchema: obj({ yarnId: str("The yarn id"), tags: { type: "array", items: { type: "string" } } }, ["yarnId", "tags"]),
     async handler({ yarnId, tags }, { store }) { return { id: yarnId, tags: updateYarn(store, yarnId, { tags }).tags }; } },
@@ -116,15 +139,18 @@ export const TOOLS = [
       colors: { type: "array", description: "Colours by role", items: obj({ role: { type: "string", enum: COLOR_ROLES }, name: str("A name for it, like Violet"), hex: str("Six digits, like #b16cf8") }, ["role", "hex"]) },
       fonts: obj({ display: str("Headline font family"), body: str("Body text font family"), mono: str("Labels and code font family") }),
       voice: obj({ summary: str("How the brand sounds, in a sentence or two"), do: { type: "array", items: { type: "string" } }, dont: { type: "array", items: { type: "string" } }, examples: { type: "array", items: { type: "string" } } }),
+      rules: { ...obj({ cornerRadius: { type: "number", description: "How round the brand's corners are, as a fraction of the frame's width from 0 to 0.2: 0 is square, 0.012 soft, 0.04 a rounded panel. A stitch uses it with style radius: \"$radius\"." } }), description: "How the brand draws its shapes: {\"cornerRadius\": 0.04}, a fraction of the frame's width from 0 (square) to 0.2. A stitch uses it with style radius: \"$radius\"." },
       logoYarnId: str("An image already in this project's Yarn to use as its logo, instead of the site's"),
     }, ["projectId"]),
-    async handler({ projectId, url, name, colors = [], fonts = {}, voice, logoYarnId }, { store }) {
+    async handler({ projectId, url, name, colors = [], fonts, voice, rules, logoYarnId }, { store }) {
+      const families = fontNames(fonts);
+      if (rules !== undefined && (typeof rules !== "object" || rules === null || Array.isArray(rules))) throw new Error("rules is an object, like {\"cornerRadius\": 0.04}.");
       const site = url ? await proposeFromWebsite(url) : null;
       const byRole = new Map((site?.colors ?? []).map((c) => [c.role, { role: c.role, name: c.name, hex: c.hex }]));
       for (const c of colors) byRole.set(c.role, { role: c.role, name: c.name || c.role[0].toUpperCase() + c.role.slice(1), hex: String(c.hex).toLowerCase() });
       if (!byRole.size) throw new Error("Give a url to read the brand from, or its colours: at least a primary, a text and a background.");
       const { swatch, notes } = await createSwatchFromProposal(store, projectId, {
-        name: name || site?.name || "Proposed brand", colors: [...byRole.values()], fonts: { ...(site?.fontRoles ?? {}), ...fonts }, voice,
+        name: name || site?.name || "Proposed brand", colors: [...byRole.values()], fonts: { ...(site?.fontRoles ?? {}), ...families }, voice, rules,
         ...(logoYarnId ? { logos: [{ yarnId: logoYarnId, use: "full" }] } : site?.logo ? { logo: site.logo } : {}),
       }, { actor: "model", activate: false });
       return {
@@ -133,6 +159,7 @@ export const TOOLS = [
         name: site && !name ? untrusted(`website:${new URL(site.sourceUrl).hostname}`, swatch.name) : swatch.name,
         colors: swatch.colors.map((c) => `${c.role} ${c.hex}`),
         fonts: Object.fromEntries(Object.entries(swatch.fonts).map(([slot, f]) => [slot, f.family])),
+        cornerRadius: swatch.rules.cornerRadius,
         logo: swatch.logos[0]?.yarnId ?? null,
         notes: [...(site?.notes ?? []), ...notes],
         next: "It is in the Swatch tab and not in use. Tell the person it is ready to look over: only they can make it the project's swatch.",
@@ -142,8 +169,8 @@ export const TOOLS = [
   // ── patterns ──
   { name: "list_patterns", description: "The patterns in a project.", inputSchema: obj({ projectId: PROJECT }, ["projectId"]),
     async handler({ projectId }, { store }) { return store.listPatterns(projectId).map(brief); } },
-  { name: "get_pattern", description: "A pattern as data: every stitch, with slot names, locked or free, and coordinates as fractions of the frame. Large; prefer describe_pattern.", inputSchema: obj({ projectId: PROJECT, patternId: PATTERN }, ["projectId", "patternId"]),
-    async handler({ projectId, patternId }, { store }) { const p = store.listPatterns(projectId).find((x) => x.id === patternId); if (!p) throw new Error(`no pattern ${patternId} in ${projectId}`); return p; } },
+  { name: "get_pattern", description: "A pattern as data: every stitch, with slot names, locked or free, and coordinates as fractions of the frame. Large; prefer describe_pattern.", inputSchema: obj({ projectId: PROJECT, patternId: PATTERN }, ["patternId"]),
+    async handler({ projectId, patternId }, { store }) { return patternIn(store, patternId, projectId); } },
   { name: "describe_pattern", description: "A short text summary of a pattern: what slots it has, which are locked by the brand and which you may fill, what it says now, any animation, and the brand's voice. The cheapest way to understand a pattern.", inputSchema: obj({ patternId: PATTERN }, ["patternId"]),
     async handler({ patternId }, { store }) { return describePattern(store.getPattern(patternId), store); } },
   { name: "create_pattern", description: "Add an empty pattern to a project. Sizes: " + SIZES.map((s) => `${s.name} ${s.w}x${s.h}`).join(", ") + ".", inputSchema: obj({ projectId: PROJECT, name: str("Name"), size: { type: "string", enum: SIZES.map((s) => s.name) } }, ["projectId"]),
@@ -152,9 +179,9 @@ export const TOOLS = [
     async handler({ patternId }, { store }) { return brief(store.duplicatePattern(patternId, "model")); } },
 
   // ── editing ──
-  { name: "fill_slots", description: "Write into a pattern's named slots. A text slot takes text. An image or video slot takes a Yarn name or id from list_yarn, or `tag:product` for the first file with that tag. A slot inside a part is addressed `part.slot`, like `lower_third.name`. Locked slots are REFUSED and reported: if you are refused, tell the person, do not look for another way around it. Returns what was filled and what was refused with the reason.", inputSchema: obj({ projectId: PROJECT, patternId: PATTERN, slots: { type: "object", description: "slot name to content, like {\"headline\": \"Spring sale\", \"photo\": \"Hero shot\"}", additionalProperties: { type: "string" } } }, ["projectId", "patternId", "slots"]),
-    async handler({ patternId, slots }, { store }) {
-      const p = store.getPattern(patternId);
+  { name: "fill_slots", description: "Write into a pattern's named slots. A text slot takes text. An image or video slot takes a Yarn name or id from list_yarn, or `tag:product` for the first file with that tag. A slot inside a part is addressed `part.slot`, like `lower_third.name`. Locked slots are REFUSED and reported: if you are refused, tell the person, do not look for another way around it. Returns what was filled and what was refused with the reason.", inputSchema: obj({ projectId: PROJECT, patternId: PATTERN, slots: { type: "object", description: "slot name to content, like {\"headline\": \"Spring sale\", \"photo\": \"Hero shot\"}", additionalProperties: { type: "string" } } }, ["patternId", "slots"]),
+    async handler({ projectId, patternId, slots }, { store }) {
+      const p = patternIn(store, patternId, projectId);
       const commands = [], refused = [];
       for (const [slot, raw] of Object.entries(slots)) {
         const s = p.stitches.find((x) => x.slot === slot);
@@ -208,6 +235,25 @@ export const TOOLS = [
       const r = store.apply(patternId, { type: "addStitch", stitch }, "model", { label: `Model added ${part.name}` });
       return { inserted: r.changed ? unique : null, slots: part.slots.map((s) => `${unique}.${s.name}`), refused: r.refusals };
     } },
+  // The studio's Save as part, for a model: what it makes is a new thing of its own, like a
+  // pattern it creates. A stitch the brand locked stays locked as a slot of the part, so a
+  // part is never a way around a lock.
+  { name: "create_part", description: "Make a reusable part out of stitches already in a pattern, like a footer every pattern repeats, so insert_part can put it anywhere and a change to the part lands everywhere it is used. Each stitch with a slot name becomes a slot of the part; a slot the brand locked stays locked. `replace: true` also swaps those stitches in this pattern for one linked copy of the part. The part belongs to the pattern's project.", inputSchema: obj({ patternId: PATTERN, stitches: { type: "array", items: { type: "string" }, description: "The slot names or ids of the stitches to make it from" }, name: str("What to call the part, like Footer"), description: str("What it is for, in a sentence"), category: { type: "string", enum: ["text", "media", "motion", "frame", "cta", "other"] }, replace: { type: "boolean" } }, ["patternId", "stitches", "name"]),
+    async handler({ patternId, stitches, name, description, category, replace = false }, { store }) {
+      if (!Array.isArray(stitches) || !stitches.length) throw new Error("Give the stitches to make the part from, by slot name or id.");
+      const p = store.getPattern(patternId);
+      const sel = [...new Set(stitches.map((ref) => stitchRef(p, String(ref))))];
+      const locked = sel.filter((s) => s.locked);
+      if (replace && locked.length) throw new Error(`${locked.map((s) => s.slot ?? s.id).join(", ")} ${locked.length === 1 ? "is" : "are"} locked by the brand, so only a person can swap ${locked.length === 1 ? "it" : "them"} for a part. Leave out replace to make the part without changing this pattern.`);
+      const { draft, box } = partFromStitches(sel, p.size, { name, description, category, lockedSlots: locked.map((s) => s.slot).filter(Boolean) });
+      const part = createPart(store, p.projectId, draft, "model");
+      const out = { id: part.id, name: part.name, slots: part.slots.map((s) => `${s.name}${s.locked ? " [locked]" : ""}`), aspect: +part.aspect.toFixed(2) };
+      if (!replace) return out;
+      const slot = uniqueSlotName(part.name, p.stitches.filter((s) => !sel.includes(s)).map((s) => s.slot));
+      const inst = instanceOf(part, box, slot);
+      const r = store.apply(patternId, { type: "batch", atomic: true, commands: [...sel.map((s) => ({ type: "removeStitch", id: s.id })), { type: "addStitch", stitch: inst }] }, "model", { label: `Model made ${part.name} a part` });
+      return { ...out, instance: r.changed ? slot : null, refused: r.refusals };
+    } },
   { name: "list_presets", description: "The animation presets available to set_motion.", inputSchema: obj({}),
     async handler() { return PRESETS.map((p) => ({ id: p.id, label: p.label, kind: p.kind, defaultMs: p.defaultMs, ...(p.text ? { onlyText: true } : {}), ...(p.image ? { onlyImages: true } : {}) })); } },
   { name: "set_motion", description: "Animate a stitch: give it clips, each {preset, startMs, endMs}. Replaces that stitch's clips. Also set the pattern's length with durationMs if the animation runs past it. Keep text on screen long enough to read (about 3 words a second).", inputSchema: obj({ patternId: PATTERN, stitch: str("Slot name or id"), clips: { type: "array", items: obj({ preset: { type: "string", enum: PRESETS.map((p) => p.id) }, startMs: { type: "number" }, endMs: { type: "number" }, ease: { type: "string" } }, ["preset", "startMs", "endMs"]) }, durationMs: { type: "number" } }, ["patternId", "stitch", "clips"]),
@@ -232,8 +278,9 @@ export const TOOLS = [
     } },
   { name: "check_pattern", description: "Run the same quality checks Knit runs, without drawing anything: missing files, low contrast, text that will not fit, animation that is too busy. Fix errors before knitting.", inputSchema: obj({ patternId: PATTERN, params: { type: "object" } }, ["patternId"]),
     async handler({ patternId, params = {} }, { store, engine }) { const p = store.getPattern(patternId); return engine.previewKnit(store, { projectId: p.projectId, patternId, params }).map((u) => ({ unit: u.label, issues: u.issues.map((i) => `${i.level}: ${i.message}`) })); } },
-  { name: "knit_pattern", description: "Make real files (PNG, JPEG, WebP or MP4) from a pattern, through the same job the studio's Knit button uses, with the same checks. `params`: sizes (array of {name,w,h}), format, scale (1 or 2), rows (an array of objects of slot values, one per post, to make many). A row may only fill free slots. Returns file paths and any issues, or a jobId when wait is false.", inputSchema: obj({ projectId: PROJECT, patternId: PATTERN, params: { type: "object" }, wait: { type: "boolean" } }, ["projectId", "patternId"]),
+  { name: "knit_pattern", description: "Make real files (PNG, JPEG, WebP or MP4) from a pattern, through the same job the studio's Knit button uses, with the same checks. `params`: sizes (array of {name,w,h}), format, scale (1 or 2), rows (an array of objects of slot values, one per post, to make many). A row may only fill free slots. Returns file paths and any issues, or a jobId when wait is false.", inputSchema: obj({ projectId: PROJECT, patternId: PATTERN, params: { type: "object" }, wait: { type: "boolean" } }, ["patternId"]),
     async handler({ projectId, patternId, params = {}, wait = true }, { store, engine, limits }) {
+      projectId = patternIn(store, patternId, projectId).projectId;
       const n = (params.rows?.length || 1) * (params.sizes?.length || 1);
       if (limits?.maxKnits && n > limits.maxKnits) throw new Error(`That would make ${n} files, and this session is limited to ${limits.maxKnits} at a time. Ask the person to raise the limit in Settings, or knit fewer.`);
       if (limits) limits.knitted = (limits.knitted ?? 0) + n;
