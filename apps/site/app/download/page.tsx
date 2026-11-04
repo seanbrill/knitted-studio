@@ -9,7 +9,8 @@ import { pageMeta } from "../../lib/meta";
 
 interface Release { version: string; files: File[] }
 // Written by scripts/fetch-releases.mjs from the FileFreak release folder when the site is
-// built, newest first. npm run release builds and deploys the site after each upload.
+// built, newest first. The pipeline builds the site on every push to main; installed apps
+// read the folder themselves (apps/studio/electron/update.mjs).
 const released = (releases.releases as Release[]).length > 0;
 const dates = new Map(changelog.entries.map((e) => [e.version, e.date]));
 const noted = new Set(changelog.entries.map((e) => e.version));
