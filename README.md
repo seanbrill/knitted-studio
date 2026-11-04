@@ -110,7 +110,9 @@ npm i playwright && npx playwright install chromium
 npm run mcp
 ```
 
-Four tools: `list_projects`, `get_pattern`, `fill_slots`, `knit_pattern`.
+The same tools the studio's own model uses, from `list_projects` and
+`fill_slots` to `propose_swatch` and `knit_pattern`. The [MCP page](https://knitted.studio/mcp/)
+lists them all, built from the server's own list.
 
 Slots are addressed **by name**, not by id, because a slot is what a Pattern
 promises, every launch story has a `headline`, while an id is an

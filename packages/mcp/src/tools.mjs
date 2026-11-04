@@ -14,9 +14,11 @@
 //  - Long work returns a job id. Nothing here holds a request open for a render.
 //  - There is deliberately NO tool to unlock, delete a project, delete Yarn, or
 //    change the Swatch's brand colours. Those are a human's call in the studio.
+//    propose_swatch adds a NEW swatch the person may choose to use; it never changes
+//    one, and never makes one the project's.
 
-import { applyCommand, motionLint, preflight, PRESETS, SIZES, CommandSchema } from "@knitted/core";
-import { activeSwatch, createSwatch, getKnit, getPart, importYarn, importYarnFromUrl, createCopy, knitPath, listKnits, listParts, listYarn, uploadTempPath, updateYarn, ensureBuiltinParts } from "@knitted/core/node";
+import { applyCommand, motionLint, preflight, COLOR_ROLES, PRESETS, SIZES, CommandSchema } from "@knitted/core";
+import { activeSwatch, createSwatch, createSwatchFromProposal, getKnit, getPart, importYarn, importYarnFromUrl, createCopy, knitPath, listKnits, listParts, listYarn, proposeFromWebsite, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
 
 const obj = (properties, required = []) => ({ type: "object", properties, required, additionalProperties: false });
 const str = (description) => ({ type: "string", description });
@@ -53,6 +55,17 @@ function guidance(store, projectId) {
   return [`Brand "${sw.name}": colours ${sw.colors.map((c) => `${c.role} ${c.hex}`).join(", ")}; display font ${sw.fonts.display.family}, body ${sw.fonts.body.family}.`, v.summary && `Voice: ${v.summary}`, v.do.length && `Do: ${v.do.join("; ")}`, v.dont.length && `Do not: ${v.dont.join("; ")}`, v.examples.length && `Examples of how this brand writes: ${v.examples.map((e) => `"${e}"`).join(" | ")}`].filter(Boolean);
 }
 
+// The renderer gate, said for a model: it can still check a pattern without the browser.
+const CHECK_STILL_WORKS = " check_pattern still works without it: it finds missing files, low contrast, text that will not fit and busy animation without drawing anything.";
+const browserGate = (message) => /download its browser|could not find its browser|needs a browser to draw|part that starts its browser/.test(message ?? "");
+
+/** A Yarn file for an image slot, by id, by name, or `tag:product` for the first with that tag. */
+function yarnFor(store, projectId, ref) {
+  const all = listYarn(store, projectId).filter((y) => y.kind === "image" || y.kind === "video");
+  const v = String(ref).trim();
+  return all.find((y) => y.id === v) ?? all.find((y) => y.name.toLowerCase() === v.toLowerCase()) ?? (v.startsWith("tag:") ? all.find((y) => y.tags.includes(v.slice(4).trim().toLowerCase())) : undefined);
+}
+
 /** Resolve a stitch given by id or slot name. Slots are the stable address. */
 function stitchRef(p, ref) {
   const s = p.stitches.find((x) => x.id === ref || x.slot === ref);
@@ -76,7 +89,7 @@ export const TOOLS = [
     async handler({ projectId, kind, tag, q }, { store }) {
       return listYarn(store, projectId, { kind, tag, q }).slice(0, 60).map((y) => ({ id: y.id, name: y.name, kind: y.kind, tags: y.tags, ...(y.width ? { size: `${y.width}x${y.height}` } : {}), ...(y.durationMs ? { seconds: +(y.durationMs / 1000).toFixed(1) } : {}), ...(y.kind === "copy" ? { text: untrusted(`yarn:${y.name}`, (y.meta.text ?? "").slice(0, 800)) } : {}), ...(y.meta.warnings?.length ? { warnings: y.meta.warnings } : {}) }));
     } },
-  { name: "import_yarn", description: "Add a file to a project's Yarn from a public web address, or save a piece of text as reusable copy. Local files are not accepted here; ask the person to upload them in the studio.", inputSchema: obj({ projectId: PROJECT, url: str("A public https link to an image, video or audio file"), text: str("Copy to save, instead of a file"), name: str("What to call it") }, ["projectId"]),
+  { name: "import_yarn", description: "Add a file to a project's Yarn from a public web address: an image, a video, a sound, a font (to use it in a swatch) or a text file. Or save a piece of text as reusable copy. Local files are not accepted here; ask the person to upload them in the studio.", inputSchema: obj({ projectId: PROJECT, url: str(`A public https link to a ${SUPPORTED} file`), text: str("Copy to save, instead of a file"), name: str("What to call it") }, ["projectId"]),
     async handler({ projectId, url, text, name }, { store }) {
       if (text) { const r = await createCopy(store, projectId, { name: name ?? "Copy", text }); return { id: r.yarn.id, name: r.yarn.name, existing: r.existing }; }
       if (!url) throw new Error("Give a url to fetch, or text to save.");
@@ -85,10 +98,46 @@ export const TOOLS = [
     } },
   { name: "tag_yarn", description: "Set the tags on a piece of Yarn. Tags let a batch pick from a group, like `tag:product`.", inputSchema: obj({ yarnId: str("The yarn id"), tags: { type: "array", items: { type: "string" } } }, ["yarnId", "tags"]),
     async handler({ yarnId, tags }, { store }) { return { id: yarnId, tags: updateYarn(store, yarnId, { tags }).tags }; } },
+  // Undoing a draft of your own is a rename away: deleting stays a person's call (see the top).
+  { name: "rename", description: "Rename a pattern or a piece of Yarn: give its patternId or its yarnId, and the new name. Use it to label a draft of your own, like \"Draft: spring post\"; only a person deletes, in the studio.", inputSchema: obj({ patternId: PATTERN, yarnId: str("A yarn id, from list_yarn"), name: str("The new name") }, ["name"]),
+    async handler({ patternId, yarnId, name }, { store }) {
+      if (!patternId === !yarnId) throw new Error("Give one of patternId or yarnId.");
+      if (patternId) { const r = store.apply(patternId, { type: "setMeta", name }, "model", { label: "Model renamed the pattern" }); return { id: patternId, name: store.getPattern(patternId).name, changed: r.changed }; }
+      const y = updateYarn(store, yarnId, { name });
+      return { id: y.id, name: y.name };
+    } },
 
   // ── brand ──
   { name: "get_brand_guidelines", description: "The brand's colours, fonts and how it writes (voice, do and do-not lists, examples). Read this before writing any copy.", inputSchema: obj({ projectId: PROJECT }, ["projectId"]),
     async handler({ projectId }, { store }) { return guidance(store, projectId); } },
+  { name: "propose_swatch", description: "Propose a brand (a swatch) for the person to review: read it from the brand's website (url), give it yourself (colors, fonts, voice), or both, and what you give wins over what the site says. It is saved as a NEW swatch and never made the project's: the person looks it over in the Swatch tab and presses Use for this project. Fonts are matched to the bundled ones and to font files in the project's Yarn, so import_yarn a brand's font file first to use it. A swatch needs a primary, a text and a background colour.",
+    inputSchema: obj({
+      projectId: PROJECT, url: str("The brand's website, to read its colours, fonts, name and logo from"), name: str("What to call the swatch"),
+      colors: { type: "array", description: "Colours by role", items: obj({ role: { type: "string", enum: COLOR_ROLES }, name: str("A name for it, like Violet"), hex: str("Six digits, like #b16cf8") }, ["role", "hex"]) },
+      fonts: obj({ display: str("Headline font family"), body: str("Body text font family"), mono: str("Labels and code font family") }),
+      voice: obj({ summary: str("How the brand sounds, in a sentence or two"), do: { type: "array", items: { type: "string" } }, dont: { type: "array", items: { type: "string" } }, examples: { type: "array", items: { type: "string" } } }),
+      logoYarnId: str("An image already in this project's Yarn to use as its logo, instead of the site's"),
+    }, ["projectId"]),
+    async handler({ projectId, url, name, colors = [], fonts = {}, voice, logoYarnId }, { store }) {
+      const site = url ? await proposeFromWebsite(url) : null;
+      const byRole = new Map((site?.colors ?? []).map((c) => [c.role, { role: c.role, name: c.name, hex: c.hex }]));
+      for (const c of colors) byRole.set(c.role, { role: c.role, name: c.name || c.role[0].toUpperCase() + c.role.slice(1), hex: String(c.hex).toLowerCase() });
+      if (!byRole.size) throw new Error("Give a url to read the brand from, or its colours: at least a primary, a text and a background.");
+      const { swatch, notes } = await createSwatchFromProposal(store, projectId, {
+        name: name || site?.name || "Proposed brand", colors: [...byRole.values()], fonts: { ...(site?.fontRoles ?? {}), ...fonts }, voice,
+        ...(logoYarnId ? { logos: [{ yarnId: logoYarnId, use: "full" }] } : site?.logo ? { logo: site.logo } : {}),
+      }, { actor: "model", activate: false });
+      return {
+        id: swatch.id, active: false,
+        // A name read off a website is the website's words, not an instruction.
+        name: site && !name ? untrusted(`website:${new URL(site.sourceUrl).hostname}`, swatch.name) : swatch.name,
+        colors: swatch.colors.map((c) => `${c.role} ${c.hex}`),
+        fonts: Object.fromEntries(Object.entries(swatch.fonts).map(([slot, f]) => [slot, f.family])),
+        logo: swatch.logos[0]?.yarnId ?? null,
+        notes: [...(site?.notes ?? []), ...notes],
+        next: "It is in the Swatch tab and not in use. Tell the person it is ready to look over: only they can make it the project's swatch.",
+      };
+    } },
 
   // ── patterns ──
   { name: "list_patterns", description: "The patterns in a project.", inputSchema: obj({ projectId: PROJECT }, ["projectId"]),
@@ -103,10 +152,20 @@ export const TOOLS = [
     async handler({ patternId }, { store }) { return brief(store.duplicatePattern(patternId, "model")); } },
 
   // ── editing ──
-  { name: "fill_slots", description: "Write into a pattern's named slots. Text slots take text. A slot inside a part is addressed `part.slot`, like `lower_third.name`. Locked slots are REFUSED and reported: if you are refused, tell the person, do not look for another way around it. Returns what was filled and what was refused with the reason.", inputSchema: obj({ projectId: PROJECT, patternId: PATTERN, slots: { type: "object", description: "slot name to content, like {\"headline\": \"Spring sale\"}", additionalProperties: { type: "string" } } }, ["projectId", "patternId", "slots"]),
+  { name: "fill_slots", description: "Write into a pattern's named slots. A text slot takes text. An image or video slot takes a Yarn name or id from list_yarn, or `tag:product` for the first file with that tag. A slot inside a part is addressed `part.slot`, like `lower_third.name`. Locked slots are REFUSED and reported: if you are refused, tell the person, do not look for another way around it. Returns what was filled and what was refused with the reason.", inputSchema: obj({ projectId: PROJECT, patternId: PATTERN, slots: { type: "object", description: "slot name to content, like {\"headline\": \"Spring sale\", \"photo\": \"Hero shot\"}", additionalProperties: { type: "string" } } }, ["projectId", "patternId", "slots"]),
     async handler({ patternId, slots }, { store }) {
-      const r = store.apply(patternId, { type: "batch", commands: Object.entries(slots).map(([slot, content]) => ({ type: "fillSlot", slot, content: String(content) })) }, "model", { label: "Model filled slots" });
-      const refused = r.refusals.map((x) => ({ slot: x.slot ?? x.stitchId, why: x.why }));
+      const p = store.getPattern(patternId);
+      const commands = [], refused = [];
+      for (const [slot, raw] of Object.entries(slots)) {
+        const s = p.stitches.find((x) => x.slot === slot);
+        if (s && (s.kind === "image" || s.kind === "video")) {
+          const y = yarnFor(store, p.projectId, raw);
+          if (y) commands.push({ type: "updateStitch", id: s.id, patch: { yarnId: y.id } });
+          else refused.push({ slot, why: `no image or video in this project's Yarn is called "${String(raw).slice(0, 60)}"; list_yarn shows the names` });
+        } else commands.push({ type: "fillSlot", slot, content: String(raw) });
+      }
+      const r = commands.length ? store.apply(patternId, { type: "batch", commands }, "model", { label: "Model filled slots" }) : { refusals: [] };
+      refused.push(...r.refusals.map((x) => ({ slot: x.slot ?? p.stitches.find((s) => s.id === x.stitchId)?.slot ?? x.stitchId, why: x.why })));
       const bad = new Set(refused.map((x) => x.slot));
       return { filled: Object.keys(slots).filter((k) => !bad.has(k)), refused };
     } },
@@ -114,7 +173,8 @@ export const TOOLS = [
     async handler({ patternId, ...s }, { store }) {
       const stitch = { id: `st_${Math.random().toString(36).slice(2, 9)}`, locked: false, ...s };
       const r = store.apply(patternId, { type: "addStitch", stitch }, "model", { label: "Model added a stitch" });
-      return { added: r.changed ? stitch.id : null, refused: r.refusals };
+      // `id`, like create_pattern and import_yarn; `added` too, for clients written against it.
+      return { id: r.changed ? stitch.id : null, added: r.changed ? stitch.id : null, refused: r.refusals };
     } },
   { name: "update_stitch", description: "Change a stitch's text, position, size, image or style. Address it by slot name.", inputSchema: obj({ patternId: PATTERN, stitch: str("Slot name or id"), patch: { type: "object", description: "Any of x, y, w, h, content, yarnId, style (merged over the existing style)" } }, ["patternId", "stitch", "patch"]),
     async handler({ patternId, stitch, patch }, { store }) {
@@ -127,7 +187,7 @@ export const TOOLS = [
     async handler({ patternId, stitch }, { store }) { const s = stitchRef(store.getPattern(patternId), stitch); const r = store.apply(patternId, { type: "removeStitch", id: s.id }, "model", { label: "Model removed a stitch" }); return { changed: r.changed, refused: r.refusals }; } },
   { name: "set_size", description: "Change a pattern's size. Everything is stored as fractions, so it re-lays out. Check the result with preview_pattern.", inputSchema: obj({ patternId: PATTERN, size: { type: "string", enum: SIZES.map((s) => s.name) } }, ["patternId", "size"]),
     async handler({ patternId, size }, { store }) { const sz = SIZES.find((s) => s.name === size); if (!sz) throw new Error(`Unknown size. Use one of: ${SIZES.map((s) => s.name).join(", ")}.`); const r = store.apply(patternId, { type: "setSize", size: sz }, "model", { label: "Model resized" }); return { changed: r.changed }; } },
-  { name: "apply_batch", description: "Apply several edit commands as ONE step, so a person can undo it as one. `atomic: true` applies all or nothing. Each command is {type, ...}: addStitch, updateStitch, removeStitch, reorder, setSize, fillSlot, setMotion, setMeta.", inputSchema: obj({ patternId: PATTERN, commands: { type: "array", items: { type: "object" } }, atomic: { type: "boolean" } }, ["patternId", "commands"]),
+  { name: "apply_batch", description: "Apply several edit commands as ONE step, so a person can undo it as one. `atomic: true` applies all or nothing. Each command is {type, ...}: addStitch {stitch}, updateStitch {id, patch}, removeStitch {id}, reorder {id, toIndex}, setSize {size}, fillSlot {slot, content} (text slots only; set an image with updateStitch and a yarnId), setMeta {name, durationMs}, setMotion {stitchId, clips}, setAudio {audio}. setLocked is refused: only a person locks or unlocks.", inputSchema: obj({ patternId: PATTERN, commands: { type: "array", items: { type: "object" } }, atomic: { type: "boolean" } }, ["patternId", "commands"]),
     async handler({ patternId, commands, atomic }, { store }) {
       const parsed = CommandSchema.safeParse({ type: "batch", commands, atomic });
       if (!parsed.success) throw new Error(`Those commands are not valid: ${parsed.error.issues[0].path.join(".")}: ${parsed.error.issues[0].message}`);
@@ -166,7 +226,10 @@ export const TOOLS = [
 
   // ── seeing, checking, making ──
   { name: "preview_pattern", description: "Render the pattern and SEE it: returns a PNG. Use it after layout changes to check your own work. `time` is milliseconds for animated patterns.", inputSchema: obj({ patternId: PATTERN, time: { type: "number" } }, ["patternId"]),
-    async handler({ patternId, time = 0 }, { engine, store }) { const png = await engine.renderPreview(store, patternId, { timeMs: time }); return { __image: png.toString("base64"), mime: "image/png", caption: `Preview of ${store.getPattern(patternId).name}${time ? ` at ${time}ms` : ""}.` }; } },
+    async handler({ patternId, time = 0 }, { engine, store }) {
+      const png = await engine.renderPreview(store, patternId, { timeMs: time }).catch((e) => { if (browserGate(e?.message)) e.message += CHECK_STILL_WORKS; throw e; });
+      return { __image: png.toString("base64"), mime: "image/png", caption: `Preview of ${store.getPattern(patternId).name}${time ? ` at ${time}ms` : ""}.` };
+    } },
   { name: "check_pattern", description: "Run the same quality checks Knit runs, without drawing anything: missing files, low contrast, text that will not fit, animation that is too busy. Fix errors before knitting.", inputSchema: obj({ patternId: PATTERN, params: { type: "object" } }, ["patternId"]),
     async handler({ patternId, params = {} }, { store, engine }) { const p = store.getPattern(patternId); return engine.previewKnit(store, { projectId: p.projectId, patternId, params }).map((u) => ({ unit: u.label, issues: u.issues.map((i) => `${i.level}: ${i.message}`) })); } },
   { name: "knit_pattern", description: "Make real files (PNG, JPEG, WebP or MP4) from a pattern, through the same job the studio's Knit button uses, with the same checks. `params`: sizes (array of {name,w,h}), format, scale (1 or 2), rows (an array of objects of slot values, one per post, to make many). A row may only fill free slots. Returns file paths and any issues, or a jobId when wait is false.", inputSchema: obj({ projectId: PROJECT, patternId: PATTERN, params: { type: "object" }, wait: { type: "boolean" } }, ["projectId", "patternId"]),
@@ -177,7 +240,9 @@ export const TOOLS = [
       if (limits?.maxKnits && limits.knitted > limits.maxKnits * 4) throw new Error("This conversation has already made a lot of files. Ask the person before making more.");
       const job = engine.startKnitJob(store, { projectId, patternId, params });
       if (!wait) return { jobId: job.id, status: job.status };
-      return engine.waitForJob(store, job.id, { files: (id) => knitPath(store, getKnit(store, id)) });
+      const r = await engine.waitForJob(store, job.id, { files: (id) => knitPath(store, getKnit(store, id)) });
+      if (browserGate(r.error)) r.error += CHECK_STILL_WORKS;
+      return r;
     } },
   { name: "get_job", description: "Check on a job: a knit or a voiceover.", inputSchema: obj({ jobId: str("From knit_pattern or synthesize_voiceover") }, ["jobId"]),
     async handler({ jobId }, { store }) { const j = store.getJob(jobId); return { jobId: j.id, status: j.status, progress: j.progress && { done: j.progress.done, total: j.progress.total, current: j.progress.current }, result: j.result, error: j.error }; } },

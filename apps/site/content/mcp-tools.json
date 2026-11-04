@@ -84,7 +84,7 @@
   },
   {
     "name": "import_yarn",
-    "summary": "Add a file to a project's Yarn from a public web address, or save a piece of text as reusable copy. Local files are not accepted here; ask the person to upload them in the studio.",
+    "summary": "Add a file to a project's Yarn from a public web address: an image, a video, a sound, a font (to use it in a swatch) or a text file. Or save a piece of text as reusable copy. Local files are not accepted here; ask the person to upload them in the studio.",
     "params": [
       {
         "name": "projectId",
@@ -96,7 +96,7 @@
         "name": "url",
         "type": "string",
         "required": false,
-        "description": "A public https link to an image, video or audio file"
+        "description": "A public https link to a PNG, JPG, WebP, GIF, AVIF, SVG, MP4, MOV, WebM, MP3, WAV, M4A, OGG, TTF, OTF, WOFF, WOFF2 or a text file file"
       },
       {
         "name": "text",
@@ -131,6 +131,30 @@
     ]
   },
   {
+    "name": "rename",
+    "summary": "Rename a pattern or a piece of Yarn: give its patternId or its yarnId, and the new name. Use it to label a draft of your own, like \"Draft: spring post\"; only a person deletes, in the studio.",
+    "params": [
+      {
+        "name": "patternId",
+        "type": "string",
+        "required": false,
+        "description": "The pattern id, like pt_01..."
+      },
+      {
+        "name": "yarnId",
+        "type": "string",
+        "required": false,
+        "description": "A yarn id, from list_yarn"
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "required": true,
+        "description": "The new name"
+      }
+    ]
+  },
+  {
     "name": "get_brand_guidelines",
     "summary": "The brand's colours, fonts and how it writes (voice, do and do-not lists, examples). Read this before writing any copy.",
     "params": [
@@ -139,6 +163,54 @@
         "type": "string",
         "required": true,
         "description": "The project id, like pj_01..."
+      }
+    ]
+  },
+  {
+    "name": "propose_swatch",
+    "summary": "Propose a brand (a swatch) for the person to review: read it from the brand's website (url), give it yourself (colors, fonts, voice), or both, and what you give wins over what the site says. It is saved as a NEW swatch and never made the project's: the person looks it over in the Swatch tab and presses Use for this project. Fonts are matched to the bundled ones and to font files in the project's Yarn, so import_yarn a brand's font file first to use it. A swatch needs a primary, a text and a background colour.",
+    "params": [
+      {
+        "name": "projectId",
+        "type": "string",
+        "required": true,
+        "description": "The project id, like pj_01..."
+      },
+      {
+        "name": "url",
+        "type": "string",
+        "required": false,
+        "description": "The brand's website, to read its colours, fonts, name and logo from"
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "required": false,
+        "description": "What to call the swatch"
+      },
+      {
+        "name": "colors",
+        "type": "object[]",
+        "required": false,
+        "description": "Colours by role"
+      },
+      {
+        "name": "fonts",
+        "type": "object",
+        "required": false,
+        "description": ""
+      },
+      {
+        "name": "voice",
+        "type": "object",
+        "required": false,
+        "description": ""
+      },
+      {
+        "name": "logoYarnId",
+        "type": "string",
+        "required": false,
+        "description": "An image already in this project's Yarn to use as its logo, instead of the site's"
       }
     ]
   },
@@ -222,7 +294,7 @@
   },
   {
     "name": "fill_slots",
-    "summary": "Write into a pattern's named slots. Text slots take text. A slot inside a part is addressed `part.slot`, like `lower_third.name`. Locked slots are REFUSED and reported: if you are refused, tell the person, do not look for another way around it. Returns what was filled and what was refused with the reason.",
+    "summary": "Write into a pattern's named slots. A text slot takes text. An image or video slot takes a Yarn name or id from list_yarn, or `tag:product` for the first file with that tag. A slot inside a part is addressed `part.slot`, like `lower_third.name`. Locked slots are REFUSED and reported: if you are refused, tell the person, do not look for another way around it. Returns what was filled and what was refused with the reason.",
     "params": [
       {
         "name": "projectId",
@@ -240,7 +312,7 @@
         "name": "slots",
         "type": "object",
         "required": true,
-        "description": "slot name to content, like {\"headline\": \"Spring sale\"}"
+        "description": "slot name to content, like {\"headline\": \"Spring sale\", \"photo\": \"Hero shot\"}"
       }
     ]
   },
@@ -372,7 +444,7 @@
   },
   {
     "name": "apply_batch",
-    "summary": "Apply several edit commands as ONE step, so a person can undo it as one. `atomic: true` applies all or nothing. Each command is {type, ...}: addStitch, updateStitch, removeStitch, reorder, setSize, fillSlot, setMotion, setMeta.",
+    "summary": "Apply several edit commands as ONE step, so a person can undo it as one. `atomic: true` applies all or nothing. Each command is {type, ...}: addStitch {stitch}, updateStitch {id, patch}, removeStitch {id}, reorder {id, toIndex}, setSize {size}, fillSlot {slot, content} (text slots only; set an image with updateStitch and a yarnId), setMeta {name, durationMs}, setMotion {stitchId, clips}, setAudio {audio}. setLocked is refused: only a person locks or unlocks.",
     "params": [
       {
         "name": "patternId",

@@ -21,7 +21,7 @@
     { "id": "render-engine", "group": "motion", "status": "shipped", "name": "The frame-by-frame render engine", "summary": "A Pattern is a page with a timeline. The engine sets the time, takes a picture of each frame and lets ffmpeg do the encoding. Needs Playwright and ffmpeg installed." },
     { "id": "motion-editor", "group": "motion", "status": "soon", "name": "Motion in the editor", "summary": "Set timing and easing on a timeline, then scrub through it before you knit." },
     { "id": "local-voiceover", "group": "voice", "status": "soon", "name": "Local voiceover", "summary": "Point the studio at a speech model running on your own computer and add a voice to a reel." },
-    { "id": "mcp-server", "group": "model", "status": "shipped", "name": "A four-tool MCP server", "summary": "list_projects, get_pattern, fill_slots and knit_pattern, against the same store the studio uses." },
+    { "id": "mcp-server", "group": "model", "status": "shipped", "name": "An MCP server", "summary": "The tools the studio uses, from fill_slots to propose_swatch and knit_pattern, against the same store." },
     { "id": "in-app-model", "group": "model", "status": "soon", "name": "Your model inside the studio", "summary": "Bring your own key and ask for changes from a prompt bar next to the canvas." },
     { "id": "design-tokens", "group": "studio", "status": "shipped", "name": "A design system built as tokens", "summary": "Colour, type, spacing and the stitch outline are defined once and shared by the studio and this site." },
     { "id": "projects", "group": "studio", "status": "soon", "name": "Projects", "summary": "Several brands, each with its own Swatch, Yarn and Patterns." },

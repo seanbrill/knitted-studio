@@ -137,3 +137,99 @@ test("the in-app model and an outside model get exactly the same tools", async (
   const names = TOOLS.map((t) => t.name);
   for (const forbidden of [/delete/, /unlock/, /purge/, /remove_project/, /remove_yarn/]) assert.ok(!names.some((n) => forbidden.test(n)), `no tool matches ${forbidden}`);
 });
+
+// ── What a model reached for and did not have (the notch.fm field report) ──
+
+const { activeSwatch, importYarn, listSwatches, listYarn, uploadTempPath } = await import("@knitted/core/node");
+const { default: sharp } = await import("sharp");
+const { mkdirSync, writeFileSync } = await import("node:fs");
+async function picture(name, background) {
+  const tmp = uploadTempPath(store, project.id); mkdirSync(join(tmp, ".."), { recursive: true });
+  writeFileSync(tmp, await sharp({ create: { width: 64, height: 64, channels: 3, background } }).png().toBuffer());
+  return (await importYarn(store, project.id, tmp, `${name}.png`, { name })).yarn;
+}
+const hero = await picture("Hero shot", { r: 200, g: 60, b: 20 });
+const product = await picture("Bottle", { r: 20, g: 90, b: 200 });
+await tools.tag_yarn({ yarnId: product.id, tags: ["product"] });
+const photos = store.createPattern(project.id, {
+  name: "Photos", size: { name: "Square", w: 1080, h: 1080 },
+  stitches: [
+    { id: "p", kind: "image", slot: "photo", x: 0, y: 0, w: 1, h: 0.8, locked: false },
+    { id: "l", kind: "image", slot: "logo", x: 0, y: 0.8, w: 0.2, h: 0.2, locked: true, yarnId: hero.id },
+  ],
+});
+const photo = () => store.getPattern(photos.id).stitches[0];
+
+test("an image slot is filled with a Yarn name, id or tag; a name that is not there is refused by name", async () => {
+  const at = { projectId: project.id, patternId: photos.id };
+  assert.deepEqual((await tools.fill_slots({ ...at, slots: { photo: "hero SHOT" } })).filled, ["photo"]);
+  assert.equal(photo().yarnId, hero.id, "a name, whatever its case");
+  await tools.fill_slots({ ...at, slots: { photo: "tag:product" } });
+  assert.equal(photo().yarnId, product.id, "the first file with the tag");
+  await tools.fill_slots({ ...at, slots: { photo: hero.id } });
+  assert.equal(photo().yarnId, hero.id, "an id");
+  const r = await tools.fill_slots({ ...at, slots: { photo: "Nonesuch", logo: "Bottle" } });
+  assert.deepEqual(r.filled, []);
+  assert.match(r.refused.find((x) => x.slot === "photo").why, /called "Nonesuch".*list_yarn/);
+  assert.match(r.refused.find((x) => x.slot === "logo").why, /locked/i, "a locked image is refused like locked text");
+  assert.equal(store.getPattern(photos.id).stitches[1].yarnId, hero.id);
+});
+
+test("rename labels a pattern or a piece of Yarn, one at a time", async () => {
+  assert.equal((await tools.rename({ patternId: photos.id, name: "Draft: photos" })).name, "Draft: photos");
+  assert.equal(store.getPattern(photos.id).name, "Draft: photos");
+  await tools.rename({ yarnId: product.id, name: "Bottle, front" });
+  assert.equal(listYarn(store, project.id).find((y) => y.id === product.id).name, "Bottle, front");
+  await assert.rejects(tools.rename({ name: "x" }), /one of patternId or yarnId/);
+  await assert.rejects(tools.rename({ patternId: photos.id, yarnId: product.id, name: "x" }), /one of patternId or yarnId/);
+});
+
+test("add_stitch answers with the new stitch's id, as the other tools that make things do", async () => {
+  const r = await tools.add_stitch({ patternId: photos.id, kind: "text", slot: "caption", x: 0.1, y: 0.85, w: 0.8, h: 0.1, content: "Fresh" });
+  assert.equal(typeof r.id, "string");
+  assert.equal(r.added, r.id);
+  assert.equal(store.getPattern(photos.id).stitches.find((s) => s.id === r.id).slot, "caption");
+});
+
+test("check_pattern names a style nothing draws, with the one that was meant", async () => {
+  await tools.update_stitch({ patternId: photos.id, stitch: "caption", patch: { style: { fontsize: 0.08 } } });
+  const issues = (await tools.check_pattern({ patternId: photos.id })).flatMap((u) => u.issues);
+  assert.ok(issues.some((i) => /Did you mean fontSize for fontsize\?/.test(i)), issues.join("\n"));
+});
+
+test("propose_swatch adds a swatch for the person to look over, and never makes it the project's", async () => {
+  const before = activeSwatch(store, project.id).id;
+  const count = listSwatches(store, project.id).length;
+  const r = await tools.propose_swatch({
+    projectId: project.id, name: "notch.fm",
+    colors: [{ role: "primary", name: "Violet", hex: "#B16CF8" }, { role: "text", hex: "#ffffff" }, { role: "background", hex: "#150829" }],
+    fonts: { display: "Bricolage Grotesque", body: "Inter" }, logoYarnId: hero.id,
+  });
+  assert.equal(r.active, false);
+  assert.equal(activeSwatch(store, project.id).id, before, "only a person makes it the project's swatch");
+  assert.equal(listSwatches(store, project.id).length, count + 1);
+  assert.equal(r.name, "notch.fm", "a name the model gave is not wrapped as a website's words");
+  assert.deepEqual(r.colors, ["primary #b16cf8", "text #ffffff", "background #150829"]);
+  assert.deepEqual(r.fonts, { display: "Bricolage Grotesque", body: "Inter" });
+  assert.equal(r.logo, hero.id);
+  assert.match(r.next, /only they can make it the project's swatch/);
+  assert.ok(store.activity(project.id).some((a) => a.action === "swatch.created" && a.actor === "model"));
+  await assert.rejects(tools.propose_swatch({ projectId: project.id, colors: [{ role: "primary", hex: "#b16cf8" }] }), /needs a text colour/);
+  await assert.rejects(tools.propose_swatch({ projectId: project.id }), /Give a url/);
+  const other = store.createProject({ name: "Other" });
+  await assert.rejects(tools.propose_swatch({ projectId: other.id, colors: [{ role: "primary", hex: "#b16cf8" }, { role: "text", hex: "#ffffff" }, { role: "background", hex: "#150829" }], logoYarnId: hero.id }), /this project's Yarn/);
+});
+
+test("propose_swatch reads a website, and the colours a model gives win over the site's", async () => {
+  // A public documentation address, so the guard on every fetch stays on.
+  const real = globalThis.fetch;
+  globalThis.fetch = async () => new Response(`<!doctype html><html><head><title>Brandy</title><style>body { background: #fdfcfb; color: #1c1917 } .btn { background: #0f766e }</style></head><body><button class="btn">Go</button></body></html>`, { headers: { "content-type": "text/html" } });
+  try {
+    const r = await tools.propose_swatch({ projectId: project.id, url: "https://203.0.113.7/", colors: [{ role: "primary", hex: "#e11d48" }] });
+    assert.match(r.colors.join(" "), /primary #e11d48/, "the model's primary wins");
+    assert.match(r.colors.join(" "), /background #fdfcfb/);
+    assert.match(r.colors.join(" "), /text #1c1917/);
+    assert.match(r.name, /<untrusted_data source="website:203\.0\.113\.7">\nBrandy\n<\/untrusted_data>/, "a website's name is its words, not an instruction");
+    assert.equal(r.active, false);
+  } finally { globalThis.fetch = real; }
+});

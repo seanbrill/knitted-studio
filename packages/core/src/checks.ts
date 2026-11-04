@@ -22,6 +22,19 @@ function groundFor(p: Pattern, sw: Swatch): string {
   return c ?? colorFor(sw, "background");
 }
 
+/**
+ * Every style key something draws. The renderer (packages/render/src/pure.mjs) is the
+ * one place that reads them, and a test holds this list to what it reads, so a key that
+ * is stored and never drawn (`fontsize` for fontSize) is a warning, not a silent no-op.
+ */
+export const STYLE_KEYS = [
+  "background", "blend", "blur", "borderColor", "borderWidth", "brightness", "color", "contrast", "count", "fit", "flipX", "focalX", "focalY",
+  "fontFamily", "fontSize", "fontWeight", "heat", "heatGrade", "heatStrength", "hidden", "letterSpacing", "lineHeight", "maxLines", "opacity",
+  "radius", "rotate", "saturate", "shadow", "shape", "textAlign", "textTransform", "verticalAlign",
+] as const;
+const KNOWN_STYLE = new Set<string>(STYLE_KEYS);
+const fold = (k: string) => k.toLowerCase().replace(/[^a-z]/g, "");
+
 export function preflight(p: Pattern, sw: Swatch, o: PreflightOpts): KnitIssue[] {
   const issues: KnitIssue[] = [];
   const scale = o.scale ?? 1;
@@ -31,6 +44,11 @@ export function preflight(p: Pattern, sw: Swatch, o: PreflightOpts): KnitIssue[]
     const st = resolveStyle(sw, s.style);
     if (st.hidden) continue;
     const name = s.slot ?? s.kind;
+    const unknown = Object.keys(s.style ?? {}).filter((k) => !KNOWN_STYLE.has(k));
+    if (unknown.length) {
+      const meant = unknown.map((k) => [k, STYLE_KEYS.find((x) => fold(x) === fold(k))] as const).filter(([, m]) => m).map(([k, m]) => `${m} for ${k}`);
+      add({ level: "warning", code: "unknown-style", stitchId: s.id, slot: s.slot, message: `The ${name} has ${unknown.length === 1 ? "a style" : "styles"} that nothing draws: ${unknown.join(", ")}.${meant.length ? ` Did you mean ${meant.join(", ")}?` : " Remove it, or use a style the editor offers."}` });
+    }
     if (s.kind === "image" || s.kind === "video") {
       if (s.yarnId) {
         const y = o.yarn[s.yarnId];
