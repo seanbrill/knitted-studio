@@ -7,8 +7,8 @@
 # the Mac's Linux file and cut SHA256SUMS.txt down to one line.
 #
 # The site's Download page is built from the release folder, so it lists whatever has
-# been published when the site is built. npm run release only uploads (installed apps
-# read the folder themselves), so after a release, run this to show it.
+# been published when the site is built. npm run release pushes main once it has
+# uploaded, which runs this; run it by hand when that push had nothing to send.
 #
 # Variables live in EZPIPELINE, not here: see ci/ezpipeline/knitted-release.env.example.
 

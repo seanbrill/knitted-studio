@@ -12,17 +12,17 @@
 // (scripts/desktop-binaries.mjs). The version is apps/studio/package.json's. The files go
 // up as scripts/publish-release.mjs says, replacing that version's files if it ran before.
 //
-// That is all it publishes. Installed apps read the release folder themselves
-// (apps/studio/electron/update.mjs), so they are offered the version once it is up. The
-// site is static and lists the folder as it was when it was built: the pipeline builds
-// and deploys it on every push to main, so its Download page lists this version from the
-// first run after this one.
+// Installed apps read the release folder themselves (apps/studio/electron/update.mjs), so
+// they are offered the version once it is up. The site lists the folder as it was when it
+// was built, and a push to main builds it: so last, this pushes the checkout it built from
+// and waits for the Download page to list the version (scripts/release-site.mjs).
 
 import { spawnSync } from "node:child_process";
 import { readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { SITE, fileFor, releaseIn, versionsIn } from "../apps/studio/electron/update.mjs";
+import { showOnSite } from "./release-site.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const fail = (m) => { console.error(`release: ${m}`); process.exit(1); };
@@ -67,15 +67,4 @@ for (const [platform, arch] of [["darwin", "arm64"], ["darwin", "x64"], ["win32"
 }
 console.log(`release: ${version} is published. Installed apps (0.1.2 and later) are offered it the next time they check.`);
 
-// The Download page, and copies older than 0.1.2 (they ask the site), see it once the
-// pipeline has built the site again. A push to main starts that, so say whether the site
-// lists it yet and whether this checkout has anything to push.
-const listed = await fetch(`${SITE}/releases.json`, { signal: AbortSignal.timeout(20_000) })
-  .then((res) => (res.ok ? res.json() : null))
-  .then((site) => (Array.isArray(site?.releases) ? site.releases.some((r) => r?.version === version) : null))
-  .catch(() => null);
-const toPush = output("git", ["rev-list", "--count", "origin/main..HEAD"]).stdout?.trim() !== "0"
-  || !!output("git", ["status", "--porcelain", "--untracked-files=no"]).stdout?.trim();
-if (listed) console.log("release: the Download page lists it already.");
-else if (toPush) console.log("release: the Download page does not list it yet. Push this to main: the site build that starts lists it, and copies older than 0.1.2 are offered it then.");
-else console.log(`release: the Download page does not list it yet, and this checkout has nothing to push, so nothing will start a site build. Run "knitted release" in EZPIPELINE: once it has run, the page lists it and copies older than 0.1.2 are offered it.`);
+console.log(`release: ${await showOnSite({ root, site: SITE, version })}`);
