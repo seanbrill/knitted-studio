@@ -24,7 +24,7 @@ const git = (cwd, ...args) => {
 function checkout(ahead) {
   const dir = mkdtempSync(join(tmpdir(), "knitted-release-site-"));
   const origin = join(dir, "origin.git"), work = join(dir, "work");
-  git(dir, "init", "-q", "--bare", origin);
+  git(dir, "init", "-q", "--bare", "-b", "main", origin);
   git(dir, "init", "-q", "-b", "main", work);
   const commit = (cwd, n) => { writeFileSync(join(cwd, "f.txt"), String(n)); git(cwd, "add", "f.txt"); git(cwd, "commit", "-q", "-m", `change ${n}`); };
   commit(work, 0);
@@ -92,7 +92,7 @@ test("a checkout on another branch is not pushed to main", async () => {
 test("a push main refuses is said, with git's reason, and nothing waits on it", async () => {
   const c = checkout(1);
   const other = join(c.dir, "other");
-  git(c.dir, "clone", "-q", c.origin, other);
+  git(c.dir, "clone", "-q", "-b", "main", c.origin, other);
   c.commit(other, 9);
   git(other, "push", "-q", "origin", "main");
   const s = await site(() => ["0.1.2"]);
