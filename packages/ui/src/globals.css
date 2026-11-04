@@ -36,7 +36,7 @@
    * the hex and that sentence stops being true.
    */
   --ember: #df5a0f;
-  --ember-hover: #c84f0d; /* 8% darker, per the button spec */
+  --ember-hover: #d2550e; /* 6% darker: any darker and on-ember falls under 4.5:1 (it is 4.55:1) */
   --on-ember: #1a0e05; /* warm black. 5.06:1 on ember */
   --ember-ink: #a64009; /* orange TEXT on Day, also on the orange tint. Night overrides it lighter */
 

@@ -15,7 +15,7 @@ export default function Changelog() {
       <section className="sec-tight">
         <div className="wrap-narrow doc">
           {changelog.entries.map((e) => (
-            <article key={e.version}>
+            <article key={e.version} id={`v${e.version}`} className="changelog-entry">
               <h2>{e.version}: {e.title}</h2>
               <p className="eyebrow">{e.date}</p>
               <ul>{e.items.map((i) => <li key={i}>{i}</li>)}</ul>

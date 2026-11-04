@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { buildReleases } from "../apps/site/scripts/releases-lib.mjs";
 
 const dir = (id, name) => ({ id, kind: "folder", name, parentId: null });
@@ -67,4 +68,13 @@ test("the same holds when the listing includes the release folder itself", () =>
 test("a folder with no versions in it lists nothing, and does not throw", () => {
   assert.deepEqual(buildReleases([]).releases, []);
   assert.deepEqual(buildReleases([dir("x", "drafts")]).releases, []);
+});
+
+test("the version being released is the changelog's newest entry, which the Download page links to", () => {
+  const read = (p) => JSON.parse(readFileSync(p, "utf8"));
+  const { version } = read("apps/studio/package.json");
+  assert.equal(read("package.json").version, version, "the root and the studio give the same version");
+  const versions = read("apps/site/content/changelog.json").entries.map((e) => e.version);
+  assert.equal(versions[0], version, "add this version to apps/site/content/changelog.json (docs/RELEASING.md, step 2)");
+  assert.equal(new Set(versions).size, versions.length, "each version has one entry");
 });

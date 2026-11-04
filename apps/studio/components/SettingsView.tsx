@@ -45,7 +45,7 @@ export function SettingsView() {
           <TabPanel value="voice"><VoiceSettings /></TabPanel>
           <TabPanel value="about">
             <p className="body">knitted.studio is open source under the MIT licence.</p>
-            <p className="body-sm" style={{ color: "var(--ink-muted)", marginTop: "var(--space-2)" }}>Version 0.1.0</p>
+            <p className="body-sm" style={{ color: "var(--ink-muted)", marginTop: "var(--space-2)" }}>Version {process.env.KNITTED_VERSION}</p>
             <RendererCard />
           </TabPanel>
         </div>

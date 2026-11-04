@@ -1,33 +1,37 @@
-import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import { createRequire } from "node:module";
-import { fail, ok, route } from "@/lib/server";
+import { browserProblem, installBrowser } from "@knitted/engine";
+import { ok, route } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
 
-// The desktop app does not ship a 150MB browser. Knitting needs one, so the first
-// time someone knits we ask, and download it only when they say yes. The location
-// is PLAYWRIGHT_BROWSERS_PATH, which the shell points at the user's own data folder.
-const g = globalThis as unknown as { __rendererInstall?: { state: "running" | "done" | "failed"; log: string } };
+// The desktop app does not ship the browser knitting draws with (about 100 MB), so
+// Settings, About asks, and this downloads it only when the person says yes
+// (installBrowser, in the engine). One download at a time, remembered while the server runs.
+type Install = { state: "running" | "done" | "failed"; progress: number | null; error?: string };
+const g = globalThis as unknown as { __rendererInstall?: Install; __rendererReady?: boolean };
+const clause = (s: string) => s.trim().replace(/\.$/, "");
 
-async function available() {
-  try {
-    const { chromium } = await import(/* webpackIgnore: true */ "playwright");
-    return existsSync(chromium.executablePath());
-  } catch { return false; }
+async function ready() {
+  if (g.__rendererReady) return true;
+  if (g.__rendererInstall?.state === "running") return false;
+  return (g.__rendererReady = !(await browserProblem()));
 }
 
-export const GET = route(async () => ok({ ready: await available(), install: g.__rendererInstall ?? null }));
+export const GET = route(async () => ok({ ready: await ready(), install: g.__rendererInstall ?? null }));
 
 export const POST = route(async () => {
   if (g.__rendererInstall?.state === "running") return ok(g.__rendererInstall, 202);
-  let cli: string;
-  try { cli = createRequire(import.meta.url).resolve("playwright/cli"); } catch { return fail(500, "renderer", "This build has no browser installer. Reinstall knitted from the download page."); }
-  const state = (g.__rendererInstall = { state: "running" as const, log: "" }) as { state: "running" | "done" | "failed"; log: string };
-  const child = spawn(process.execPath, [cli, "install", "chromium-headless-shell"], { env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" }, stdio: ["ignore", "pipe", "pipe"] });
-  const keep = (d: Buffer) => { state.log = (state.log + d).slice(-2000); };
-  child.stdout.on("data", keep); child.stderr.on("data", keep);
-  child.on("close", (code) => { state.state = code === 0 ? "done" : "failed"; });
-  child.on("error", (e) => { state.state = "failed"; state.log = String(e); });
+  const state: Install = (g.__rendererInstall = { state: "running", progress: null });
+  installBrowser({ onProgress: (p: number) => { state.progress = p; } }).then(
+    async () => {
+      // Installed is not the same as working: say why if it will not start.
+      const problem = await browserProblem();
+      if (!problem) { g.__rendererReady = true; state.state = "done"; state.progress = 1; }
+      else { state.state = "failed"; state.error = `The browser downloaded but would not start: ${clause(problem)}.`; }
+    },
+    (e: unknown) => {
+      state.state = "failed";
+      state.error = `The download did not finish: ${clause(String((e as Error)?.message ?? e))}. Check your internet connection and try again.`;
+    },
+  );
   return ok(state, 202);
 });

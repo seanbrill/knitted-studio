@@ -42,6 +42,7 @@ const PAIRS = [
     ["success", g, 4.5, "success text"],
   ]),
   ["on-ember", "ember", 4.5, "text on the primary button"],
+  ["on-ember", "ember-hover", 4.5, "text on the primary button, under the pointer"],
   ["on-red", "red", 4.5, "text on red"],
   ["on-red", "oxblood", 4.5, "text on oxblood"],
   ["on-rail", "rail", 4.5, "rail icons"],

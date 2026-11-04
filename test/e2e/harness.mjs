@@ -20,10 +20,10 @@ function freePort() {
   });
 }
 
-export async function startStudio({ prod = false } = {}) {
+export async function startStudio({ prod = false, env: extra = {} } = {}) {
   const home = await mkdtemp(join(tmpdir(), "knitted-e2e-"));
   const port = await freePort();
-  const env = { ...process.env, KNITTED_HOME: home, PORT: String(port), HOSTNAME: "127.0.0.1", NEXT_TELEMETRY_DISABLED: "1" };
+  const env = { ...process.env, KNITTED_HOME: home, PORT: String(port), HOSTNAME: "127.0.0.1", NEXT_TELEMETRY_DISABLED: "1", ...extra };
   delete env.ELECTRON_RUN_AS_NODE;
   // `detached` makes the server the leader of its own process group, so stop()
   // can kill the group. `next dev` spawns a `next-server` child, and killing only

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, knitFileUrl, type JobItem, type KnitParams } from "@knitted/core/client";
 import { SIZES, type Pattern, type KnitIssue } from "@knitted/core";
 import { Button, Dialog, Field, SegmentedControl, Skeleton, StitchProgress, Switch, Textarea, icons, useToast } from "@knitted/ui";
+import { RendererCard } from "../RendererCard";
 
 const { AlertTriangle, Check } = icons;
 
@@ -40,6 +41,8 @@ export function KnitDialog({ open, onOpenChange, pattern, projectId }: { open: b
   const [units, setUnits] = useState<{ label: string; issues: KnitIssue[] }[] | null>(null);
   const [job, setJob] = useState<JobItem | null>(null);
   const [busy, setBusy] = useState(false);
+  // The first knit on a new computer: the browser it draws with is downloaded here, first.
+  const [canDraw, setCanDraw] = useState(true);
   const watch = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   const freeSlots = pattern.stitches.filter((s) => !s.locked && s.slot).map((s) => s.slot!);
@@ -85,9 +88,10 @@ export function KnitDialog({ open, onOpenChange, pattern, projectId }: { open: b
       actions={job ? (
         finished ? <><Button variant="ghost" onClick={() => close(false)}>Close</Button><Link href={`/projects/${projectId}/knits`} className="btn btn-primary">See your knits</Link></>
           : <Button variant="danger" onClick={() => api.knit.cancel(job.id)}>Cancel</Button>
-      ) : (<><Button variant="ghost" onClick={() => close(false)}>Cancel</Button><Button variant="primary" disabled={busy || errors.length > 0 || (batch && parsed.rows.length === 0)} onClick={go}>Knit {total} {total === 1 ? "file" : "files"}</Button></>)}>
+      ) : (<><Button variant="ghost" onClick={() => close(false)}>Cancel</Button><Button variant="primary" disabled={busy || !canDraw || errors.length > 0 || (batch && parsed.rows.length === 0)} onClick={go}>Knit {total} {total === 1 ? "file" : "files"}</Button></>)}>
       {!job ? (
         <div style={{ display: "grid", gap: "var(--space-5)" }}>
+          <RendererCard missingOnly onReady={setCanDraw} />
           <div style={{ display: "flex", gap: "var(--space-6)", flexWrap: "wrap" }}>
             <Field label="Format">
               <SegmentedControl label="Format" value={motion ? "mp4" : format} onChange={setFormat} options={motion ? [{ value: "mp4", label: "MP4 video" }] : [{ value: "png", label: "PNG" }, { value: "jpeg", label: "JPEG" }, { value: "webp", label: "WebP" }]} />

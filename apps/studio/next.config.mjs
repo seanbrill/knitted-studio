@@ -1,7 +1,9 @@
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
+const { version } = JSON.parse(readFileSync(join(here, "package.json"), "utf8"));
 
 /** @type {import('next').NextConfig} */
 export default {
@@ -15,6 +17,8 @@ export default {
   outputFileTracingRoot: join(here, "../.."),
   transpilePackages: ["@knitted/agent", "@knitted/mcp", "@knitted/core", "@knitted/ui", "@knitted/render", "@knitted/engine"],
   devIndicators: false,
+  // Settings, About shows the version a release is named for (scripts/release.mjs).
+  env: { KNITTED_VERSION: version },
   // The engine shells out to ffmpeg and Playwright; neither belongs in a
   // client bundle, and Next will try to trace them without this.
   serverExternalPackages: ["playwright", "sharp"],
@@ -22,6 +26,18 @@ export default {
   // desktop app the server lives inside the signed app, and one written file breaks
   // the signature (macOS then calls the app damaged); it may not be writable at all.
   experimental: { isrFlushToDisk: false },
-  // The font routes read files by path, which the tracer cannot see on its own.
-  outputFileTracingIncludes: { "/api/fonts/[file]": ["../../packages/fonts/files/**"], "/api/projects/[id]/fonts.css": ["../../packages/fonts/src/**"] },
+  // The font routes read files by path, which the tracer cannot see on its own. Playwright
+  // is out of its sight too: the engine imports it when it knits (webpackIgnore), and the
+  // browser download runs its installer by path (cli.js and the files it starts). Left out,
+  // the desktop app can neither knit nor download the browser. Standalone output is every
+  // route's files together, so listing them on one route puts them in the whole server.
+  // Of playwright itself only the entry files: they hand everything to playwright-core.
+  outputFileTracingIncludes: {
+    "/api/fonts/[file]": ["../../packages/fonts/files/**"],
+    "/api/projects/[id]/fonts.css": ["../../packages/fonts/src/**"],
+    "/api/renderer": [
+      ...["package.json", "index.js", "index.mjs", "LICENSE", "NOTICE"].map((f) => `../../node_modules/playwright/${f}`),
+      "../../node_modules/playwright-core/**",
+    ],
+  },
 };

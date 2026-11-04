@@ -8,12 +8,16 @@ status: shipped
 
 ## "Knitting needs Playwright"
 
-Knitting uses a browser engine. Install it:
+Knitting uses a browser engine. In the desktop app, press **Download it** in the Knit dialog or in Settings, About. Running from a clone, install it:
 
 ```bash
 npm install playwright
 npx playwright install chromium
 ```
+
+## The browser download stops
+
+The message under **Download it** says why. Most often it is the connection: the browser comes from `cdn.playwright.dev`, so a firewall or proxy that blocks it stops the download. Press **Download it** again once that is fixed.
 
 ## A knit finishes with no video
 

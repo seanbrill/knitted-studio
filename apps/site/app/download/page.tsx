@@ -1,14 +1,42 @@
 import Link from "next/link";
 import { DownloadButton } from "../../components/DownloadButton";
 import { PageHero } from "../../components/PageHero";
+import changelog from "../../content/changelog.json";
 import releases from "../../content/releases.json";
 import type { Download as File } from "../../lib/downloads";
 import { GITHUB } from "../../lib/site";
 import { pageMeta } from "../../lib/meta";
 
 interface Release { version: string; files: File[] }
-// Written by scripts/fetch-releases.mjs from the FileFreak release folder when the site is built.
+// Written by scripts/fetch-releases.mjs from the FileFreak release folder when the site is
+// built, newest first. npm run release builds and deploys the site after each upload.
 const released = (releases.releases as Release[]).length > 0;
+const dates = new Map(changelog.entries.map((e) => [e.version, e.date]));
+const noted = new Set(changelog.entries.map((e) => e.version));
+
+/** What changed in a version, on the changelog, when it has an entry there. */
+const changes = (version: string) => (noted.has(version) ? <Link className="link" href={`/changelog/#v${version}`}>What changed</Link> : null);
+
+function Files({ r }: { r: Release }) {
+  return (
+    <div className="table-wrap doc">
+      <table className="downloads">
+        <thead><tr><th>Platform</th><th>File</th><th>Size</th><th>SHA-256</th></tr></thead>
+        <tbody>
+          {r.files.map((f) => (
+            <tr key={f.name}>
+              <td>{f.platform}</td>
+              {/* On a phone the checksum moves under the file name: a column of its own is four characters wide there. */}
+              <td><a className="link" href={f.url}>{f.name}</a><span className="sha-narrow"><span className="eyebrow">SHA-256</span> <code>{f.sha256}</code></span></td>
+              <td className="size">{f.size}</td>
+              <td className="sha-wide"><code>{f.sha256}</code></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 export const metadata = pageMeta({
   title: "Download",
@@ -20,6 +48,7 @@ export const metadata = pageMeta({
 
 export default function Download() {
   const list = releases.releases as Release[];
+  const [latest, ...older] = list;
   return (
     <>
       <PageHero eyebrow="Download" title={list.length ? "Get the app." : "Not released yet."} lead={list.length
@@ -42,21 +71,32 @@ export default function Download() {
               </ul>
             </div>
           ) : (
-            list.map((r) => (
-              <div key={r.version}>
-                <h2 className="h1">Version {r.version}</h2>
-                <div className="table-wrap doc">
-                  <table className="downloads">
-                    <thead><tr><th>Platform</th><th>File</th><th>Size</th><th>SHA-256</th></tr></thead>
-                    <tbody>
-                      {r.files.map((f) => (
-                        <tr key={f.name}><td>{f.platform}</td><td><a className="link" href={f.url}>{f.name}</a></td><td className="size">{f.size}</td><td><code>{f.sha256}</code></td></tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+            <>
+              <div>
+                <h2 className="h1">Version {latest.version}</h2>
+                <p className="release-meta">
+                  <span className="eyebrow eyebrow-ember">Latest</span>
+                  {dates.has(latest.version) ? <span className="eyebrow">{dates.get(latest.version)}</span> : null}
+                  {changes(latest.version)}
+                </p>
+                <Files r={latest} />
               </div>
-            ))
+              {older.length > 0 && (
+                <div className="stack" id="older-versions">
+                  <h2 className="h2">Older versions</h2>
+                  <p className="body-lg">Every release stays here, with its checksums. To go back, install an older one over the newer: if the newer one updated your library, it kept a backup from before, in Settings, Storage. knitted then offers the newest again, so turn off the automatic check in the knitted menu (the Help menu on Windows and Linux) to stay.</p>
+                  <div>
+                    {older.map((r) => (
+                      <details key={r.version} className="older-release">
+                        <summary><span className="label">Version {r.version}</span>{dates.has(r.version) ? <span className="eyebrow">{dates.get(r.version)}</span> : null}</summary>
+                        {noted.has(r.version) ? <p className="release-meta">{changes(r.version)}</p> : null}
+                        <Files r={r} />
+                      </details>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
           <div className="stack">
             <h2 className="h1">What to expect</h2>

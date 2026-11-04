@@ -86,6 +86,19 @@ body { font-size: 15px; }
 #all-downloads { scroll-margin-top: var(--space-6); }
 .downloads code { overflow-wrap: anywhere; }   /* a SHA-256 is 64 characters with nowhere to break */
 .downloads .size { white-space: nowrap; }
+.downloads .sha-narrow { display: none; }
+@media (max-width: 640px) {
+  .downloads th:last-child, .downloads .sha-wide { display: none; }
+  .downloads .sha-narrow { display: block; margin-top: var(--space-1); font-size: 12px; }
+}
+.release-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-5); margin: var(--space-2) 0 var(--space-4); font-size: 14px; }
+.older-release { border-top: 1px solid var(--line); }
+.older-release:last-child { border-bottom: 1px solid var(--line); }
+.older-release > summary { display: flex; align-items: baseline; gap: var(--space-4); padding: var(--space-4) 0; cursor: pointer; }
+.older-release > summary .label { font-size: 16px; }
+.older-release[open] > summary { padding-bottom: 0; }
+.older-release > :last-child { margin-bottom: var(--space-6); }
+.changelog-entry { scroll-margin-top: var(--space-6); }   /* the Download page links to each version */
 
 /* ── Home hero ──────────────────────────────────────────────────────────── */
 .hero { min-height: min(100dvh, 920px); display: flex; flex-direction: column; }
