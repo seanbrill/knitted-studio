@@ -22,7 +22,7 @@ import { spawnSync } from "node:child_process";
 import { readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { fileFor, releaseIn, versionsIn } from "../apps/studio/electron/update.mjs";
+import { SITE, fileFor, releaseIn, versionsIn } from "../apps/studio/electron/update.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const fail = (m) => { console.error(`release: ${m}`); process.exit(1); };
@@ -66,4 +66,16 @@ for (const [platform, arch] of [["darwin", "arm64"], ["darwin", "x64"], ["win32"
   if (!built.includes(`${file.sha256}  ${file.name}`)) fail(`the release folder's SHA-256 for ${file.name} is not the one built here.`);
 }
 console.log(`release: ${version} is published. Installed apps (0.1.2 and later) are offered it the next time they check.`);
-console.log(`release: the Download page lists it after the site pipeline runs again: push to main, or run "knitted release" in EZPIPELINE. Copies older than 0.1.2 ask the site, so they see it then too.`);
+
+// The Download page, and copies older than 0.1.2 (they ask the site), see it once the
+// pipeline has built the site again. A push to main starts that, so say whether the site
+// lists it yet and whether this checkout has anything to push.
+const listed = await fetch(`${SITE}/releases.json`, { signal: AbortSignal.timeout(20_000) })
+  .then((res) => (res.ok ? res.json() : null))
+  .then((site) => (Array.isArray(site?.releases) ? site.releases.some((r) => r?.version === version) : null))
+  .catch(() => null);
+const toPush = output("git", ["rev-list", "--count", "origin/main..HEAD"]).stdout?.trim() !== "0"
+  || !!output("git", ["status", "--porcelain", "--untracked-files=no"]).stdout?.trim();
+if (listed) console.log("release: the Download page lists it already.");
+else if (toPush) console.log("release: the Download page does not list it yet. Push this to main: the site build that starts lists it, and copies older than 0.1.2 are offered it then.");
+else console.log(`release: the Download page does not list it yet, and this checkout has nothing to push, so nothing will start a site build. Run "knitted release" in EZPIPELINE: once it has run, the page lists it and copies older than 0.1.2 are offered it.`);
