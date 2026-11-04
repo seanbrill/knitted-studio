@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
-import { axeProblems, launchBrowser, startStudio } from "./harness.mjs";
+import { axeProblems, launchBrowser, serverHas, startStudio } from "./harness.mjs";
 
 let studio, browser, page, projectId, patternId;
 const j = async (method, path, body) => {
@@ -32,7 +32,7 @@ test("the Parts panel lists the ten starters, drawn by the real renderer", async
 test("clicking a Part adds a named, linked instance to the canvas", async () => {
   await page.getByRole("button", { name: "Add Lower third" }).click();
   await frame().locator(".partstage").waitFor();
-  await page.waitForFunction(async ({ id }) => (await (await fetch(`/api/patterns/${id}`)).json()).stitches.some((s) => s.kind === "part"), { id: patternId });
+  await serverHas(studio, `/api/patterns/${patternId}`, (p) => p.stitches.some((s) => s.kind === "part"));
   const inst = (await pattern()).stitches.find((s) => s.kind === "part");
   assert.equal(inst.slot, "lower_third");
   assert.ok(inst.partId && inst.partSlots.length === 2);
@@ -43,7 +43,7 @@ test("the inspector shows the part's slots; filling one changes the canvas and i
   await page.getByLabel("name", { exact: true }).fill("Ada Lovelace");
   await page.getByLabel("name", { exact: true }).blur();
   await frame().getByText("Ada Lovelace").waitFor();
-  await page.waitForFunction(async ({ id }) => (await (await fetch(`/api/patterns/${id}`)).json()).stitches.find((s) => s.kind === "part").overrides.name === "Ada Lovelace", { id: patternId });
+  await serverHas(studio, `/api/patterns/${patternId}`, (p) => p.stitches.find((s) => s.kind === "part").overrides.name === "Ada Lovelace");
 });
 
 test("a model filling a slot INSIDE the part is applied, and a locked one is refused", async () => {
@@ -68,14 +68,14 @@ test("Save as part replaces a selection with a linked instance and adds it to th
 
 test("Detach turns the instance back into ordinary stitches with prefixed slots", async () => {
   await page.getByRole("button", { name: "Detach to edit freely" }).click();
-  await page.waitForFunction(async ({ id }) => !(await (await fetch(`/api/patterns/${id}`)).json()).stitches.some((s) => s.slot === "my_headline" && s.kind === "part"), { id: patternId });
+  await serverHas(studio, `/api/patterns/${patternId}`, (p) => !p.stitches.some((s) => s.slot === "my_headline" && s.kind === "part"));
   const p = await pattern();
   assert.ok(p.stitches.some((s) => s.slot === "my_headline_headline"), "the slot is prefixed with the instance's name");
 });
 
 test("undo puts the instance back exactly", async () => {
   await page.keyboard.press("Control+z");
-  await page.waitForFunction(async ({ id }) => (await (await fetch(`/api/patterns/${id}`)).json()).stitches.some((s) => s.slot === "my_headline" && s.kind === "part"), { id: patternId });
+  await serverHas(studio, `/api/patterns/${patternId}`, (p) => p.stitches.some((s) => s.slot === "my_headline" && s.kind === "part"));
 });
 
 test("the Parts page manages parts: a code part with a script cannot be saved, and a clean one can", async () => {

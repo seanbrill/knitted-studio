@@ -59,6 +59,15 @@ export function findDynamicNodeImports(text) {
     .filter((l) => /\bimport\s*\(\s*["']node:/.test(l.text));
 }
 
+/**
+ * Waits that hand Playwright's waitForFunction an async check. It returns after the
+ * check's first answer, true or not, so such a wait never fails. Across lines too:
+ * `waitForFunction(\n  async () => ...)`.
+ */
+export function findAsyncWaits(text) {
+  return [...text.matchAll(/waitForFunction\(\s*async\b/g)].map((m) => ({ line: text.slice(0, m.index).split("\n").length, text: text.slice(m.index, m.index + 80) }));
+}
+
 /** Lines that load code, styles or fonts from a third-party origin. */
 export function findCdnReferences(text) {
   return text

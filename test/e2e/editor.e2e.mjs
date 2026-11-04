@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
-import { axeProblems, launchBrowser, startStudio } from "./harness.mjs";
+import { axeProblems, launchBrowser, serverHas, startStudio } from "./harness.mjs";
 
 let studio, browser, page, projectId, patternId, W, H;
 const j = async (method, path, body) => {
@@ -74,10 +74,10 @@ test("dragging moves a stitch by the right amount, and undo and redo restore it 
   assert.ok(Math.abs((moved.x - before.x) * W * g.scale - 80) < 14, `moved about 80 screen px, got ${(moved.x - before.x) * W * g.scale}`);
   await page.keyboard.press("Control+z");
   await page.getByText("Saved").first().waitFor();
-  await page.waitForFunction(async ({ id, x }) => (await (await fetch(`/api/patterns/${id}`)).json()).stitches.find((s) => s.slot === "headline").x === x, { id: patternId, x: before.x });
+  await serverHas(studio, `/api/patterns/${patternId}`, (p) => p.stitches.find((s) => s.slot === "headline").x === before.x);
   assert.deepEqual([(await stitch("headline")).x, (await stitch("headline")).y], [before.x, before.y], "undo is exact");
   await page.keyboard.press("Control+Shift+z");
-  await page.waitForFunction(async ({ id, x }) => (await (await fetch(`/api/patterns/${id}`)).json()).stitches.find((s) => s.slot === "headline").x === x, { id: patternId, x: moved.x });
+  await serverHas(studio, `/api/patterns/${patternId}`, (p) => p.stitches.find((s) => s.slot === "headline").x === moved.x);
 });
 
 test("dragging a resize handle grows the stitch, anchored on the opposite corner", async () => {
@@ -102,7 +102,7 @@ test("double-clicking text edits it in place, and Escape cancels", async () => {
   const ta = page.getByLabel("Edit text");
   await ta.fill("Spring *sale*");
   await ta.press("Control+Enter");
-  await page.waitForFunction(async ({ id }) => (await (await fetch(`/api/patterns/${id}`)).json()).stitches.find((s) => s.slot === "headline").content === "Spring *sale*", { id: patternId });
+  await serverHas(studio, `/api/patterns/${patternId}`, (p) => p.stitches.find((s) => s.slot === "headline").content === "Spring *sale*");
   assert.match(await frameText(), /Spring sale/);
   assert.equal(await page.frameLocator('iframe[title="Pattern canvas"]').locator("em.accent").innerText(), "sale", "the starred word is the serif accent");
   await page.mouse.dblclick(p.x, p.y);
@@ -116,21 +116,21 @@ test("the position fields in the inspector change the stitch, in frame pixels", 
   await page.mouse.click(...Object.values(await at(head)));
   await page.getByLabel("X position").fill("100");
   await page.getByLabel("X position").press("Enter");
-  await page.waitForFunction(async ({ id, W }) => Math.abs((await (await fetch(`/api/patterns/${id}`)).json()).stitches.find((s) => s.slot === "headline").x * W - 100) < 0.5, { id: patternId, W });
+  await serverHas(studio, `/api/patterns/${patternId}`, (p) => Math.abs(p.stitches.find((s) => s.slot === "headline").x * W - 100) < 0.5);
 });
 
 test("keyboard: arrows nudge, Delete removes, duplicate adds, and undo brings the deleted one back", async () => {
   const eyebrow = await stitch("eyebrow");
   await page.mouse.click(...Object.values(await at(eyebrow)));
   await page.keyboard.press("ArrowRight");
-  await page.waitForFunction(async ({ id, x }) => (await (await fetch(`/api/patterns/${id}`)).json()).stitches.find((s) => s.slot === "eyebrow").x > x, { id: patternId, x: eyebrow.x });
+  await serverHas(studio, `/api/patterns/${patternId}`, (p) => p.stitches.find((s) => s.slot === "eyebrow").x > eyebrow.x);
   const count = (await getPattern()).stitches.length;
   await page.keyboard.press("Control+d");
-  await page.waitForFunction(async ({ id, n }) => (await (await fetch(`/api/patterns/${id}`)).json()).stitches.length === n + 1, { id: patternId, n: count });
+  await serverHas(studio, `/api/patterns/${patternId}`, (p) => p.stitches.length === count + 1);
   await page.keyboard.press("Delete");
-  await page.waitForFunction(async ({ id, n }) => (await (await fetch(`/api/patterns/${id}`)).json()).stitches.length === n, { id: patternId, n: count });
+  await serverHas(studio, `/api/patterns/${patternId}`, (p) => p.stitches.length === count);
   await page.keyboard.press("Control+z");
-  await page.waitForFunction(async ({ id, n }) => (await (await fetch(`/api/patterns/${id}`)).json()).stitches.length === n + 1, { id: patternId, n: count });
+  await serverHas(studio, `/api/patterns/${patternId}`, (p) => p.stitches.length === count + 1);
 });
 
 test("Fill mode: locked stitches are inert, free slots are a form, and what is typed is saved", async () => {
@@ -145,7 +145,7 @@ test("Fill mode: locked stitches are inert, free slots are a form, and what is t
   assert.doesNotMatch(selected, /eyebrow/, `a locked stitch must be inert in Fill mode, got: ${selected}`);
   await form.getByLabel("headline").fill("Filled by a person");
   await form.getByLabel("headline").blur();
-  await page.waitForFunction(async ({ id }) => (await (await fetch(`/api/patterns/${id}`)).json()).stitches.find((s) => s.slot === "headline").content === "Filled by a person", { id: patternId });
+  await serverHas(studio, `/api/patterns/${patternId}`, (p) => p.stitches.find((s) => s.slot === "headline").content === "Filled by a person");
   assert.match(await frameText(), /Filled by a person/);
 });
 
@@ -170,7 +170,7 @@ test("layers: hide, lock, and select from the list", async () => {
   const layers = page.getByRole("list", { name: "Layers" });
   await layers.waitFor();
   await layers.getByRole("button", { name: "Hide logo" }).click();
-  await page.waitForFunction(async ({ id }) => !!(await (await fetch(`/api/patterns/${id}`)).json()).stitches.find((s) => s.slot === "logo").style?.hidden, { id: patternId });
+  await serverHas(studio, `/api/patterns/${patternId}`, (p) => !!p.stitches.find((s) => s.slot === "logo").style?.hidden);
   await layers.getByRole("button", { name: "Show logo" }).click();
   await layers.getByRole("button", { name: /^headline/ }).click();
   await page.getByLabel("Slot name").waitFor();

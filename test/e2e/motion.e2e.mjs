@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
-import { axeProblems, launchBrowser, startStudio } from "./harness.mjs";
+import { axeProblems, launchBrowser, serverHas, startStudio } from "./harness.mjs";
 
 let studio, browser, page, projectId, patternId;
 const j = async (method, path, body) => {
@@ -40,7 +40,7 @@ test("Animate adds a clip at the playhead and the pattern becomes a video", asyn
   await page.getByText("Animate", { exact: true }).click();
   await page.getByRole("button", { name: "Fade in", exact: true }).click();
   await page.getByRole("button", { name: /^Fade in on headline/ }).waitFor();
-  await page.waitForFunction(async ({ id }) => { const p = await (await fetch(`/api/patterns/${id}`)).json(); return p.durationMs >= 3000 && p.motion?.tracks && Object.keys(p.motion.tracks).length === 1; }, { id: patternId });
+  await serverHas(studio, `/api/patterns/${patternId}`, (p) => p.durationMs >= 3000 && p.motion?.tracks && Object.keys(p.motion.tracks).length === 1);
 });
 
 test("scrubbing drives the engine's clock: invisible at the start, visible at the end", async () => {
@@ -68,9 +68,9 @@ test("clips can be dragged to a new time, saved, and undone", async () => {
   const b = await clip.boundingBox();
   await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2); await page.mouse.down();
   await page.mouse.move(b.x + b.width / 2 + 120, b.y + b.height / 2, { steps: 6 }); await page.mouse.up();
-  await page.waitForFunction(async ({ pid, id, was }) => (await (await fetch(`/api/patterns/${pid}`)).json()).motion.tracks[id][0].startMs > was, { pid: patternId, id, was: before[id][0].startMs });
+  await serverHas(studio, `/api/patterns/${patternId}`, (p) => p.motion.tracks[id][0].startMs > before[id][0].startMs);
   await page.keyboard.press("Control+z");
-  await page.waitForFunction(async ({ pid, id, was }) => (await (await fetch(`/api/patterns/${pid}`)).json()).motion.tracks[id][0].startMs === was, { pid: patternId, id, was: before[id][0].startMs });
+  await serverHas(studio, `/api/patterns/${patternId}`, (p) => p.motion.tracks[id][0].startMs === before[id][0].startMs);
 });
 
 test("the clip editor changes the animation and easing", async () => {
@@ -78,7 +78,7 @@ test("the clip editor changes the animation and easing", async () => {
   const g = page.getByRole("group", { name: "Clip" });
   await g.getByLabel("Animation").click();
   await page.getByRole("option", { name: "Pop" }).click();
-  await page.waitForFunction(async ({ id }) => Object.values((await (await fetch(`/api/patterns/${id}`)).json()).motion.tracks)[0][0].preset === "pop", { id: patternId });
+  await serverHas(studio, `/api/patterns/${patternId}`, (p) => Object.values(p.motion.tracks)[0][0].preset === "pop");
 });
 
 test("a model setting motion through the API is refused on a locked stitch", async () => {

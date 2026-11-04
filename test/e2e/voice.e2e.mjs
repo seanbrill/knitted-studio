@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 import { execFileSync } from "node:child_process";
-import { axeProblems, launchBrowser, startStudio } from "./harness.mjs";
+import { axeProblems, launchBrowser, serverHas, startStudio } from "./harness.mjs";
 
 const mac = process.platform === "darwin"; // the built-in voice is real speech here; elsewhere it depends on espeak
 let studio, browser, page, projectId, patternId;
@@ -95,7 +95,7 @@ test("removing a spoken line from the panel removes its clip", { skip: !mac }, a
   await page.getByRole("application", { name: "Pattern canvas" }).waitFor();
   await page.getByRole("button", { name: "Voice", exact: true }).click();
   await page.getByRole("button", { name: "Remove Make it knitted." }).click();
-  await page.waitForFunction(async ({ id }) => (await (await fetch(`/api/patterns/${id}`)).json()).motion.audio.length === 1, { id: patternId });
+  await serverHas(studio, `/api/patterns/${patternId}`, (p) => p.motion.audio.length === 1);
 });
 
 for (const theme of ["day", "night"]) {

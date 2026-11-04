@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 import { crc32 } from "node:zlib";
-import { axeProblems, launchBrowser, startStudio } from "./harness.mjs";
+import { axeProblems, launchBrowser, serverHas, startStudio } from "./harness.mjs";
 
 let studio, browser, page, projectId, patternId;
 const j = async (method, path, body) => {
@@ -103,7 +103,7 @@ test("the gallery opens a knit, offers download and delete, and delete removes t
   await dlg.getByRole("link", { name: "Download" }).waitFor();
   await dlg.getByRole("button", { name: "Delete" }).click();
   await page.getByRole("button", { name: "Delete file" }).click();
-  await page.waitForFunction(async ({ id }) => (await (await fetch(`/api/projects/${id}/knits`)).json()).length === 3, { id: projectId });
+  await serverHas(studio, `/api/projects/${projectId}/knits`, (k) => k.length === 3);
 });
 
 test("a pattern with missing Yarn cannot be knitted, and the dialog says what to fix", async () => {

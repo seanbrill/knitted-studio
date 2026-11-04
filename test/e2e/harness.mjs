@@ -58,6 +58,26 @@ export async function startStudio({ prod = false, env: extra = {} } = {}) {
   };
 }
 
+/**
+ * Wait until what the server answers at `path` passes `check`, polling from the test.
+ * Not page.waitForFunction: given an async check, it returns after the first answer,
+ * true or not, so a wait written that way can never fail (test/e2e-waits.test.mjs).
+ */
+export async function serverHas(studio, path, check, { timeout = 30_000 } = {}) {
+  const end = Date.now() + timeout;
+  let last;
+  for (;;) {
+    try {
+      last = await (await fetch(studio.url + path)).json();
+      let ok = false;
+      try { ok = check(last); } catch { /* not there yet */ }
+      if (ok) return last;
+    } catch (e) { last = String(e); }
+    if (Date.now() > end) throw new Error(`The server never answered ${path} as the test expects, in ${timeout / 1000}s. Its last answer: ${JSON.stringify(last)?.slice(0, 400)}`);
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
 export async function launchBrowser() {
   const { chromium } = await import("playwright");
   return chromium.launch();
