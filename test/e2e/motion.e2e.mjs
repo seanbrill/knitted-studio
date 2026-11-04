@@ -10,7 +10,12 @@ const j = async (method, path, body) => {
 const pattern = async () => (await j("GET", `/api/patterns/${patternId}`)).body;
 const frame = () => page.frameLocator('iframe[title="Pattern canvas"]');
 const headline = () => frame().locator('[data-slot="headline"]');
-const opacity = () => headline().evaluate((el) => getComputedStyle(el).opacity);
+// The canvas redraws its content as the playhead moves, so this reads the headline the
+// frame shows now, not one a locator found a moment ago and the redraw has since replaced.
+const shows = (opacity) => page.waitForFunction((o) => {
+  const el = document.querySelector("iframe[title='Pattern canvas']")?.contentDocument?.querySelector('[data-slot="headline"]');
+  return !!el && Number(getComputedStyle(el).opacity) === o;
+}, opacity, { timeout: 15_000 });
 
 before(async () => {
   studio = await startStudio();
@@ -45,9 +50,9 @@ test("scrubbing drives the engine's clock: invisible at the start, visible at th
   // Walk the playhead with the keyboard: 33ms steps, shift for a second.
   for (let i = 0; i < 4; i++) await bar.press("Shift+ArrowLeft");
   await page.waitForFunction(() => document.querySelector('[aria-label="Playhead time"]')?.textContent?.startsWith("0:00.0"));
-  assert.equal(await opacity(), "0", "before the clip starts the stitch waits, hidden");
+  await shows(0).catch(() => assert.fail("before the clip starts the stitch waits, hidden"));
   for (let i = 0; i < 2; i++) await bar.press("Shift+ArrowRight");
-  await page.waitForFunction(async () => { const el = document.querySelector("iframe[title='Pattern canvas']").contentDocument.querySelector('[data-slot="headline"]'); return Number(getComputedStyle(el).opacity) === 1; });
+  await shows(1).catch(() => assert.fail("after the clip the stitch is fully shown"));
 });
 
 test("play runs the clock forward and stops at the end", async () => {

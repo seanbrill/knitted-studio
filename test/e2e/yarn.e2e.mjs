@@ -71,15 +71,25 @@ test("video can be scrubbed: the file route answers byte ranges", async () => {
   assert.equal(bad.status, 416);
 });
 
-test("kind filters and search narrow the library", async () => {
+test("kind filters and search narrow the library, and a late answer never undoes a search", async () => {
   await page.goto(`${studio.url}/projects/${projectId}/yarn`);
   await page.getByRole("radio", { name: "Video" }).click();
   await page.getByRole("button", { name: /^photo/ }).waitFor({ state: "detached" });
   await page.getByRole("button", { name: /^clip/ }).waitFor();
-  await page.getByRole("radio", { name: "All" }).click();
-  await page.getByLabel("Search yarn").fill("ton");
-  await page.getByRole("button", { name: /^clip/ }).waitFor({ state: "detached" });
-  await page.getByRole("button", { name: /^tone/ }).waitFor();
+  // The whole library answers after the search does, as a busy server can: what the
+  // search found has to stand. (Under load this put the clip back, and the test hung.)
+  const whole = (u) => u.pathname === `/api/projects/${projectId}/yarn` && !u.search;
+  await page.route(whole, async (r) => { await new Promise((ok) => setTimeout(ok, 1200)); await r.continue().catch(() => {}); });
+  try {
+    const late = page.waitForResponse((res) => whole(new URL(res.url())));
+    await page.getByRole("radio", { name: "All" }).click();
+    await page.getByLabel("Search yarn").fill("ton");
+    await page.getByRole("button", { name: /^tone/ }).waitFor();
+    await page.getByRole("button", { name: /^clip/ }).waitFor({ state: "detached" });
+    await late;
+    await page.waitForTimeout(300);
+    assert.equal(await page.getByRole("button", { name: /^clip/ }).count(), 0, "the late answer put the clip back");
+  } finally { await page.unroute(whole); }
   await page.getByLabel("Search yarn").fill("");
 });
 

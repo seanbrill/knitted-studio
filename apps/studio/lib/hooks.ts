@@ -15,13 +15,17 @@ export function useLive<T>(load: () => Promise<T>, deps: unknown[] = []) {
   // Kept current from an effect, not during render: the latest `load` closure
   // is what a later SSE-triggered refresh must call.
   useEffect(() => { loadRef.current = load; });
+  // Only the newest load may land. Pick a kind and then search, and both loads are in
+  // flight; if the first answers last, it must not put back what the search took away.
+  const latest = useRef(0);
 
   const refresh = useCallback(async () => {
+    const n = ++latest.current;
     try {
-      setData(await loadRef.current());
-      setError(null);
+      const d = await loadRef.current();
+      if (n === latest.current) { setData(d); setError(null); }
     } catch (e) {
-      setError((e as Error).message);
+      if (n === latest.current) setError((e as Error).message);
     }
   }, []);
 
