@@ -3,7 +3,8 @@
 // The editor, the dashboard and the settings page all go through this, so a
 // route's shape lives in one place and a change to it is a type error here.
 
-import type { Actor, Part, Pattern, Project, Refusal, Size, Swatch, Yarn } from "./types.ts";
+import type { Actor, ColorRole, Part, Pattern, Project, Refusal, Size, Swatch, Yarn } from "./types.ts";
+import type { SiteProposal } from "./site.ts";
 import type { KnitIssue, KnitRecord } from "./knits.ts";
 import type { Command } from "./commands.ts";
 
@@ -67,7 +68,10 @@ export const api = {
     activate: (id: string) => call<Swatch>("POST", `/api/swatches/${id}`, { action: "activate" }),
     duplicate: (id: string) => call<Swatch>("POST", `/api/swatches/${id}`, { action: "duplicate" }),
     import: (projectId: string, file: unknown) => call<Swatch>("POST", `/api/projects/${projectId}/swatches/import`, file),
-    fromUrl: (projectId: string, url: string) => call<{ colors: { role: string; name: string; hex: string }[]; fonts: string[]; logoUrl?: string; sourceUrl: string; notes: string[] }>("POST", `/api/projects/${projectId}/swatches/from-url`, { url }),
+    /** Read a website into a proposal; nothing is saved. `matched`: the fonts this project can draw. */
+    fromUrl: (projectId: string, url: string) => call<SiteProposal & { matched: Record<"display" | "body" | "mono", { family: string; yarnId?: string; from: "bundled" | "yarn" } | null> }>("POST", `/api/projects/${projectId}/swatches/from-url`, { url }),
+    /** Save a proposal, as the person left it, as a new swatch (not made the project's). */
+    fromSite: (projectId: string, b: { name: string; colors: { role: ColorRole; name: string; hex: string }[]; fonts?: { display?: string; body?: string; mono?: string }; logo?: { url: string; use: "full" | "mark" } }) => call<{ swatch: Swatch; notes: string[] }>("POST", `/api/projects/${projectId}/swatches/from-site`, b),
     colorsFromYarn: (yarnId: string) => call<string[]>("GET", `/api/yarn/${yarnId}/colors`),
   },
   parts: {

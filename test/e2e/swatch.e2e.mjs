@@ -126,6 +126,52 @@ test("reading a website is refused for private addresses", async () => {
   assert.match(r.body.error.message, /your own computer or network/);
 });
 
+test("a swatch started from a website is looked over, changed and created, and not used until the person says so", async () => {
+  // The site is read by the studio's server, so the browser's request for it answers
+  // with a proposal shaped like the reader's. Creating it goes through the real route.
+  const proposal = {
+    name: "Brandy", sourceUrl: "https://brandy.example/",
+    colors: [
+      { role: "primary", name: "Teal", hex: "#0f766e", from: "buttons" },
+      { role: "accent", name: "Rose", hex: "#e11d48", from: "--color-accent" },
+      { role: "neutral", name: "Stone", hex: "#e7e5e4", from: "made from the others" },
+      { role: "background", name: "Paper", hex: "#fdfcfb", from: "the page background" },
+      { role: "text", name: "Ink", hex: "#1c1917", from: "the page text" },
+    ],
+    fonts: ["Fraunces", "Inter", "Brandy Mono"], fontRoles: { display: "Fraunces", body: "Inter", mono: "Brandy Mono" },
+    logo: { url: "https://brandy.example/logo.svg", use: "full" },
+    notes: ["One of its stylesheets could not be read, so some colours or fonts may be missing."],
+    matched: { display: { family: "Fraunces", from: "bundled" }, body: { family: "Inter", from: "bundled" }, mono: null },
+  };
+  await page.route("**/swatches/from-url", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(proposal) }));
+  try {
+    const activeBefore = (await j("GET", `/api/projects/${projectId}`)).body.swatchId;
+    await page.goto(`${studio.url}/projects/${projectId}/swatch`);
+    await page.getByRole("button", { name: "From a website" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("Website").fill("brandy.example");
+    await dialog.getByRole("button", { name: "Read the site" }).click();
+    await dialog.getByText("Found on brandy.example").waitFor();
+    await dialog.getByText("From its buttons").waitFor();
+    await dialog.getByText("Its --color-accent variable").waitFor();
+    await dialog.getByText(/Brandy Mono, not bundled\. The body font stands in/).waitFor();
+    await dialog.getByText(proposal.notes[0]).waitFor();
+    assert.deepEqual(await axeProblems(page), [], "the dialog, as it shows a proposal");
+    await dialog.getByLabel("Primary hex").fill("#115e59");
+    await dialog.getByText("Your choice").waitFor();
+    await dialog.getByLabel("Name", { exact: true }).fill("Brandy web");
+    await dialog.getByRole("switch", { name: "Bring in its logo" }).click();
+    await dialog.getByRole("button", { name: "Create swatch" }).click();
+    await page.getByText("Created Brandy web. Press Use for this project when it looks right.").waitFor();
+    const made = (await j("GET", `/api/projects/${projectId}/swatches`)).body.find((s) => s.name === "Brandy web");
+    assert.equal(made.colors.find((c) => c.role === "primary").hex, "#115e59", "the person's change is what was saved");
+    assert.deepEqual([made.fonts.display.family, made.fonts.body.family, made.fonts.mono], ["Fraunces", "Inter", undefined]);
+    assert.equal(made.logos.length, 0, "the logo was switched off");
+    assert.equal((await j("GET", `/api/projects/${projectId}`)).body.swatchId, activeBefore, "it is not the project's swatch until Use");
+    await page.getByRole("button", { name: "Use for this project" }).waitFor();
+  } finally { await page.unroute("**/swatches/from-url"); }
+});
+
 test("you cannot delete the last swatch", async () => {
   const other = (await j("POST", "/api/projects", { name: "Solo" })).body.id;
   const [only] = (await j("GET", `/api/projects/${other}/swatches`)).body;

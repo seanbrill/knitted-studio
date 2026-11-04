@@ -15,7 +15,7 @@
     { "id": "pattern-editor", "group": "patterns", "status": "soon", "name": "The Pattern editor", "summary": "Draw, move and style stitches on a canvas, with the locked and free outlines always visible." },
     { "id": "fill-mode", "group": "patterns", "status": "soon", "name": "Fill mode", "summary": "Open a Pattern, change only the free stitches, and knit. Built for people who are not designers." },
     { "id": "batch-knit", "group": "patterns", "status": "soon", "name": "Batch knitting in the studio", "summary": "Knit twelve posts from one Pattern in one go. Your model can already ask for variants through the MCP server." },
-    { "id": "swatch-editor", "group": "swatches", "status": "soon", "name": "The Swatch editor", "summary": "Colours, fonts, logos and a written voice for one brand, in one place." },
+    { "id": "swatch-editor", "group": "swatches", "status": "shipped", "name": "The Swatch editor", "summary": "Colours, fonts, logos and a written voice for one brand, in one place. Start one from the brand's website." },
     { "id": "yarn-uploads", "group": "yarn", "status": "soon", "name": "Yarn uploads", "summary": "Drop in photos, logos, video and copy. Every file lives in a folder you can open." },
     { "id": "parts", "group": "parts", "status": "soon", "name": "Parts", "summary": "A lower-third, a logo sting or a quote block, made once and dropped into many Patterns." },
     { "id": "render-engine", "group": "motion", "status": "shipped", "name": "The frame-by-frame render engine", "summary": "A Pattern is a page with a timeline. The engine sets the time, takes a picture of each frame and lets ffmpeg do the encoding. Needs Playwright and ffmpeg installed." },

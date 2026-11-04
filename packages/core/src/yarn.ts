@@ -167,7 +167,7 @@ async function sha256(file: string): Promise<string> {
 }
 
 /** Up to five distinct, representative colours, as hex. Feeds Swatch extraction. */
-async function dominantColors(img: Sharp): Promise<{ colors: string[]; hasAlpha: boolean }> {
+export async function dominantColors(img: Sharp): Promise<{ colors: string[]; hasAlpha: boolean }> {
   const { data, info } = await img.clone().resize(48, 48, { fit: "inside" }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const buckets = new Map<number, { n: number; r: number; g: number; b: number }>();
   let hasAlpha = false;

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, yarnThumbUrl } from "@knitted/core/client";
 import { COLOR_ROLES, type ColorRole, type Swatch, type SwatchColor, type Yarn } from "@knitted/core";
 import {
-  Button, Chip, ColorField, ConfirmDialog, Dialog, EmptyState, Field, Input, Select, Skeleton, Slider, Textarea, icons, useToast,
+  Button, Chip, ColorField, ConfirmDialog, Dialog, EmptyState, Field, Input, Select, Skeleton, Slider, Switch, Textarea, icons, useToast,
 } from "@knitted/ui";
 import { useLive } from "@/lib/hooks";
 import { SwatchPreview } from "./SwatchPreview";
@@ -206,7 +206,7 @@ export function SwatchView({ projectId }: { projectId: string }) {
 
       <NewSwatchDialog open={dialog === "new"} onOpenChange={(o) => !o && setDialog(null)} onCreate={async (template, name) => { const s = await api.swatches.create(projectId, { template, data: name ? { name } : undefined }); await refresh(); dirty.current = false; setPickedId(s.id); }} />
       <YarnColorsDialog open={dialog === "yarn"} onOpenChange={(o) => !o && setDialog(null)} images={images} onAccept={(hex, role) => { const has = draft.colors.some((c) => c.role === role); edit({ colors: has ? draft.colors.map((c) => (c.role === role ? { ...c, hex } : c)) : [...draft.colors, { role, name: role, hex }] }); }} />
-      <SiteDialog open={dialog === "site"} onOpenChange={(o) => !o && setDialog(null)} projectId={projectId} onCreate={async (colors, name) => { const base = (await api.swatches.create(projectId, { template: "starter", data: { name } })); const merged = base.colors.map((c) => colors.find((x) => x.role === c.role) ?? c); const extra = colors.filter((x) => !merged.some((m) => m.role === x.role)); await api.swatches.update(base.id, { colors: [...merged, ...extra] }); await refresh(); dirty.current = false; setPickedId(base.id); }} />
+      <SiteDialog open={dialog === "site"} onOpenChange={(o) => !o && setDialog(null)} projectId={projectId} onCreated={async (s, notes) => { await refresh(); dirty.current = false; setPickedId(s.id); toast(notes.find((n) => /logo/i.test(n)) ?? `Created ${s.name}. Press Use for this project when it looks right.`); }} />
       <ConfirmDialog open={dialog === "delete"} onOpenChange={(o) => !o && setDialog(null)} title={`Delete ${current.name}?`} description={isActive ? "It is this project's active swatch. Another one will take its place." : "Patterns using its colours will use this project's active swatch instead."} confirmLabel="Delete swatch"
         onConfirm={async () => { await api.swatches.remove(current.id); dirty.current = false; setPickedId(null); await refresh(); await refreshProject(); }} />
     </div>
@@ -246,21 +246,81 @@ function YarnColorsDialog({ open, onOpenChange, images, onAccept }: { open: bool
   );
 }
 
-function SiteDialog({ open, onOpenChange, projectId, onCreate }: { open: boolean; onOpenChange: (o: boolean) => void; projectId: string; onCreate: (colors: { role: ColorRole; name: string; hex: string }[], name: string) => Promise<void> }) {
-  const [url, setUrl] = useState(""); const [busy, setBusy] = useState(false); const [err, setErr] = useState<string | undefined>();
+const ROLE_LABEL: Record<ColorRole, string> = { primary: "Primary", secondary: "Secondary", accent: "Accent", neutral: "Neutral", background: "Background", text: "Text" };
+const SLOT_LABEL = { display: "Headlines", body: "Body text", mono: "Labels and code" } as const;
+// Where the reader found a colour, in words: "buttons", "--color-bg-2", "made from the others".
+const sourceText = (from: string) => (from === "made from the others" ? "Made from the others" : from.startsWith("--") ? `Its ${from} variable` : from.startsWith("the ") ? `From ${from}` : `From its ${from}`);
+const shortUrl = (u: string) => { try { const x = new URL(u); const s = x.hostname + x.pathname; return s.length > 48 ? `${s.slice(0, 47)}...` : s; } catch { return u; } };
+
+function SiteDialog({ open, onOpenChange, projectId, onCreated }: { open: boolean; onOpenChange: (o: boolean) => void; projectId: string; onCreated: (s: Swatch, notes: string[]) => Promise<void> }) {
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState<null | "reading" | "creating">(null);
+  const [err, setErr] = useState<string | undefined>();
   const [found, setFound] = useState<Awaited<ReturnType<typeof api.swatches.fromUrl>> | null>(null);
-  const go = async () => { setBusy(true); setErr(undefined); try { setFound(await api.swatches.fromUrl(projectId, url)); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); } };
+  const [name, setName] = useState("");
+  const [colors, setColors] = useState<SwatchColor[]>([]);
+  const [keepLogo, setKeepLogo] = useState(true);
+  const read = async () => {
+    setBusy("reading"); setErr(undefined);
+    try {
+      const f = await api.swatches.fromUrl(projectId, url);
+      setFound(f); setName(f.name); setColors(f.colors.map(({ role, name: n, hex }) => ({ role, name: n, hex }))); setKeepLogo(!!f.logo);
+    } catch (e) { setErr((e as Error).message); setFound(null); } finally { setBusy(null); }
+  };
+  const create = async () => {
+    if (!found) return;
+    setBusy("creating"); setErr(undefined);
+    try {
+      const r = await api.swatches.fromSite(projectId, { name: name.trim() || found.name, colors, fonts: found.fontRoles, logo: keepLogo ? found.logo : undefined });
+      await onCreated(r.swatch, r.notes);
+      onOpenChange(false); setFound(null); setUrl("");
+    } catch (e) { setErr((e as Error).message); } finally { setBusy(null); }
+  };
+  const valid = colors.every((c) => /^#[0-9a-fA-F]{6}$/.test(c.hex));
+  const standIn = found?.matched.body?.family ?? "Inter";
   return (
-    <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) setFound(null); }} title="Start from a website" description="knitted reads the page's own colours and fonts and proposes a swatch. It fetches that one page when you press Read, and runs nothing from it.">
-      <Field label="Website" htmlFor="site-url" error={err}><Input id="site-url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com" onKeyDown={(e) => e.key === "Enter" && url && go()} /></Field>
-      <div className="dialog-actions"><Button variant="primary" disabled={busy || !url} onClick={go}>{busy ? "Reading..." : "Read the site"}</Button></div>
+    <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) { setFound(null); setErr(undefined); } }} wide title="Start from a website"
+      description="knitted reads the site's own colours, fonts and logo and proposes a swatch. It fetches the page and its stylesheets when you press Read, and runs nothing from them.">
+      <Field label="Website" htmlFor="site-url" error={found ? undefined : err}>
+        <Input id="site-url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="example.com" onKeyDown={(e) => { if (e.key === "Enter" && url && !busy) void read(); }} />
+      </Field>
+      <div className="dialog-actions"><Button variant={found ? "secondary" : "primary"} disabled={!!busy || !url} onClick={read}>{busy === "reading" ? "Reading..." : found ? "Read again" : "Read the site"}</Button></div>
       {found && (
-        <div style={{ marginTop: "var(--space-5)", display: "grid", gap: "var(--space-3)" }}>
-          <p className="label" style={{ margin: 0 }}>Found on {new URL(found.sourceUrl).hostname}</p>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{found.colors.map((c) => <span key={c.role} className="chip"><span style={{ width: 14, height: 14, borderRadius: "50%", background: c.hex }} />{c.role} {c.hex}</span>)}</div>
-          {found.fonts.length > 0 && <p className="body-sm" style={{ margin: 0 }}>Fonts it uses: {found.fonts.join(", ")}. Pick the closest bundled font in the editor.</p>}
+        <div style={{ marginTop: "var(--space-5)", display: "grid", gap: "var(--space-4)" }}>
+          <p className="label" style={{ margin: 0 }}>Found on {new URL(found.sourceUrl).hostname}. Change anything before you create it.</p>
+          <Field label="Name" htmlFor="site-name"><Input id="site-name" value={name} onChange={(e) => setName(e.target.value)} /></Field>
+          <section aria-label="Colours found" style={{ display: "grid", gap: "var(--space-2)" }}>
+            {colors.map((c, i) => (
+              <div key={c.role} style={{ display: "flex", gap: "var(--space-3)", alignItems: "center", flexWrap: "wrap" }}>
+                <span className="label" style={{ width: 96 }}>{ROLE_LABEL[c.role]}</span>
+                <ColorField label={ROLE_LABEL[c.role]} value={c.hex} onChange={(hex) => setColors(colors.map((x, k) => (k === i ? { ...x, hex } : x)))} />
+                <span className="body-sm" style={{ color: "var(--ink-muted)" }}>{c.hex.toLowerCase() === found.colors[i]?.hex ? sourceText(found.colors[i].from) : "Your choice"}</span>
+              </div>
+            ))}
+          </section>
+          <section aria-label="Fonts found" style={{ display: "grid", gap: "var(--space-1)" }}>
+            {(["display", "body", "mono"] as const).map((slot) => {
+              const want = found.fontRoles[slot]; const m = found.matched[slot];
+              if (!want) return null;
+              return (
+                <p key={slot} className="body-sm" style={{ margin: 0 }}>
+                  <span className="label">{SLOT_LABEL[slot]}:</span> {want}
+                  {m ? (m.from === "yarn" ? ", from your Yarn" : m.family === want ? ", bundled" : `, as the bundled ${m.family}`)
+                    : <span style={{ color: "var(--ink-muted)" }}>, not bundled. {slot === "mono" ? "The body font" : slot === "display" ? standIn : "Inter"} stands in until you upload the font to Yarn.</span>}
+                </p>
+              );
+            })}
+            {!found.fontRoles.body && !found.fontRoles.display && <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>No fonts of its own were found, so it starts with Inter.</p>}
+          </section>
+          {found.logo && (
+            <div style={{ display: "flex", gap: "var(--space-3)", alignItems: "center" }}>
+              <Switch id="site-logo" checked={keepLogo} onCheckedChange={setKeepLogo} label={`Bring in its ${found.logo.use === "mark" ? "icon" : "logo"}`} />
+              <label htmlFor="site-logo" className="body-sm">Bring in its {found.logo.use === "mark" ? "icon" : "logo"} as Yarn <span style={{ color: "var(--ink-muted)" }}>({shortUrl(found.logo.url)})</span></label>
+            </div>
+          )}
           {found.notes.map((n) => <p key={n} className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>{n}</p>)}
-          {found.colors.length > 0 && <Button variant="primary" onClick={async () => { await onCreate(found.colors as never, new URL(found.sourceUrl).hostname); onOpenChange(false); setFound(null); }}><Check size={14} aria-hidden /> Create swatch from this</Button>}
+          {err && <p className="field-error" role="alert"><AlertTriangle size={13} aria-hidden /> {err}</p>}
+          <div className="dialog-actions"><Button variant="primary" disabled={!!busy || !valid} onClick={create}><Check size={14} aria-hidden /> {busy === "creating" ? "Creating..." : "Create swatch"}</Button></div>
         </div>
       )}
     </Dialog>
