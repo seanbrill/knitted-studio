@@ -14,6 +14,7 @@
         "In Yarn, a search made just after picking a kind shows what it found, not the whole library.",
         "Arrow keys on a slider move the slider. Before, they also moved the selected stitch, when scrubbing the timeline or adjusting a style.",
         "Settings, About shows the version you have.",
+        "The desktop app sees a new version as soon as it is out: it reads the list of releases where the installers are kept, not the website's copy.",
         "The Download page puts the newest version first, with every older one below it.",
         "Text on the primary button stays readable when you hover over it."
       ]

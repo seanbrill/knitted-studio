@@ -1,7 +1,11 @@
-// Updates. The app asks the knitted website for its list of releases (the one the
-// Download page shows, at /releases.json), and when there is a newer version it downloads
-// that version's file for this computer, checks it against the SHA-256 in the list, puts
-// it in place and restarts.
+// Updates. The app reads the release folder on FileFreak, where scripts/publish-release.mjs
+// puts each version's installers, so a release is offered the moment its files are up,
+// without waiting for the website to be built again. The folder is public, so it is read
+// with no key, through the public answers FileFreak's own pages and its SDK's get() read.
+// When there is a newer version it downloads that version's file for this computer,
+// checks it against the SHA-256 in that version's SHA256SUMS.txt, puts it in place and
+// restarts. If the folder cannot be read, it asks the website's /releases.json, the list
+// the Download page shows, which is built from the same folder.
 //
 // Not electron-updater: on a Mac it needs a paid Apple certificate (Squirrel.Mac refuses
 // an ad-hoc signed app), and the release list already says everything it would need.
@@ -30,6 +34,9 @@ import { pipeline } from "node:stream/promises";
 export const SITE = "https://knitted.filefreak.page";
 const DOWNLOAD_PAGE = `${SITE}/download/`;
 const DAY = 24 * 60 * 60 * 1000;
+/** Where FileFreak answers for public files, and the release folder, one v<version> folder in it per release. */
+export const FILES = "https://filefreak.link";
+export const RELEASES = "5bb0d646-3b13-46ea-9e6f-d9963887d32c";
 
 const parse = (v) => {
   const s = String(v).replace(/^v/, "");
@@ -61,15 +68,19 @@ export function fileFor(release, platform, arch) {
 }
 
 /**
- * The newest release newer than `current` with a file for this computer, or null. Test
- * versions (0.2.0-beta.1) are only offered to a copy that is itself a test version.
+ * The releases newer than `current` that it may be offered, newest first. Test versions
+ * (0.2.0-beta.1) are only offered to a copy that is itself a test version.
  */
-export function pickUpdate(releases, current, platform, arch) {
+export function offered(releases, current) {
   const testing = String(current).includes("-");
-  const candidates = (Array.isArray(releases) ? releases : [])
+  return (Array.isArray(releases) ? releases : [])
     .filter((r) => r && (testing || !String(r.version).includes("-")) && newer(current, r.version))
     .sort((a, b) => (newer(a.version, b.version) ? 1 : newer(b.version, a.version) ? -1 : 0));
-  for (const r of candidates) {
+}
+
+/** The newest release newer than `current` with a file for this computer, or null. */
+export function pickUpdate(releases, current, platform, arch) {
+  for (const r of offered(releases, current)) {
     const file = fileFor(r, platform, arch);
     if (file) return { version: String(r.version), file };
   }
@@ -78,6 +89,63 @@ export function pickUpdate(releases, current, platform, arch) {
 
 /** Only a file whose SHA-256 the release list records can be checked, so only that is installed. */
 export const checkable = (file) => /^[0-9a-f]{64}$/i.test(String(file?.sha256));
+
+// The release folder, as FileFreak's public answers give it. A file's system and chip come
+// from its name, as the site's list says them (apps/site/scripts/releases-lib.mjs:
+// test/update.test.mjs holds the two to the same answers).
+const VERSION = /^v?(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SYSTEMS = [[/\.dmg$|\.zip$/i, "macOS"], [/\.exe$|\.msi$/i, "Windows"], [/\.appimage$|\.deb$|\.rpm$/i, "Linux"]];
+const systemOf = (name) => (/\.zip$/i.test(name) && /linux/i.test(name) ? "Linux" : /\.zip$/i.test(name) && /win/i.test(name) ? "Windows" : SYSTEMS.find(([re]) => re.test(name))?.[1] ?? null);
+const archOf = (name) => (/[-_.](arm64|aarch64)[-_.]/i.test(name) ? "arm64" : /[-_.](x64|x86_64|amd64)[-_.]/i.test(name) ? "x64" : null);
+const raw = (id) => `${FILES}/api/public/files/${id}/raw`;
+
+async function ask(fetch, url, as = "json") {
+  const res = await fetch(url, { headers: { accept: as === "json" ? "application/json" : "text/plain" }, signal: AbortSignal.timeout(20_000) });
+  if (!res.ok) throw new Error(`FileFreak answered ${res.status} for the release folder.`);
+  return as === "json" ? res.json() : res.text();
+}
+
+/** Everything directly in a public folder, every page of its listing. */
+async function listing(fetch, id) {
+  const items = [];
+  for (let offset = 0; offset !== null;) {
+    const page = await ask(fetch, `${FILES}/api/public/files/${id}/items?offset=${offset}&limit=200`);
+    if (!Array.isArray(page?.items) || !(page.nextOffset === null || page.nextOffset > offset)) throw new Error("FileFreak's answer is not the release folder's listing.");
+    items.push(...page.items.filter((i) => i && UUID.test(String(i.id)) && typeof i.name === "string"));
+    offset = page.nextOffset;
+  }
+  return items;
+}
+
+/** The release folder's versions, from its v<version> folders. */
+export async function versionsIn(fetch, folder = RELEASES) {
+  return (await listing(fetch, folder)).filter((i) => i.kind === "folder" && VERSION.test(i.name)).map((i) => ({ version: i.name.replace(/^v/, ""), id: i.id }));
+}
+
+/** A version's installers, as the site's list has them, each with the SHA-256 its folder's SHA256SUMS.txt records. */
+export async function releaseIn(fetch, { version, id }) {
+  const files = (await listing(fetch, id)).filter((i) => i.kind === "file");
+  const sums = files.find((i) => i.name === "SHA256SUMS.txt");
+  const hashes = new Map();
+  for (const line of sums ? (await ask(fetch, raw(sums.id), "text")).split("\n") : []) {
+    const m = /^([0-9a-f]{64}) [ *](.+)$/i.exec(line.trim());
+    if (m) hashes.set(m[2], m[1].toLowerCase());
+  }
+  return {
+    version,
+    files: files.filter((i) => systemOf(i.name)).map((i) => ({ system: systemOf(i.name), arch: archOf(i.name), name: i.name, url: raw(i.id), sha256: hashes.get(i.name) ?? "not recorded" })),
+  };
+}
+
+/** pickUpdate, from the release folder itself. Only the versions it may offer are opened, newest first. */
+export async function latest(fetch, current, platform, arch, folder = RELEASES) {
+  for (const v of offered(await versionsIn(fetch, folder), current)) {
+    const found = pickUpdate([await releaseIn(fetch, v)], current, platform, arch);
+    if (found) return found;
+  }
+  return null;
+}
 
 const run = (cmd, args) => new Promise((ok, fail) => execFile(cmd, args, { maxBuffer: 1 << 20 }, (e, out, err) => (e ? fail(new Error(`${basename(cmd)}: ${String(err || e.message).trim()}`)) : ok(String(out)))));
 const plist = async (app, key) => (await run("/usr/bin/plutil", ["-extract", key, "raw", "-o", "-", join(app, "Contents/Info.plist")])).trim();
@@ -100,7 +168,7 @@ export function untranslocated(bundle, mounts) {
  * @param electron { app, dialog, net, shell, BrowserWindow, Menu }
  * @param quit closes the server and exits, as main.mjs does
  */
-export function createUpdater({ app, dialog, net, shell, BrowserWindow, Menu }, { quit, feed = process.env.KNITTED_UPDATE_URL || `${SITE}/releases.json` }) {
+export function createUpdater({ app, dialog, net, shell, BrowserWindow, Menu }, { quit, feed = process.env.KNITTED_UPDATE_URL }) {
   const dir = join(app.getPath("userData"), "update");
   const prefsFile = join(app.getPath("userData"), "updates.json");
   const current = app.getVersion();
@@ -118,6 +186,23 @@ export function createUpdater({ app, dialog, net, shell, BrowserWindow, Menu }, 
     if (await ask({ type: "info", message, detail, buttons: ["Open Download Page", "Close"], defaultId: 0, cancelId: 1 }) === 0) shell.openExternal(DOWNLOAD_PAGE);
   };
   const failed = (message, e) => offerPage(message, `${String(e?.message ?? e)}\n\nYou can download the newest version from the Download page instead.`);
+
+  const fetch = (url, init) => net.fetch(url, init);
+  /** A list as the website publishes it: its own, or a stand-in's (KNITTED_UPDATE_URL, to try an update by hand). */
+  const fromList = async (url) => {
+    const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+    if (!res.ok) throw new Error(`The website answered ${res.status}.`);
+    return pickUpdate((await res.json()).releases, current, process.platform, process.arch);
+  };
+  async function find() {
+    if (feed) return fromList(feed);
+    try {
+      return await latest(fetch, current, process.platform, process.arch);
+    } catch (e) {
+      console.error("[update] release folder:", e?.message ?? e);
+      return fromList(`${SITE}/releases.json`);
+    }
+  }
 
   /** Where this copy lives, if it can replace itself there; otherwise why not. */
   async function here() {
@@ -239,9 +324,7 @@ export function createUpdater({ app, dialog, net, shell, BrowserWindow, Menu }, 
     try {
       let found;
       try {
-        const res = await net.fetch(feed, { signal: AbortSignal.timeout(20_000) });
-        if (!res.ok) throw new Error(`The website answered ${res.status}.`);
-        found = pickUpdate((await res.json()).releases, current, process.platform, process.arch);
+        found = await find();
       } catch (e) {
         if (manual) await failed("knitted could not check for updates.", e);
         else console.error("[update] check:", e?.message ?? e);
@@ -305,7 +388,7 @@ export function createUpdater({ app, dialog, net, shell, BrowserWindow, Menu }, 
         setTimeout(async () => {
           const r = await ask({
             type: "question", message: "Check for updates automatically?",
-            detail: `knitted can ask its website once a day whether there is a newer version. It asks for the list of releases, the way a browser asks for a page, and sends nothing about your work. You can change this in ${menuName}.`,
+            detail: `knitted can look once a day for a newer version. It reads the list of releases on FileFreak, where its installers are kept, the way a browser opens a page, and sends nothing about your work. You can change this in ${menuName}.`,
             buttons: ["Check Automatically", "Don't Check"], defaultId: 0, cancelId: 1,
           });
           setAuto(r === 0);
