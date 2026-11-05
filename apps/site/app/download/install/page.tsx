@@ -22,7 +22,7 @@ export default function Install() {
           <p>Signing an app with a developer certificate proves who made it. Early previews do not have one yet, so macOS and Windows treat them as from an unknown developer. Only open an installer you downloaded from this site or from the project&rsquo;s GitHub releases, and compare its SHA-256 with the one listed on the download page.</p>
           <h2>macOS</h2>
           <ol>
-            <li>Open the downloaded disk image and drag knitted to Applications.</li>
+            <li>Open what you downloaded. A disk image (.dmg) opens a window: drag knitted to Applications. A .zip unzips into knitted, in the same folder (Safari may have done this already): drag knitted to Applications.</li>
             <li>Open knitted. macOS says &ldquo;Apple could not verify knitted.app is free of malware&rdquo;. Choose <strong>Done</strong>, not Move to Trash.</li>
             <li>Open <strong>System Settings</strong>, then <strong>Privacy &amp; Security</strong>.</li>
             <li>Scroll to the Security section. You will see a note that knitted.app was blocked. Choose <strong>Open Anyway</strong>.</li>

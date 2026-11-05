@@ -3,11 +3,10 @@ import { DownloadButton } from "../../components/DownloadButton";
 import { PageHero } from "../../components/PageHero";
 import changelog from "../../content/changelog.json";
 import releases from "../../content/releases.json";
-import type { Download as File } from "../../lib/downloads";
+import { diskImages, type Release } from "../../lib/downloads";
 import { GITHUB } from "../../lib/site";
 import { pageMeta } from "../../lib/meta";
 
-interface Release { version: string; files: File[] }
 // Written by scripts/fetch-releases.mjs from the FileFreak release folder when the site is
 // built, newest first. The pipeline builds the site on every push to main; installed apps
 // read the folder themselves (apps/studio/electron/update.mjs).
@@ -50,12 +49,14 @@ export const metadata = pageMeta({
 export default function Download() {
   const list = releases.releases as Release[];
   const [latest, ...older] = list;
+  // The pipeline publishes a version with the Mac app as a .zip only; a Mac adds the .dmg.
+  const dmgs = diskImages(list);
   return (
     <>
       <PageHero eyebrow="Download" title={list.length ? "Get the app." : "Not released yet."} lead={list.length
         ? "Free and open source. Everything it needs comes with it, including the video tools, and it works offline. These early builds have no developer certificate yet, so your computer asks for one extra click the first time: the install guide shows where."
         : "A desktop app for Windows, macOS and Linux is planned. Until it exists, there is nothing to download, and this page will not pretend otherwise."}>
-        {list.length ? <DownloadButton version={list[0].version} files={list[0].files} /> : null}
+        {list.length ? <DownloadButton version={list[0].version} files={list[0].files} diskImages={dmgs} /> : null}
       </PageHero>
       <section className="sec-tight">
         <div className="wrap-narrow stack-lg" id="all-downloads">
@@ -82,6 +83,13 @@ export default function Download() {
                 </p>
                 <Files r={latest} />
               </div>
+              {dmgs ? (
+                <div className="stack" id="disk-images">
+                  <h2 className="h2">macOS disk images</h2>
+                  <p className="body-lg">Version {latest.version} comes for macOS as a .zip: open it, and drag knitted to Applications. If you would rather have a disk image (.dmg), the newest is version {dmgs.version}&rsquo;s. Install it, and knitted updates itself to {latest.version} the first time it checks for updates.</p>
+                  <Files r={dmgs} />
+                </div>
+              ) : null}
               {older.length > 0 && (
                 <div className="stack" id="older-versions">
                   <h2 className="h2">Older versions</h2>

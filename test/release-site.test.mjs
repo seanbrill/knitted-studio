@@ -34,9 +34,9 @@ function checkout(ahead) {
   return { dir, work, origin, commit, originMain: () => git(origin, "rev-parse", "main"), head: () => git(work, "rev-parse", "HEAD") };
 }
 
-/** The site: its releases.json lists what `has()` says at the moment it is asked. */
+/** The site: its releases.json lists what `has()` says at the moment it is asked, versions or whole releases. */
 async function site(has) {
-  const server = createServer((req, res) => { res.setHeader("content-type", "application/json"); res.end(JSON.stringify({ releases: has().map((version) => ({ version })) })); });
+  const server = createServer((req, res) => { res.setHeader("content-type", "application/json"); res.end(JSON.stringify({ releases: has().map((r) => (typeof r === "string" ? { version: r } : r)) })); });
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   return { url: `http://127.0.0.1:${server.address().port}`, close: () => server.close() };
 }
@@ -76,6 +76,36 @@ test("a version the Download page lists already needs no push", async () => {
     assert.equal(await showOnSite({ ...quick, root: c.work, site: s.url, log: () => {} }), "the Download page lists it already.");
     assert.equal(c.originMain(), before);
   } finally { s.close(); }
+});
+
+// The pipeline put 0.1.3 up without a disk image; npm run release then replaced its files
+// and added the .dmg. The page lists 0.1.3 already, but not these files until it is built again.
+const earlier = [{ name: "knitted-0.1.3-mac-arm64.zip", sha256: "a".repeat(64) }];
+const now = [{ name: "knitted-0.1.3-mac-arm64.dmg", sha256: "b".repeat(64) }, { name: "knitted-0.1.3-mac-arm64.zip", sha256: "c".repeat(64) }];
+const sums = now.map((f) => `${f.sha256}  ${f.name}`).join("\n") + "\n";
+
+test("a version the page lists from an earlier upload is not taken for this one, so it pushes and waits for these files", async () => {
+  const c = checkout(1);
+  const s = await site(() => [{ version: "0.1.3", files: c.originMain() === c.head() ? now : earlier }]);
+  const said = [];
+  try {
+    const out = await showOnSite({ ...quick, sums, root: c.work, site: s.url, log: (m) => said.push(m) });
+    assert.equal(c.originMain(), c.head(), "main was pushed");
+    assert.match(said.join("\n"), /Waiting for the Download page to list this upload of 0\.1\.3/);
+    assert.equal(out, "the Download page lists this upload of 0.1.3, and copies older than 0.1.2 are offered it.");
+  } finally { s.close(); }
+});
+
+test("with nothing to push, it says the page still shows the earlier upload, and what builds it again", async () => {
+  const c = checkout(0);
+  const s = await site(() => [{ version: "0.1.3", files: earlier }]);
+  try {
+    assert.match(await showOnSite({ ...quick, sums, root: c.work, site: s.url, log: () => {} }), /^the Download page still shows 0\.1\.3 as it was uploaded before, and this checkout has nothing to push, so nothing will start a site build\. Run "knitted release" in EZPIPELINE/);
+  } finally { s.close(); }
+  const listed = await site(() => [{ version: "0.1.3", files: now }]);
+  try {
+    assert.equal(await showOnSite({ ...quick, sums, root: c.work, site: listed.url, log: () => {} }), "the Download page lists it already.");
+  } finally { listed.close(); }
 });
 
 test("a checkout on another branch is not pushed to main", async () => {

@@ -6,7 +6,8 @@
 // node_modules/.cache, and every program is read to check it is built for its system
 // before it goes in (an "arm64" ffprobe that was really x86_64 has happened here).
 //
-// Called by scripts/after-pack.mjs for each app electron-builder packs.
+// Called by scripts/after-pack.mjs for each app electron-builder packs. KNITTED_DESKTOP_CACHE
+// moves the cache somewhere a fresh checkout keeps, as the pipeline does.
 
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -15,8 +16,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
 
-const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const cache = join(root, "node_modules/.cache/knitted-desktop");
+export const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+export const cache = process.env.KNITTED_DESKTOP_CACHE || join(root, "node_modules/.cache/knitted-desktop");
 const manifest = async (name) => JSON.parse(await readFile(join(root, "node_modules", name, "package.json"), "utf8"));
 
 /** A download, kept in the cache once it is whole. */

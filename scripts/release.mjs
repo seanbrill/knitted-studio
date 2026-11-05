@@ -7,21 +7,24 @@
 //   In .env (see .env.example):
 //   FILEFREAK_KEY   the release folder's write key (files:write)
 //
-// Run it on a Mac. electron-builder builds macOS apps only on macOS, and a Mac builds the
+// Run it on a Mac. Only a Mac makes the macOS disk images (.dmg), and a Mac builds the
 // Windows and Linux apps as well, each carrying its own system's ffmpeg, ffprobe and sharp
 // (scripts/desktop-binaries.mjs). The version is apps/studio/package.json's. The files go
 // up as scripts/publish-release.mjs says, replacing that version's files if it ran before.
+// The pipeline publishes a version pushed without this, all but the .dmg
+// (scripts/pipeline-release.mjs); this run on that version replaces its files and adds the .dmg.
 //
 // Installed apps read the release folder themselves (apps/studio/electron/update.mjs), so
 // they are offered the version once it is up. The site lists the folder as it was when it
 // was built, and a push to main builds it: so last, this pushes the checkout it built from
-// and waits for the Download page to list the version (scripts/release-site.mjs).
+// and waits for the Download page to list these files (scripts/release-site.mjs).
 
 import { spawnSync } from "node:child_process";
 import { readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { SITE, fileFor, releaseIn, versionsIn } from "../apps/studio/electron/update.mjs";
+import { SITE } from "../apps/studio/electron/update.mjs";
+import { problem } from "./release-check.mjs";
 import { showOnSite } from "./release-site.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -32,7 +35,7 @@ const run = (cmd, args) => {
 };
 const output = (cmd, args) => spawnSync(cmd, args, { cwd: root, encoding: "utf8" });
 
-if (process.platform !== "darwin") fail("run this on a Mac. Only macOS can build the macOS app, and a Mac builds all three.");
+if (process.platform !== "darwin") fail("run this on a Mac. Only macOS can make the disk images, and a Mac builds all three systems' apps. A push of a new version publishes the rest from the pipeline.");
 if (!process.env.FILEFREAK_KEY) fail("FILEFREAK_KEY is not set. Put the release folder's write key in .env.");
 const { version } = JSON.parse(await readFile(join(root, "apps/studio/package.json"), "utf8"));
 
@@ -51,20 +54,8 @@ run("node", ["scripts/publish-release.mjs", "dist/desktop"]);
 // What the apps' update check reads, not what was sent: the folder as anyone sees it,
 // with no key, holding each system's file and the SHA-256 it was built with.
 const built = await readFile(join(root, "dist/desktop/SHA256SUMS.txt"), "utf8");
-let release;
-try {
-  const folder = (await versionsIn(fetch)).find((v) => v.version === version);
-  if (folder) release = await releaseIn(fetch, folder);
-} catch (e) {
-  fail(`the release folder could not be read the way the apps read it: ${e.message}`);
-}
-if (!release) fail(`the release folder shows no v${version}. Make it public in FileFreak, so the apps and the site can see it.`);
-if (!release.finished) fail(`v${version} has no SHA256SUMS.txt in the release folder, so the apps take it for a release still going up.`);
-for (const [platform, arch] of [["darwin", "arm64"], ["darwin", "x64"], ["win32", "x64"], ["linux", "x64"], ["linux", "arm64"]]) {
-  const file = fileFor(release, platform, arch);
-  if (!file) fail(`v${version} has no file the ${platform} ${arch} app can update itself with.`);
-  if (!built.includes(`${file.sha256}  ${file.name}`)) fail(`the release folder's SHA-256 for ${file.name} is not the one built here.`);
-}
+const wrong = await problem(version, built);
+if (wrong) fail(wrong);
 console.log(`release: ${version} is published. Installed apps (0.1.2 and later) are offered it the next time they check.`);
 
-console.log(`release: ${await showOnSite({ root, site: SITE, version })}`);
+console.log(`release: ${await showOnSite({ root, site: SITE, version, sums: built })}`);

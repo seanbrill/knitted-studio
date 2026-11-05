@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { detect, offer, pick } from "../apps/site/lib/downloads.ts";
+import { detect, diskImages, offer, pick } from "../apps/site/lib/downloads.ts";
 import { buildReleases } from "../apps/site/scripts/releases-lib.mjs";
 
 // A release's files exactly as the page gets them, from the names npm run release uploads.
@@ -77,6 +77,30 @@ test("a chip runs what it can emulate when its own build is missing", () => {
   const intelOnly = release("knitted-1.0.0-mac-x64.dmg");
   assert.deepEqual(offered({ userAgent: UA.chromeMac, platform: "macOS", architecture: "arm" }, intelOnly), ["knitted-1.0.0-mac-x64.dmg", null], "Apple silicon runs Intel apps");
   assert.deepEqual(offered({ userAgent: UA.safariMac }, intelOnly), ["knitted-1.0.0-mac-x64.dmg", null], "and is not offered the same file twice");
+});
+
+test("a version the pipeline published, with no disk image, offers its .zip and the newest .dmg there is beside it", () => {
+  // The pipeline builds every installer but the .dmg, which only a Mac makes (npm run release).
+  const versions = (...vs) => buildReleases(vs.flatMap(([version, names]) => [
+    { id: version, kind: "folder", name: `v${version}`, parentId: null },
+    ...names.map((name) => ({ id: name, kind: "file", name, parentId: version, sizeBytes: 1, publicUrl: `https://files.example/${name}`, clientSha256: null })),
+  ])).releases;
+  const all = (v) => [`knitted-${v}-mac-arm64.dmg`, `knitted-${v}-mac-arm64.zip`, `knitted-${v}-mac-x64.dmg`, `knitted-${v}-mac-x64.zip`, `knitted-${v}-win-x64.exe`, `knitted-${v}-linux-x86_64.AppImage`];
+  const pipeline = (v) => all(v).filter((n) => !n.endsWith(".dmg"));
+  const list = versions(["1.2.0", pipeline("1.2.0")], ["1.1.0", pipeline("1.1.0")], ["1.0.0", all("1.0.0")], ["0.9.0", all("0.9.0")]);
+
+  const dmgs = diskImages(list);
+  assert.equal(dmgs.version, "1.0.0", "the newest version that has them, past the ones that do not");
+  assert.deepEqual(dmgs.files.map((f) => f.name), ["knitted-1.0.0-mac-arm64.dmg", "knitted-1.0.0-mac-x64.dmg"]);
+  const forMac = (signals) => { const o = offer(list[0].files, detect(signals), dmgs); return [o.file.name, o.diskImage?.version ?? null, o.diskImage?.file.name ?? null]; };
+  assert.deepEqual(forMac({ userAgent: UA.chromeMac, platform: "macOS", mobile: false, architecture: "arm" }), ["knitted-1.2.0-mac-arm64.zip", "1.0.0", "knitted-1.0.0-mac-arm64.dmg"]);
+  assert.deepEqual(forMac({ userAgent: UA.firefoxMac, gpu: "Intel(R) UHD Graphics 630, or similar" }), ["knitted-1.2.0-mac-x64.zip", "1.0.0", "knitted-1.0.0-mac-x64.dmg"]);
+  const windows = offer(list[0].files, detect({ userAgent: UA.firefoxWindows }), dmgs);
+  assert.equal(windows.diskImage, null, "only a Mac is offered a disk image");
+
+  assert.equal(diskImages(list.slice(2)), null, "a version with its own .dmg needs none from before");
+  assert.equal(diskImages(list.slice(0, 2)), null, "and with none anywhere, there is none to offer");
+  assert.equal(offer(list[2].files, detect({ userAgent: UA.chromeMac, platform: "macOS", architecture: "arm" }), null).diskImage, null);
 });
 
 test("the file people double-click comes first, and a universal Mac build serves both chips", () => {

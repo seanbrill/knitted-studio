@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { detect, offer, type Download, type Offer, type Signals } from "../lib/downloads";
+import { detect, offer, type Download, type Offer, type Release, type Signals } from "../lib/downloads";
 
 interface UAData { platform: string; mobile: boolean; getHighEntropyValues(hints: string[]): Promise<{ architecture?: string }> }
 
@@ -31,8 +31,9 @@ function gpu(): string | undefined {
 /**
  * One button for this visitor's computer, on the Download page's ember band. Before the
  * browser is asked (and with no JavaScript) it points at the full list below instead.
+ * diskImages: an older version's .dmg files, when this version has none (lib/downloads.ts).
  */
-export function DownloadButton({ version, files }: { version: string; files: Download[] }) {
+export function DownloadButton({ version, files, diskImages = null }: { version: string; files: Download[]; diskImages?: Release | null }) {
   const [o, setO] = useState<Offer | null>(null);
   useEffect(() => {
     let live = true;
@@ -40,10 +41,10 @@ export function DownloadButton({ version, files }: { version: string; files: Dow
       let m = detect(s);
       // Only a Mac's chip hides from the browser, and WebGL costs a moment, so only then.
       if (m.system === "macOS" && m.guessed) m = detect({ ...s, gpu: gpu() });
-      if (live) setO(offer(files, m));
+      if (live) setO(offer(files, m, diskImages));
     });
     return () => { live = false; };
-  }, [files]);
+  }, [files, diskImages]);
 
   const all = <a className="link-on-field" href="#all-downloads">All downloads</a>;
   const guide = <Link className="link-on-field" href="/download/install/">Install guide</Link>;
@@ -54,6 +55,7 @@ export function DownloadButton({ version, files }: { version: string; files: Dow
         <p className="get-file mono">{o.file.name}, {o.file.size}</p>
         <p className="get-more">
           {o.intel ? <span>On an Intel Mac? <a className="link-on-field" href={o.intel.url}>Get the Intel version</a></span> : null}
+          {o.diskImage ? <span>Prefer a disk image? <a className="link-on-field" href={o.diskImage.file.url}>Get version {o.diskImage.version}&rsquo;s .dmg</a></span> : null}
           {all}{guide}
         </p>
       </div>

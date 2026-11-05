@@ -1,14 +1,18 @@
-# knitted.studio site: check the code, build the landing site, deploy it.
+# knitted.studio: check the code, publish a new version's installers, build the landing
+# site, deploy it.
 #
-# The desktop installers are NOT built here. Only a Mac can build all three systems'
-# (electron-builder builds macOS apps only on macOS), and this host is Linux, so
-# releases are built and uploaded from a Mac with `npm run release` (scripts/release.mjs).
-# This pipeline used to upload its own Linux build as well, and each run then replaced
+# A version that is not in the FileFreak release folder yet gets its installers built
+# here and uploaded (scripts/pipeline-release.mjs): the macOS .zip, the Windows installer
+# and the Linux AppImages. Not the macOS .dmg: only macOS makes a disk image, and this
+# host is Linux. A Mac makes it with `npm run release` (scripts/release.mjs), which builds
+# and uploads every file itself, and uploads before it pushes, so the run that push
+# starts finds the version up and leaves it alone. One of the two uploads a version,
+# never both: this pipeline once uploaded its Linux build on every run, which replaced
 # the Mac's Linux file and cut SHA256SUMS.txt down to one line.
 #
 # The site's Download page is built from the release folder, so it lists whatever has
-# been published when the site is built. npm run release pushes main once it has
-# uploaded, which runs this; run it by hand when that push had nothing to send.
+# been published when the site is built. Run this by hand when a push had nothing to
+# send (npm run release says when).
 #
 # Variables live in EZPIPELINE, not here: see ci/ezpipeline/knitted-release.env.example.
 
@@ -16,8 +20,9 @@ id: "3b2eb956-3f9f-4901-bd45-cd0bb78b0f32"
 appName: "knitted release"
 version: 1.0.0
 description: >
-  Check knitted, build the landing site from the FileFreak release folder and
-  deploy it. Installers are published from a Mac with npm run release.
+  Check knitted, publish a new version's installers (all but the macOS .dmg) to the
+  FileFreak release folder, build the landing site from it and deploy it. A Mac adds
+  the .dmg with npm run release.
 group: "Knitted"
 
 steps:
@@ -63,6 +68,23 @@ steps:
       npm ci
       npm run typecheck
       npm test
+
+  - name: Publish the installers
+    description: >
+      Only for a version the release folder does not have yet: builds the macOS .zip,
+      the Windows installer and the Linux AppImages, signs the Mac app ad-hoc as a Mac
+      does, and uploads them with FILEFREAK_KEY. Any other run builds nothing: it says
+      whether that key can write, so a bad key shows before the next version, and goes on.
+    shell: /bin/bash
+    # The app's Next.js build, like the site's, fails in development mode (see below).
+    env:
+      NODE_ENV: production
+    cwd: ./knitted
+    run: |
+      set -euo pipefail
+      # ffmpeg, sharp and rcodesign for each app, downloaded once and kept between runs.
+      export KNITTED_DESKTOP_CACHE="$HOME/.cache/knitted-desktop"
+      node scripts/pipeline-release.mjs
 
   - name: Build the site
     description: >

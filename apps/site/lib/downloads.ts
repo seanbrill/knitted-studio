@@ -6,6 +6,8 @@ export type System = "macOS" | "Windows" | "Linux";
 export type Arch = "arm64" | "x64";
 /** One installer, as scripts/releases-lib.mjs writes it into content/releases.json. arch null: every chip. */
 export interface Download { platform: string; system: System; arch: Arch | null; name: string; url: string; size: string; sha256: string }
+/** One version and its installers. content/releases.json lists them newest first. */
+export interface Release { version: string; files: Download[] }
 
 /** What the browser says about the computer. Any of it may be missing. */
 export interface Signals {
@@ -68,19 +70,40 @@ export function pick(files: Download[], system: System, arch: Arch): Download | 
   return fits.sort((a, b) => rank(a) - rank(b) || format(a) - format(b))[0] ?? null;
 }
 
+const isDiskImage = (f: Download) => f.system === "macOS" && f.name.toLowerCase().endsWith(".dmg");
+
+/**
+ * The Mac disk images to show beside the newest release when it has none of its own. A
+ * version the pipeline publishes has the Mac app as a .zip only, because only a Mac makes a
+ * .dmg, so the newest .dmg can be a version or more behind. Installed, it updates itself.
+ */
+export function diskImages(releases: Release[]): Release | null {
+  if (!releases.length || releases[0].files.some(isDiskImage)) return null;
+  for (const r of releases.slice(1)) {
+    const files = r.files.filter(isDiskImage);
+    if (files.length) return { version: r.version, files };
+  }
+  return null;
+}
+
 export type Offer =
-  /** intel: the Intel Mac build as well, when the Mac's chip is only a guess. */
-  | { kind: "file"; file: Download; intel: Download | null }
+  /**
+   * intel: the Intel Mac build as well, when the Mac's chip is only a guess. diskImage: an
+   * older version's .dmg for this Mac, when the file is a .zip because the newest has none.
+   */
+  | { kind: "file"; file: Download; intel: Download | null; diskImage: { version: string; file: Download } | null }
   | { kind: "mobile" }
   /** unknown: which computer this is. none: nothing in the release runs on it. */
   | { kind: "unknown" }
   | { kind: "none" };
 
-export function offer(files: Download[], m: Machine): Offer {
+/** older: what diskImages() found for the newest release, if anything. */
+export function offer(files: Download[], m: Machine, older: Release | null = null): Offer {
   if (m.system === "mobile") return { kind: "mobile" };
   if (!m.system || !m.arch) return { kind: "unknown" };
   const file = pick(files, m.system, m.arch);
   if (!file) return { kind: "none" };
   const intel = m.system === "macOS" && m.guessed ? pick(files, "macOS", "x64") : null;
-  return { kind: "file", file, intel: intel && intel.name !== file.name ? intel : null };
+  const dmg = older && m.system === "macOS" && file.name.toLowerCase().endsWith(".zip") ? pick(older.files, "macOS", m.arch) : null;
+  return { kind: "file", file, intel: intel && intel.name !== file.name ? intel : null, diskImage: older && dmg ? { version: older.version, file: dmg } : null };
 }
