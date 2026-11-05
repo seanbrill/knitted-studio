@@ -1,0 +1,50 @@
+name: version
+
+# Every push to main that changes the app gets the next version, so installed apps are
+# offered it. This commits the version and its changelog entry to main
+# (scripts/version-bump.mjs), and the pipeline in EZPIPELINE, which builds whatever version
+# its release folder does not have yet, publishes it from that commit (docs/RELEASING.md).
+# A push that changes nothing the app is made from, or sets the version itself, is left as
+# it is. Its own commit starts no workflow: GitHub runs none for a push made with its token.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+# One at a time, in the order pushed: each starts from main as the one before left it.
+concurrency:
+  group: version
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the commit that set the version, and every one since
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Give the app its next version, if it changed
+        env:
+          TZ: America/New_York # the changelog's dates are the maintainer's
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # From main as it is now, not as it was pushed: a push while this ran is in it.
+          for attempt in 1 2 3; do
+            git fetch --quiet origin main
+            git reset --quiet --hard origin/main
+            node scripts/version-bump.mjs --commit
+            if [ "$(git rev-list --count origin/main..HEAD)" = "0" ]; then exit 0; fi
+            if git push --quiet origin HEAD:main; then exit 0; fi
+            echo "main moved while this ran, so it starts again from the new main."
+          done
+          echo "Could not push the version after three tries."
+          exit 1

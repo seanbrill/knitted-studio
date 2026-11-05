@@ -26,6 +26,7 @@ import { fileURLToPath } from "node:url";
 import { SITE } from "../apps/studio/electron/update.mjs";
 import { problem } from "./release-check.mjs";
 import { showOnSite } from "./release-site.mjs";
+import { appChanges, versionCommit } from "./version-bump.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const fail = (m) => { console.error(`release: ${m}`); process.exit(1); };
@@ -45,6 +46,10 @@ run("node", ["scripts/publish-release.mjs", "--check"]);                  // the
 // this version without some of it.
 if (output("git", ["fetch", "--quiet", "origin", "main"]).status !== 0) fail("could not fetch main from origin, to check this checkout has everything on it.");
 if (output("git", ["merge-base", "--is-ancestor", "origin/main", "HEAD"]).status !== 0) fail("this checkout is missing commits on origin/main. Pull, then run this again: the installers are built from here.");
+// Apps on this version are never offered it again, so it must not go up with changes newer
+// than it: those get a version of their own when they are pushed (scripts/version-bump.mjs).
+const unversioned = appChanges(root, versionCommit(root) ?? "HEAD");
+if (unversioned.length) fail(`this checkout changes the app since ${version} was set (${unversioned.at(-1).sha.slice(0, 7)} ${unversioned.at(-1).subject}). Push it first: main gives it the next version and the pipeline publishes that. Then pull, and run this again to add the .dmg.`);
 
 await rm(join(root, "dist/desktop"), { recursive: true, force: true });  // so only this build's installers go up
 run("npm", ["run", "build:app"]);

@@ -1,5 +1,15 @@
 {
-  "note": "Written by hand, newest first. Add an entry with each release (docs/RELEASING.md).",
+  "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
+  "next": {
+    "title": "Ask your model",
+    "items": [
+      "Ask, in the side bar, is a conversation with your model, using your own Anthropic key from Settings, Model. Choose a project for it to work in, or the whole studio, and reply to go on: it reads the whole conversation each time. Your chats are kept, newest first.",
+      "While it works you see each step: what it reads, what it changes, and anything a lock refused. Stop ends it. Under each answer is what it changed, with a link to each pattern, and Undo all puts back every pattern that answer changed.",
+      "The editor's Ask panel is a conversation about the pattern open in it now, and each project's page has Ask your model.",
+      "Stop stops your model in the editor's Ask panel. Before, it went on to the end.",
+      "The first time 0.1.5 opens your library, it adds chats to it, after keeping a copy as it was, listed in Settings, Storage. Older versions will not open the library after that, so restore that copy to go back."
+    ]
+  },
   "entries": [
     {
       "version": "0.1.4",

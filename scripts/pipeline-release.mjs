@@ -41,7 +41,7 @@ const inFolder = () => published(version).catch((e) => fail(`the release folder 
 
 if (upload) {
   if ((await inFolder())?.finished) {
-    say(`v${version} is in the release folder already, so there is nothing to build. A new version is built here once it is pushed.`);
+    say(`v${version} is in the release folder already, so there is nothing to build. A push that changes the app gets the next version (.github/workflows/version.yml), and the run for that builds it.`);
     // Said on every run, not first at the next version: whether its installers can go up.
     if (!process.env.FILEFREAK_KEY) say("FILEFREAK_KEY is not set, so the next version's installers cannot go up from here. Set it in EZPIPELINE to the release folder's write key.");
     else if (spawnSync("node", ["scripts/publish-release.mjs", "--check"], { cwd: root, stdio: "inherit" }).status !== 0) say("FILEFREAK_KEY cannot write to the release folder (above), so the next version's installers cannot go up from here.");
