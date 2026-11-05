@@ -128,6 +128,15 @@ export const api = {
     /** While paused, a model's edits are refused and it is told to wait for the person. */
     pause: (paused: boolean) => call<AgentState>("POST", "/api/agent/activity", { paused }),
   },
+  /** Conversations with your model: Ask, and the editor's Ask panel. Each message is answered by a run, read like `agent.job`. */
+  chats: {
+    list: (q: { pattern?: string; project?: string } = {}) => call<ChatItem[]>("GET", `/api/chats?${new URLSearchParams(Object.entries(q).filter(([, v]) => v) as [string, string][])}`),
+    get: (id: string) => call<ChatDetail>("GET", `/api/chats/${id}`),
+    /** A new chat and its first message. `projectId` null: the whole studio. */
+    start: (b: { projectId?: string | null; patternId?: string; prompt: string; mode?: "edit" | "suggest" }) => call<{ chat: ChatItem; job: AgentJob }>("POST", "/api/chats", b),
+    send: (id: string, b: { prompt: string; mode?: "edit" | "suggest" }) => call<AgentJob>("POST", `/api/chats/${id}/messages`, b),
+    remove: (id: string) => call<{ ok: true }>("DELETE", `/api/chats/${id}`),
+  },
   fonts: () => call<{ family: string; category: string; file: string; style: string; weight: [number, number]; license: string }[]>("GET", "/api/fonts"),
   storage: () => call<{ root: string; bytes: number; projects: number }>("GET", "/api/storage"),
   backups: {
@@ -234,11 +243,28 @@ export interface ModelConfig {
   model: string; maxTurns: number; maxKnits: number; models: { id: string; label: string }[];
   key: { present: boolean; source: "environment" | "keychain" | "none"; backend: string | null; canStore: boolean };
 }
-export type AgentEvent = { type: "text"; text: string } | { type: "tool_call"; name: string; input: unknown } | { type: "tool_result"; name: string; summary: string } | { type: "refusal"; slot: string; why: string } | { type: "stopped"; why: string };
+/** `note`: what the model says between its tool calls, about what it found and will do next. */
+export type AgentEvent = { type: "text"; text: string } | { type: "note"; text: string } | { type: "tool_call"; name: string; input: unknown } | { type: "tool_result"; name: string; summary: string } | { type: "refusal"; slot: string; why: string } | { type: "stopped"; why: string };
+/** A pattern a run changed (or made, `made`), with its revision from before the run: what Undo all puts back. */
+export interface ChangedPattern { patternId: string; projectId: string; name: string; baselineRevisionId: string | null; count: number; made: boolean; }
 export interface AgentJob {
-  id: string; status: JobItem["status"]; error: string | null;
+  id: string; status: JobItem["status"]; error: string | null; createdAt?: string; updatedAt?: string;
+  input?: { prompt: string; mode?: "edit" | "suggest"; patternId?: string; chatId?: string };
   progress: { current: string | null; events: AgentEvent[] } | null;
-  result: { text: string; turns: number; toolCalls: number; refusals: { tool: string; slot?: string; why: string }[]; stopped: string | null; usage: unknown; patternId: string | null; originalPatternId: string | null; suggestion: string | null; baselineRevisionId: string | null; changedCount: number } | null;
+  result: {
+    text: string; turns: number; toolCalls: number; refusals: { tool: string; slot?: string; why: string }[]; stopped: string | null; usage: unknown;
+    patternId: string | null; originalPatternId: string | null; suggestion: string | null; baselineRevisionId: string | null; changedCount: number;
+    /** When the model declined to answer: the reason Anthropic gave, if one. Missing from runs made before chats. */
+    declined?: { category: string | null } | null; changed?: ChangedPattern[]; knitIn?: string[];
+  } | null;
 }
+export interface ChatItem {
+  id: string; title: string; projectId: string | null; patternId: string | null; createdAt: string; updatedAt: string;
+  /** Whether its newest message is still being answered. */
+  running: boolean;
+  project: { id: string; name: string } | null; pattern: { id: string; name: string } | null;
+}
+/** A chat with its turns: each the run that answered a message, the message in its `input`. */
+export interface ChatDetail extends ChatItem { turns: AgentJob[]; }
 
 export interface BackupItem { name: string; bytes: number; createdAt: string; kind: "daily" | "manual" | "pre-migration"; }

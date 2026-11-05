@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import { SegmentedControl, Tabs, TabPanel, useTheme, type Theme } from "@knitted/ui";
 import { PageHeader } from "./AppShell";
 import { StorageSettings } from "./StorageSettings";
@@ -8,10 +9,18 @@ import { RendererCard } from "./RendererCard";
 import { ModelSettings } from "./ModelSettings";
 import { VoiceSettings } from "./VoiceSettings";
 
+const TABS = ["appearance", "storage", "model", "voice", "about"];
+
+export function SettingsView() {
+  return <Suspense><SettingsInner /></Suspense>;
+}
+
 // Each later phase fills in its own tab: Storage (2), Model (11), Voice (10).
 // The tab exists now so the shape of Settings does not change under anyone.
-export function SettingsView() {
-  const [tab, setTab] = useState("appearance");
+// `?tab=model` opens on one: where "Add a key" leads.
+function SettingsInner() {
+  const asked = useSearchParams().get("tab");
+  const [tab, setTab] = useState(asked && TABS.includes(asked) ? asked : "appearance");
   const { theme, setTheme } = useTheme();
   return (
     <div style={{ padding: "var(--space-8)", maxWidth: 860 }}>

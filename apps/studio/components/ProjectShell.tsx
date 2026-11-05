@@ -8,7 +8,7 @@ import { useState } from "react";
 import { useLive } from "@/lib/hooks";
 import { RenameDialog } from "./ProjectsView";
 
-const { ArrowLeft, Pencil } = icons;
+const { ArrowLeft, Pencil, Sparkles } = icons;
 
 const TABS = [
   { href: "", label: "Patterns" },
@@ -45,6 +45,7 @@ export function ProjectShell({ id, children }: { id: string; children: React.Rea
             <h1 className="h1" style={{ margin: 0 }}>{project.name}</h1>
             <button className="icon-btn" aria-label="Rename project" onClick={() => setRenaming(true)}><Pencil size={15} /></button>
             <ActiveSwatchChip projectId={id} swatchId={project.swatchId} />
+            <Link href={`/ask?project=${id}`} className="btn btn-secondary btn-sm" style={{ marginLeft: "auto" }}><Sparkles size={14} aria-hidden /> Ask your model</Link>
           </>
         ) : <Skeleton width={260} height={36} />}
       </header>

@@ -1,13 +1,27 @@
 ---
 title: Using your model
 order: 12
-summary: Connect Claude or another model so it can read Patterns, fill free slots and knit.
+summary: Ask your model in the studio, or connect Claude or another model, so it can read Patterns, fill free slots and knit.
 status: partial
-note: Your model works in the studio through its MCP address (desktop app) or the stdio server (a clone).
+note: Ask your model in the studio with your own Anthropic key, or connect one through its MCP address (desktop app) or the stdio server (a clone).
 ---
 # Using your model
 
-Your model can do what you can do in the studio, through the same tools.
+Your model can do what you can do in the studio, through the same tools. Talk to it in the studio itself, with **Ask**, or from Claude Code or another app that speaks MCP.
+
+## Ask, in the studio
+
+Add your own Anthropic key in Settings, Model, and your model answers you inside knitted, as a conversation. Open **Ask** in the side bar, or **Ask your model** on a project's page.
+
+- Choose where it works: one of your projects, or **The whole studio**. A chat about a project knows its brand.
+- Write what you want and press Enter. Shift+Enter starts a new line. While it works you see each step: what it reads, what it changes, and anything a lock refused. **Stop** ends it.
+- Reply to go on. It reads the whole conversation each time, so "make it shorter" means what you think it means.
+- Under each answer is what it changed, with a link to each Pattern. **Undo all** puts back every Pattern that answer changed. A Pattern it made stays, for you to keep or delete.
+- Your chats are listed on the left, newest first. Deleting one deletes the conversation only: what your model made stays, and so does each Pattern's history.
+
+In the editor, the **Ask** panel is a conversation about the Pattern in front of you. Tick **Suggest only** and it works on a copy, so your Pattern is untouched until you choose. **Open in Ask** shows the same chat on the Ask page.
+
+Each message is paid for on your key, and the whole conversation goes with it. A long chat costs more a message than a new one, so start a new chat when you change the subject.
 
 ## Connect it
 

@@ -98,14 +98,16 @@ export function EditorShell({ projectId, pattern, swatch, yarn, parts, patterns,
           })}
         </nav>
         {tool && (
-          <aside aria-label={`${tool} panel`} style={{ width: 264, background: "var(--surface-raised)", borderRight: "1px solid var(--line)", padding: "var(--space-4)", overflowY: "auto", flexShrink: 0 }}>
+          <aside aria-label={`${tool} panel`} style={{ width: tool === "ask" ? 340 : 264, background: "var(--surface-raised)", borderRight: "1px solid var(--line)", padding: "var(--space-4)", flexShrink: 0,
+            // A conversation scrolls inside itself, so its box to write in stays in view.
+            ...(tool === "ask" ? { display: "flex", flexDirection: "column", overflow: "hidden" } : { overflowY: "auto" }) }}>
             {tool === "patterns" && <PatternsPanel projectId={projectId} current={pattern.id} list={patterns} />}
             {tool === "yarn" && <YarnPanel projectId={projectId} onYarnChanged={refreshYarn} />}
             {tool === "text" && <TextPanel />}
             {tool === "shapes" && <ShapesPanel />}
             {tool === "parts" && <PartsPanel projectId={projectId} onPartsChanged={refreshParts} />}
             {tool === "voice" && <VoicePanel projectId={projectId} />}
-            {tool === "ask" && <AskPanel projectId={projectId} />}
+            {tool === "ask" && <AskPanel key={pattern.id} projectId={projectId} />}
             {tool === "swatch" && <SwatchPanel projectId={projectId} />}
           </aside>
         )}

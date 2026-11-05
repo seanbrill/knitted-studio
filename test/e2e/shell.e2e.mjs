@@ -55,7 +55,7 @@ test("the app works with the network off (nothing is fetched from elsewhere)", a
 });
 
 for (const theme of ["day", "night"]) {
-  for (const path of ["/", "/projects", "/settings", "/kit"]) {
+  for (const path of ["/", "/projects", "/ask", "/settings", "/kit"]) {
     test(`no serious accessibility violations on ${path} in ${theme}`, async () => {
       await page.goto(studio.url + path);
       await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);

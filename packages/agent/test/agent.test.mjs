@@ -64,8 +64,8 @@ test("the request carries the key, the API version, the model and the SAME tools
   assert.equal(headers["anthropic-version"], "2023-06-01");
   assert.equal(body.model, "claude-opus-5-5");
   assert.deepEqual(body.tools.map((t) => t.name), TOOLS.map((t) => t.name), "tool parity: one set, two doors");
-  assert.match(body.system, /untrusted_data/);
-  assert.match(body.system, /LOCKED/);
+  assert.match(body.system[0].text, /untrusted_data/);
+  assert.match(body.system[0].text, /LOCKED/);
   assert.ok(MODELS.some((m) => m.id === DEFAULT_MODEL));
   f.close();
 });

@@ -30,7 +30,7 @@ function OwnKey() {
     <div style={{ display: "grid", gap: "var(--space-5)" }}>
       <div>
         <h2 className="h3" style={{ marginBottom: 4 }}>Model</h2>
-        <p className="body-sm" style={{ color: "var(--ink-muted)", margin: 0 }}>Bring your own Anthropic key and your model can edit patterns and knit posts with you. It follows the same locks you do. Requests go straight from this computer to Anthropic.</p>
+        <p className="body-sm" style={{ color: "var(--ink-muted)", margin: 0 }}>Bring your own Anthropic key and your model can edit patterns and knit posts with you: talk to it in Ask, in the side bar, or in the editor's Ask panel. It follows the same locks you do. Requests go straight from this computer to Anthropic.</p>
       </div>
       <Field label="Anthropic API key" htmlFor="m-key" error={err}
         hint={cfg.key.present ? `A key is saved${cfg.key.source === "environment" ? " in your environment" : ` in ${cfg.key.backend}`}.` : cfg.key.canStore ? `It is kept in ${cfg.key.backend}, never in knitted's own files.` : "This computer has no secure place for a key. Set ANTHROPIC_API_KEY in your environment."}>

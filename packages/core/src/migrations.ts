@@ -192,4 +192,25 @@ export const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    version: 7,
+    name: "chats",
+    // A conversation with the studio's own model. `messages` is what was sent to the
+    // model and what it answered, verbatim; `system` is its instructions as they were
+    // when it started. Both are sent back unchanged on every later turn (chats.ts).
+    sql: `
+      create table chats (
+        id text primary key,
+        project_id text references projects(id) on delete cascade,
+        pattern_id text references patterns(id) on delete set null,
+        title text not null,
+        system text not null,
+        messages text not null default '[]',
+        job_ids text not null default '[]',
+        created_at text not null,
+        updated_at text not null
+      );
+      create index chats_updated on chats (updated_at);
+    `,
+  },
 ];

@@ -17,3 +17,4 @@ export * from "./zip.ts";
 export * from "./secrets.ts";
 export * from "./backup.ts";
 export * from "./agent.ts";
+export * from "./chats.ts";
