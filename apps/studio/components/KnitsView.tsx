@@ -22,8 +22,18 @@ export function KnitsView({ projectId }: { projectId: string }) {
 
   const active = (jobs ?? []).filter((j) => j.kind === "knit" && (j.status === "running" || j.status === "queued"));
   const here = (knits ?? []).filter((k) => k.folder === kit.here);
-  const batches = new Map<string, KnitRecord[]>();
-  for (const k of here) { const key = k.batchId ?? k.id; batches.set(key, [...(batches.get(key) ?? []), k]); }
+  // A batch of several is a set under its own header. The knits between batches share one grid, keyed by the
+  // batch above them, so a new knit at the top leaves the rest of the grid as it is.
+  const inBatch = new Map<string, number>();
+  for (const k of here) if (k.batchId) inBatch.set(k.batchId, (inBatch.get(k.batchId) ?? 0) + 1);
+  const groups: { key: string; batch: string | null; knits: KnitRecord[] }[] = [];
+  for (const k of here) {
+    const batch = k.batchId && (inBatch.get(k.batchId) ?? 0) > 1 ? k.batchId : null;
+    const last = groups[groups.length - 1];
+    const group = batch ? groups.find((g) => g.batch === batch) : last && !last.batch ? last : undefined;
+    if (group) group.knits.push(k);
+    else groups.push({ key: batch ?? `after-${last?.batch ?? "top"}`, batch, knits: [k] });
+  }
   // A folder downloads as a zip of it and the folders in it, each a folder in the zip.
   const anything = kit.here ? kit.countIn(kit.here) > 0 : (knits ?? []).length > 0;
 
@@ -55,12 +65,12 @@ export function KnitsView({ projectId }: { projectId: string }) {
         kit.here && !kit.gone && foldersIn(kit.folders, kit.here).length === 0 && <EmptyState title={`Nothing in ${nameOf(kit.here)} yet`} body="Drag knits onto this folder, or open one and choose Move to folder." />
       ) : (
         <div style={{ display: "grid", gap: "var(--space-8)" }}>
-          {[...batches.values()].map((group) => (
-            <section key={group[0].batchId ?? group[0].id} aria-label={group.length > 1 ? `Batch of ${group.length}` : group[0].label}>
-              {group.length > 1 && (
+          {groups.map(({ key, batch, knits: group }) => (
+            <section key={key} aria-label={batch ? `Batch of ${group.length}` : undefined}>
+              {batch && (
                 <h3 className="eyebrow" style={{ marginBottom: 8, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                   Batch of {group.length} · {timeAgo(group[0].createdAt)}
-                  <a className="link" href={`/api/projects/${projectId}/knits/zip?batch=${group[0].batchId}`}>Download batch</a>
+                  <a className="link" href={`/api/projects/${projectId}/knits/zip?batch=${batch}`}>Download batch</a>
                   <button type="button" className="link" onClick={() => kit.askMove(group, `the batch of ${group.length}`)}>Move batch</button>
                 </h3>
               )}
@@ -70,10 +80,13 @@ export function KnitsView({ projectId }: { projectId: string }) {
                   const warn = (k.report.issues ?? []).filter((i) => i.level === "warning").length;
                   return (
                     <li key={k.id} className={fresh ? "stitching-in" : undefined} draggable onDragStart={kit.dragThings([k.id])}>
-                      <div className="card card-link" style={{ position: "relative", padding: "var(--space-2)" }}>
+                      <div className="card card-link" style={{ position: "relative", height: "100%", padding: "var(--space-2)" }}>
                         <button aria-label={`Open ${k.label}`} onClick={() => setOpen(k)} style={{ position: "absolute", inset: 0, zIndex: 1, background: "transparent", border: 0, cursor: "pointer", borderRadius: "var(--radius-md)" }} />
-                        <div aria-hidden className="thumb" style={{ aspectRatio: `${k.width} / ${k.height}`, maxHeight: 260, background: "var(--surface-sunken)" }}>
-                          {k.kind === "image" ? <img src={knitFileUrl(k)} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <video src={knitFileUrl(k)} muted preload="metadata" style={{ width: "100%", height: "100%", objectFit: "contain" }} />}
+                        {/* On the card's 4:5 mat, as a pattern's card has it, so a row of knits lines up whatever their sizes. */}
+                        <div aria-hidden className="thumb" style={{ padding: "var(--space-2)" }}>
+                          <div style={{ width: k.width / k.height > 0.8 ? "100%" : `${(k.width / k.height / 0.8) * 100}%`, aspectRatio: `${k.width} / ${k.height}`, borderRadius: "var(--radius-sm)", overflow: "hidden", boxShadow: "0 1px 4px rgba(23,17,11,.18)" }}>
+                            {k.kind === "image" ? <img src={knitFileUrl(k)} alt="" loading="lazy" style={{ display: "block", width: "100%", height: "100%", objectFit: "contain" }} /> : <video src={knitFileUrl(k)} muted preload="metadata" style={{ display: "block", width: "100%", height: "100%", objectFit: "contain" }} />}
+                          </div>
                         </div>
                         <p className="label" aria-hidden style={{ margin: "var(--space-2) 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{k.label}</p>
                         <p className="eyebrow" aria-hidden style={{ margin: "2px 0 0", display: "flex", gap: 6, alignItems: "center" }}>{k.format} · {k.width}x{k.height} · {formatBytes(k.bytes)}{warn > 0 && <span title={`${warn} to review`} style={{ color: "var(--danger)" }}><AlertTriangle size={12} aria-hidden /></span>}</p>
