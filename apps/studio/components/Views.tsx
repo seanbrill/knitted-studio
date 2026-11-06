@@ -5,9 +5,9 @@
 // computer, so Yarn can stay a list while Patterns stay a grid.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Select, Tip, icons } from "@knitted/ui";
+import { Input, Popover, Select, Tip, ToggleChip, icons } from "@knitted/ui";
 
-const { LayoutGrid, List } = icons;
+const { LayoutGrid, List, Tag } = icons;
 
 export type ViewMode = "grid" | "list";
 
@@ -77,3 +77,38 @@ export function commonSorts<T extends { name?: string; label?: string; createdAt
 export const layout = (mode: ViewMode, min = 180): React.CSSProperties => mode === "grid"
   ? { listStyle: "none", margin: 0, padding: 0, display: "grid", gap: "var(--space-4)", gridTemplateColumns: `repeat(auto-fill, minmax(${min}px, 1fr))` }
   : { listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 6 };
+
+/**
+ * Filter by a tag without a row of every tag: the most used few as chips, and the rest in a
+ * Tags menu that can be searched. The tag picked is always shown, so it can be let go of.
+ */
+export function TagFilter({ tags, value, onChange, show = 5 }: { tags: string[][]; value?: string; onChange: (t: string | undefined) => void; show?: number }) {
+  const [find, setFind] = useState("");
+  const ranked = useMemo(() => {
+    const n = new Map<string, number>();
+    for (const ts of tags) for (const t of ts) n.set(t, (n.get(t) ?? 0) + 1);
+    return [...n].sort((a, b) => b[1] - a[1] || collate.compare(a[0], b[0])).map(([t]) => t);
+  }, [tags]);
+  if (!ranked.length) return null;
+  const top = ranked.slice(0, show);
+  if (value && !top.includes(value)) top.push(value);
+  const pick = (t: string) => onChange(value === t ? undefined : t);
+  const rest = ranked.filter((t) => !top.includes(t) && t.toLowerCase().includes(find.trim().toLowerCase()));
+  return (
+    <>
+      {top.map((t) => <ToggleChip key={t} pressed={value === t} onClick={() => pick(t)}>{t}</ToggleChip>)}
+      {ranked.length > top.length && (
+        <Popover trigger={<button className="chip chip-button" aria-label={`All ${ranked.length} tags`}><Tag size={13} aria-hidden /> {ranked.length - top.length} more</button>}>
+          <div style={{ display: "grid", gap: "var(--space-2)", width: 280 }}>
+            <Input aria-label="Find a tag" placeholder="Find a tag" value={find} onChange={(e) => setFind(e.target.value)} />
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 240, overflowY: "auto" }}>
+              {rest.map((t) => <ToggleChip key={t} pressed={value === t} onClick={() => pick(t)}>{t}</ToggleChip>)}
+              {!rest.length && <span className="body-sm" style={{ color: "var(--ink-muted)" }}>No other tag has those letters.</span>}
+            </div>
+          </div>
+        </Popover>
+      )}
+    </>
+  );
+}
+

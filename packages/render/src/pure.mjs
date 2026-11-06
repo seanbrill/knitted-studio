@@ -136,6 +136,12 @@ export function stitchHtml(s, frame, ctx) {
     const flip = st.flipX ? "transform:scaleX(-1);" : "";
     const bg = typeof st.background === "string" ? st.background : "transparent";
     if (y && (y.kind === "image" || y.kind === "video")) {
+      // A video plays: its clock is the pattern's, set by seek(), so the editor and a knit show the same frame.
+      // Where it cannot be read (no decoder for it), its still stays in its place.
+      if (s.kind === "video" && y.kind === "video") {
+        const poster = y.posterUrl ? ` poster="${esc(y.posterUrl)}"` : "";
+        return `<div ${attrs}><div class="media" style="background:${bg}"><video class="kn-video" src="${esc(y.url)}"${poster} muted playsinline preload="auto" style="width:100%;height:100%;display:block;object-fit:${fit};object-position:${pos};${flip}filter:${esc(mediaFilter(st, heat.filter))}"></video>${heat.overlay}</div></div>`;
+      }
       const src = s.kind === "video" && y.meta?.thumb ? y.posterUrl ?? y.url : y.url;
       return `<div ${attrs}><div class="media" style="background:${bg}"><img src="${esc(src)}" alt="" style="object-fit:${fit};object-position:${pos};${flip}filter:${esc(mediaFilter(st, heat.filter))}">${heat.overlay}</div></div>`;
     }
@@ -231,10 +237,20 @@ function stageScript(duration, mode) {
       // A code Part lives in its own (script-free, same-origin) frame: reach in and set its clock too.
       for (const f of document.querySelectorAll("iframe.partframe")) { try { for (const a of f.contentDocument.getAnimations()) a.currentTime = ms; } catch {} }
       document.documentElement.style.setProperty("--t", ms + "ms");
+      // Each video to the same moment, looping when the pattern runs longer: a frame is taken once they are there.
+      const vids = [...document.querySelectorAll("video.kn-video")].filter(v => v.readyState >= 1 && v.duration > 0);
+      return Promise.all(vids.map(v => new Promise(r => {
+        const at = (ms / 1000) % v.duration;
+        if (Math.abs(v.currentTime - at) < 0.001) return r();
+        const t = setTimeout(r, 1500);
+        v.addEventListener("seeked", () => { clearTimeout(t); r(); }, { once: true });
+        v.currentTime = at;
+      })));
     },
     async ready() {
       if (document.fonts) await document.fonts.ready;
       await Promise.all([...document.images].filter(i => !i.complete).map(i => new Promise(r => { i.onload = i.onerror = r; })));
+      await Promise.all([...document.querySelectorAll("video.kn-video")].filter(v => v.readyState < 2).map(v => new Promise(r => { const t = setTimeout(r, 8000); const done = () => { clearTimeout(t); r(); }; v.addEventListener("loadeddata", done, { once: true }); v.addEventListener("error", done, { once: true }); })));
       await Promise.all([...document.querySelectorAll("iframe.partframe")].map(f => new Promise(r => { if (f.contentDocument && f.contentDocument.readyState === "complete") r(); else f.addEventListener("load", r, { once: true }); })));
       fitAll();
       // Two frames, so the first paint has certainly happened.
@@ -244,7 +260,7 @@ function stageScript(duration, mode) {
   ${mode === "edit" ? `window.__edit = {
     // Content and motion are replaced together, then the clock is put back where it was,
     // so editing while scrubbed does not snap the preview back to the start.
-    set(html, css) { if (css !== undefined) document.getElementById('kn-motion').textContent = css; document.getElementById('root').innerHTML = html; fitAll(); if (window.__t) window.__stage.seek(window.__t); },
+    set(html, css) { if (css !== undefined) document.getElementById('kn-motion').textContent = css; document.getElementById('root').innerHTML = html; fitAll(); for (const v of document.querySelectorAll("video.kn-video")) v.addEventListener("loadedmetadata", () => window.__stage.seek(window.__t || 0), { once: true }); if (window.__t) window.__stage.seek(window.__t); },
     fit: fitAll };
   if (document.fonts) document.fonts.ready.then(fitAll);` : ""}
   `;

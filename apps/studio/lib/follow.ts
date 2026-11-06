@@ -12,7 +12,9 @@ interface Follow {
   target: string | null;
   /** The page Follow is taking them away from, while that page still shows. */
   from: string | null;
-  start(to: string, from: string): void;
+  /** The one run followed, when more than one is at work: its job. Absent, the newest edit is followed. */
+  run: string | null;
+  start(to: string, from: string, run?: string): void;
   went(to: string, from: string): void;
   arrived(): void;
   stop(): void;
@@ -22,10 +24,11 @@ export const useFollow = create<Follow>((set) => ({
   on: false,
   target: null,
   from: null,
-  start: (to, from) => set({ on: true, target: to, from: to === from ? null : from }),
+  run: null,
+  start: (to, from, run) => set({ on: true, target: to, from: to === from ? null : from, run: run ?? null }),
   went: (to, from) => set({ target: to, from }),
   arrived: () => set({ from: null }),
-  stop: () => set({ on: false, target: null, from: null }),
+  stop: () => set({ on: false, target: null, from: null, run: null }),
 }));
 
 export const stopFollowing = () => { if (useFollow.getState().on) useFollow.getState().stop(); };

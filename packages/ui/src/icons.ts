@@ -9,3 +9,5 @@ export {
 export { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, LocateFixed, Minimize2 } from "lucide-react";
 // The Brief and its website, PDFs and cutting from them, and how a section is laid out and sorted.
 export { BookOpen, Globe, Crop, RefreshCw, ArrowUpDown, Monitor, Smartphone, ChevronLeft, File as FilePdf } from "lucide-react";
+// Tags past the first few, in a menu.
+export { Tag } from "lucide-react";

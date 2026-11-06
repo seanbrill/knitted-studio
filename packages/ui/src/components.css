@@ -253,7 +253,6 @@
 .canvas-bar { position: absolute; z-index: 2; background: var(--ink-muted); opacity: 0.35; border-radius: 2px; pointer-events: none; }
 .canvas-bar-x { bottom: 3px; height: 4px; }
 .canvas-bar-y { right: 3px; width: 4px; }
-.editor-trail { min-width: 0; flex-shrink: 1; }
 
 /* Where a model works (ModelLayer.tsx), in the model's red. */
 .model-layer { position: absolute; inset: 0; z-index: 3; pointer-events: none; overflow: hidden; }
@@ -287,3 +286,16 @@
 .model-dot { position: absolute; pointer-events: auto; width: 32px; height: 32px; display: grid; place-items: center; padding: 0; border: 1px solid var(--line-strong); border-radius: 50%; background: var(--surface-raised); box-shadow: var(--shadow-lift); cursor: pointer; }
 .model-dot > span { width: 12px; height: 12px; border-radius: 50%; }
 .model-dot > span:not(.working) { background: var(--red); }
+
+/* ── The editor's top bar, when a lot is going on: the trail and the model's words shrink, nothing overlaps ── */
+.editor-trail { flex: 0 1 auto; min-width: 140px; overflow: hidden; }
+.editor-trail li:last-child { flex: 0 1 auto; min-width: 0; }
+.editor-presence { display: flex; flex: 0 1 auto; min-width: 0; max-width: 320px; }
+.editor-presence > * { max-width: 100%; min-width: 0; }
+.editor-bar > :not(.editor-trail):not(.editor-presence) { flex-shrink: 0; }
+@media (max-width: 1500px) { .editor-presence { max-width: 200px; } }
+
+/* A video's thumbnail: a play mark in the middle, so it reads as a video at a glance. */
+.play-badge { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 34%; max-width: 40px; min-width: 20px; aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center; background: rgba(20, 17, 15, 0.62); color: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); pointer-events: none; }
+.play-badge svg { margin-left: 2px; width: 55%; height: 55%; }
+

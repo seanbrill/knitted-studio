@@ -22,7 +22,7 @@ export function TopBar({ projectId, timeline, onTimeline, onHistory, onShortcuts
   const base = `/projects/${projectId}`;
 
   return (
-    <header style={{ height: "var(--topbar-h)", borderBottom: "1px solid var(--line)", background: "var(--surface)", display: "flex", alignItems: "center", gap: "var(--space-3)", padding: "0 var(--space-4)", flexShrink: 0 }}>
+    <header className="editor-bar" style={{ height: "var(--topbar-h)", borderBottom: "1px solid var(--line)", background: "var(--surface)", display: "flex", alignItems: "center", gap: "var(--space-3)", padding: "0 var(--space-4)", flexShrink: 0 }}>
       {/* Where this pattern is, each step a way back; its own name, last, is where it is renamed. */}
       <Breadcrumbs linkAs={Link} className="editor-trail" items={[
         { label: "Projects", href: "/projects" },
@@ -30,11 +30,12 @@ export function TopBar({ projectId, timeline, onTimeline, onHistory, onShortcuts
         { label: "Patterns", href: base },
         { label: pattern.name, render: (
           <input aria-label="Pattern name" aria-current="page" defaultValue={pattern.name} key={pattern.name} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== pattern.name) st.dispatch({ type: "setMeta", name: v }, { label: "Rename" }); else e.target.value = pattern.name; }} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-            className="label" style={{ background: "transparent", border: "1px solid transparent", borderRadius: 6, padding: "4px 6px", color: "var(--ink)", font: "inherit", fontWeight: 600, width: Math.max(8, pattern.name.length + 1) + "ch", maxWidth: 260 }} />
+            className="label" style={{ background: "transparent", border: "1px solid transparent", borderRadius: 6, padding: "4px 6px", color: "var(--ink)", font: "inherit", fontWeight: 600, width: Math.max(8, pattern.name.length + 1) + "ch", maxWidth: 260, minWidth: "6ch", flex: "0 1 auto", textOverflow: "ellipsis" }} />
         ) },
       ]} />
-      <span role="status" aria-live="polite" className="body-sm" style={{ color: status === "error" ? "var(--danger)" : "var(--ink-muted)", minWidth: 64 }}>{status === "saving" ? "Saving..." : status === "error" ? "Not saved" : "Saved"}</span>
-      <ModelPresence variant="bar" patternId={pattern.id} />
+      <span role="status" aria-live="polite" className="body-sm" style={{ color: status === "error" ? "var(--danger)" : "var(--ink-muted)", minWidth: 64, flexShrink: 0, whiteSpace: "nowrap" }}>{status === "saving" ? "Saving..." : status === "error" ? "Not saved" : "Saved"}</span>
+      {/* What a model is doing gives way first when the bar is full: its words are cut short, never laid over the trail. */}
+      <span className="editor-presence"><ModelPresence variant="bar" patternId={pattern.id} /></span>
 
       <div style={{ flex: 1 }} />
       <Tip text="Pattern lays out the design. Fill only changes the words and pictures in its open slots, as a batch or your model does.">

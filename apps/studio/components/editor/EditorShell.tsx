@@ -112,7 +112,7 @@ export function EditorShell({ projectId, pattern, swatch, yarn, parts, patterns,
   if (!st.pattern || st.pattern.id !== pattern.id) return <div style={{ height: "100dvh", background: "var(--surface-sunken)" }} />;
 
   return (
-    <div style={{ height: "100dvh", display: "flex", flexDirection: "column" }}>
+    <div style={{ height: "100dvh", display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
       <TopBar projectId={projectId} timeline={timeline} onTimeline={() => setTimeline((t) => !t)} onHistory={() => setHistory(true)} onShortcuts={() => setKeys(true)} onKnit={onKnit ?? (() => setKnit(true))} />
       <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
         <nav aria-label="Tools" style={{ width: "var(--rail-w)", background: "var(--rail)", display: "flex", flexDirection: "column", alignItems: "center", paddingTop: "var(--space-2)", gap: 4, flexShrink: 0 }}>

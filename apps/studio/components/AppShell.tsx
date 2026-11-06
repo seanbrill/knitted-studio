@@ -47,7 +47,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div style={{ display: "flex", height: "100dvh" }}>
+    <div style={{ display: "flex", height: "100dvh", overflow: "hidden" }}>
       <nav
         aria-label="Main"
         style={{
@@ -108,7 +108,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {!collapsed && <span style={{ fontSize: 13, fontWeight: 600 }}>Collapse sidebar</span>}
         </button>
       </nav>
-      <main id="main" style={{ flex: 1, overflow: "auto", minWidth: 0 }}>
+      <main id="main" style={{ flex: 1, overflow: "auto", minWidth: 0, position: "relative" }}>
         {children}
       </main>
       <CommandPalette actions={actions} />

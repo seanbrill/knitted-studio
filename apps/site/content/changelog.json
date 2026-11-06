@@ -1,5 +1,18 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
+  "next": {
+    "title": "Videos that play, and room to work",
+    "items": [
+      "A video in a pattern plays now: in the editor, and in the knit. Before, only its first frame showed.",
+      "The page no longer scrolls past its end into a blank band.",
+      "The editor's top bar keeps its place when a lot is going on: the trail and what your model is doing are cut short, never drawn over each other.",
+      "Yarn and Knits show the most used tags, and the rest are in a menu you can search.",
+      "With more than one model at work, the side bar shows each one, and you can follow any of them.",
+      "A video's thumbnail has a play mark on it.",
+      "Knits have tags, to find them by.",
+      "The chats are kept apart by project: the Ask page shows one project's chats at a time, and the editor only that project's."
+    ]
+  },
   "entries": [
     {
       "version": "0.1.7",

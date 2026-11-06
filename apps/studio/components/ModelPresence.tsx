@@ -12,6 +12,27 @@ const { Check, X, AlertTriangle } = icons;
 /** The newest call that is somewhere to go: an edit, or a model looking at a pattern. */
 const lead = (s: AgentState) => [...s.calls].reverse().find((x) => (x.edits || x.tool === "preview_pattern") && pathFor(x));
 
+/** One model at work now: each run of the studio's own model, and each other model by name. */
+interface Worker { key: string; who: string; what: string; to: string | null; run?: string }
+
+const placeOf = (w: { projectId?: string | null; patternId?: string | null }) =>
+  !w.projectId ? null : w.patternId ? `/projects/${w.projectId}/patterns/${w.patternId}` : `/projects/${w.projectId}`;
+
+/** Everyone at work at once, so two runs side by side are two rows, each one to follow. */
+export function atWork(s: AgentState): Worker[] {
+  const runs = (s.live ?? []).filter((l) => !l.ended);
+  const out: Worker[] = runs.map((l) => ({ key: l.jobId, run: l.jobId, who: l.client, to: placeOf(l.where), what: l.text.trim().split("\n").filter(Boolean).at(-1) ?? "Thinking" }));
+  const studio = new Set(runs.map((l) => l.client));
+  for (const c of [...s.calls].reverse()) {
+    if (c.state !== "running" || studio.has(c.client) || out.some((w) => w.who === c.client)) continue;
+    out.push({ key: c.client, who: c.client, what: c.summary, to: pathFor(c) });
+  }
+  return out;
+}
+
+/** The place a followed run works now, from what it last said about where it is. */
+const runPlace = (s: AgentState, run: string) => { const l = s.live?.find((x) => x.jobId === run); return l ? placeOf(l.where) : null; };
+
 /**
  * A model at work, where the person can see it: who it is, what it is doing and where,
  * with Follow (go where it works, and keep going as it moves) and Pause (its changes are
@@ -32,8 +53,8 @@ export function ModelPresence({ variant, patternId }: { variant: "rail" | "rail-
     if (pathname === f.from) return; // on the way: the page it is leaving still shows
     if (pathname !== f.target) { f.stop(); return; } // somewhere else, by their own hand
     if (f.from) f.arrived();
-    const c = lead(s);
-    const to = c && pathFor(c);
+    const c = f.run ? null : lead(s);
+    const to = f.run ? runPlace(s, f.run) : c && pathFor(c);
     if (to && to !== pathname) { f.went(to, pathname); router.push(to); }
   }, [s, following, pathname, router]);
 
@@ -68,7 +89,39 @@ export function ModelPresence({ variant, patternId }: { variant: "rail" | "rail-
       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--ink-muted)" }}>{shown}</span>
     </button>
   );
-  return <Popover trigger={trigger} align="start"><Panel s={s} now={now} who={who} /></Popover>;
+  const popover = <Popover trigger={trigger} align="start"><Panel s={s} now={now} who={who} /></Popover>;
+  const many = variant === "rail" && !s.paused ? atWork(s) : [];
+  if (many.length < 2) return popover;
+  return (
+    <>
+      {popover}
+      <AtWork list={many} />
+    </>
+  );
+}
+
+/** More than one at work: a row for each, and pressing one follows that one. */
+function AtWork({ list }: { list: Worker[] }) {
+  const follow = useFollow();
+  const router = useRouter();
+  const pathname = usePathname();
+  return (
+    <ul aria-label={`${list.length} at work`} style={{ listStyle: "none", margin: "0 0 var(--space-2)", padding: 0, display: "grid", gap: 4 }}>
+      {list.map((w) => {
+        const on = follow.on && (follow.run ? follow.run === w.run : false);
+        return (
+          <li key={w.key}>
+            <button disabled={!w.to} aria-pressed={on} aria-label={`${on ? "Following" : "Follow"} ${w.who}: ${w.what}`} title={w.what}
+              onClick={() => { if (on) { follow.stop(); return; } follow.start(w.to!, pathname, w.run); if (w.to !== pathname) router.push(w.to!); }}
+              style={{ width: "100%", display: "grid", gridTemplateColumns: "8px 1fr", gap: "0 10px", alignItems: "center", textAlign: "left", padding: "6px 12px", borderRadius: "var(--radius-md)", border: `1px solid ${on ? "var(--red)" : "rgba(246, 243, 239, 0.14)"}`, background: "transparent", color: "var(--on-rail)", font: "inherit", fontSize: 12, cursor: w.to ? "pointer" : "default" }}>
+              <span aria-hidden className="working" style={{ width: 8, height: 8, borderRadius: "50%" }} />
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--on-rail-muted)" }}><span style={{ color: "var(--on-rail)", fontWeight: 600 }}>{on ? "Following" : w.who}</span>{" "}{w.what}</span>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
 }
 
 function StateMark({ c }: { c: AgentCall }) {

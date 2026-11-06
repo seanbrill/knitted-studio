@@ -4,10 +4,10 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { api, knitFileUrl, type KnitRecord, type JobItem } from "@knitted/core/client";
 import { foldersIn, isInside, nameOf } from "@knitted/core";
-import { Button, ConfirmDialog, Dialog, EmptyState, Input, Select, Skeleton, StitchProgress, icons, useToast } from "@knitted/ui";
+import { Button, Chip, ConfirmDialog, Dialog, EmptyState, Input, Select, Skeleton, StitchProgress, icons, useToast } from "@knitted/ui";
 import { formatBytes, timeAgo, useLive } from "@/lib/hooks";
 import { FolderCrumbs, FolderDialogs, FolderList, NewFolderButton, useFolders } from "./Folders";
-import { ViewBar, layout, useView, type SortBy } from "./Views";
+import { TagFilter, ViewBar, layout, useView, type SortBy } from "./Views";
 
 const KNIT_SORTS: SortBy<KnitRecord>[] = [
   { value: "newest", label: "Newest first", key: (k) => k.createdAt, desc: true },
@@ -16,13 +16,14 @@ const KNIT_SORTS: SortBy<KnitRecord>[] = [
   { value: "size", label: "Biggest first", key: (k) => k.bytes, desc: true },
 ];
 
-const { Download, Trash2, AlertTriangle, Copy, FolderInput } = icons;
+const { Download, Trash2, AlertTriangle, Copy, FolderInput, X } = icons;
 
 export function KnitsView({ projectId }: { projectId: string }) {
   const toast = useToast();
   const { data: knits, refresh } = useLive(() => api.knit.list(projectId), [projectId]);
   const { data: jobs } = useLive(() => fetch(`/api/projects/${projectId}/jobs`).then((r) => r.json() as Promise<JobItem[]>), [projectId]);
   const [open, setOpen] = useState<KnitRecord | null>(null);
+  const retag = async (tags: string[]) => { if (!open) return; setOpen(await api.knit.tag(open.id, tags)); await refresh(); };
   const [del, setDel] = useState<KnitRecord | null>(null);
   // Anything knitted after this page opened is new, and gets the signature "stitching in" reveal.
   const [openedAt] = useState(() => Date.now());
@@ -32,10 +33,12 @@ export function KnitsView({ projectId }: { projectId: string }) {
   const view = useView<KnitRecord>("knits", KNIT_SORTS);
   const [q, setQ] = useState("");
   const [format, setFormat] = useState("all");
+  const [tag, setTag] = useState<string | undefined>();
+  const [tagText, setTagText] = useState("");
   const formats = useMemo(() => [...new Set((knits ?? []).map((k) => k.format))].sort(), [knits]);
   // A search or a format looks in the folder the person is in and every folder inside it.
-  const filtering = !!q.trim() || format !== "all";
-  const here = view.sorted((knits ?? []).filter((k) => (filtering ? isInside(k.folder, kit.here) && k.label.toLowerCase().includes(q.trim().toLowerCase()) && (format === "all" || k.format === format) : k.folder === kit.here)));
+  const filtering = !!q.trim() || format !== "all" || !!tag;
+  const here = view.sorted((knits ?? []).filter((k) => (filtering ? isInside(k.folder, kit.here) && k.label.toLowerCase().includes(q.trim().toLowerCase()) && (format === "all" || k.format === format) && (!tag || k.tags.includes(tag)) : k.folder === kit.here)));
   // Batches are kept together only newest first: sorted another way, each knit stands on its own.
   const batched = view.sort === "newest";
   // A batch of several is a set under its own header. The knits between batches share one grid, keyed by the
@@ -78,6 +81,7 @@ export function KnitsView({ projectId }: { projectId: string }) {
         <div style={{ display: "flex", gap: "var(--space-3)", alignItems: "center", flexWrap: "wrap", marginBottom: "var(--space-4)" }}>
           <Input aria-label={kit.here ? `Search ${nameOf(kit.here)} and the folders in it` : "Search knits"} placeholder="Search knits" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 220 }} />
           <div style={{ minWidth: 150 }}><Select aria-label="Format" value={format} onValueChange={setFormat} options={[{ value: "all", label: "Every format" }, ...formats.map((f) => ({ value: f, label: f.toUpperCase() }))]} /></div>
+          <TagFilter tags={(knits ?? []).map((k) => k.tags)} value={tag} onChange={setTag} />
           <ViewBar view={view} what="knits" />
         </div>
       )}
@@ -85,7 +89,7 @@ export function KnitsView({ projectId }: { projectId: string }) {
       {!knits || !kit.folders ? <Skeleton height={200} /> : knits.length === 0 && kit.folders.length === 0 ? (
         <EmptyState title="Nothing knitted yet" body="Open a pattern and press Knit. Everything you make from this project shows up here." />
       ) : here.length === 0 ? (
-        filtering ? <EmptyState title="Nothing matches" body="Try another search or format." /> : kit.here && !kit.gone && foldersIn(kit.folders, kit.here).length === 0 && <EmptyState title={`Nothing in ${nameOf(kit.here)} yet`} body="Drag knits onto this folder, or open one and choose Move to folder." />
+        filtering ? <EmptyState title="Nothing matches" body="Try another search, format or tag." /> : kit.here && !kit.gone && foldersIn(kit.folders, kit.here).length === 0 && <EmptyState title={`Nothing in ${nameOf(kit.here)} yet`} body="Drag knits onto this folder, or open one and choose Move to folder." />
       ) : (
         <div style={{ display: "grid", gap: "var(--space-8)" }}>
           {groups.map(({ key, batch, knits: group }) => (
@@ -151,6 +155,10 @@ export function KnitsView({ projectId }: { projectId: string }) {
               {open.kind === "image" ? <img src={knitFileUrl(open)} alt={open.label} style={{ maxWidth: "100%", maxHeight: "60dvh", objectFit: "contain" }} /> : <video src={knitFileUrl(open)} controls style={{ maxWidth: "100%", maxHeight: "60dvh" }} />}
             </div>
             <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>{open.format.toUpperCase()}, {open.width}x{open.height}, {formatBytes(open.bytes)}, knitted {timeAgo(open.createdAt)}. {open.patternId && <Link className="link" href={`/projects/${projectId}/patterns/${open.patternId}`}>Open the pattern</Link>}</p>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              {open.tags.map((t) => <Chip key={t}>{t}<button className="icon-btn" style={{ width: 18, height: 18 }} aria-label={`Remove tag ${t}`} onClick={() => void retag(open.tags.filter((x) => x !== t))}><X size={11} /></button></Chip>)}
+              <div style={{ width: 180 }}><Input aria-label="Add a tag" value={tagText} placeholder="Add a tag" onChange={(e) => setTagText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && tagText.trim()) { void retag([...open.tags, tagText]); setTagText(""); } }} /></div>
+            </div>
             {(open.report.issues ?? []).length > 0 && <ul style={{ margin: 0, paddingLeft: 18 }}>{open.report.issues!.map((i, n) => <li key={n} className="body-sm">{i.message}</li>)}</ul>}
           </div>
         )}

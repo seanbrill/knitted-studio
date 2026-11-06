@@ -23,7 +23,8 @@ export function AskPanel({ projectId }: { projectId: string }) {
   const chatId = chats ? chatHere(chats, current, projectId) : null;
   const chat = chats?.find((c) => c.id === chatId) ?? null;
   // This project's chats, and those about the whole studio, which go on anywhere.
-  const here = (chats ?? []).filter((c) => !c.projectId || c.projectId === projectId);
+  // Only this project's chats, so a conversation about another project is never mixed in.
+  const here = (chats ?? []).filter((c) => c.projectId === projectId);
   const [listing, setListing] = useState(false);
   const lockedCount = st.pattern.stitches.filter((s) => s.locked).length;
 

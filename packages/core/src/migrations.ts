@@ -238,4 +238,10 @@ export const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    version: 9,
+    name: "knit tags",
+    // Tags on a knit, as Yarn has them: words to find it by ("launch", "winter"), a JSON list.
+    sql: `alter table knits add column tags text not null default '[]';`,
+  },
 ];

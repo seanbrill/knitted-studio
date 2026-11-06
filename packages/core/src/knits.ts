@@ -14,6 +14,8 @@ export interface KnitRecord {
   durationMs: number | null; hash: string; report: { issues?: KnitIssue[]; lufs?: number; truePeak?: number; frames?: number; checks?: string[] };
   /** The folder in Knits it is filed in. "" is the top, where each knit lands. Filing it never moves the file on disk. */
   folder: string;
+  /** Words to find it by, as Yarn has them. */
+  tags: string[];
   createdAt: string;
 }
 type Row = Record<string, unknown>;
@@ -22,12 +24,12 @@ const toKnit = (r: Row): KnitRecord => ({
   id: r.id as string, projectId: r.project_id as string, patternId: (r.pattern_id as string) ?? null, patternName: r.pattern_name as string,
   jobId: (r.job_id as string) ?? null, batchId: (r.batch_id as string) ?? null, label: r.label as string, file: r.file as string,
   kind: r.kind as "image" | "video", format: r.format as string, width: Number(r.width), height: Number(r.height), bytes: Number(r.bytes),
-  durationMs: r.duration_ms == null ? null : Number(r.duration_ms), hash: r.hash as string, report: JSON.parse(r.report as string), folder: (r.folder as string) ?? "", createdAt: r.created_at as string,
+  durationMs: r.duration_ms == null ? null : Number(r.duration_ms), hash: r.hash as string, report: JSON.parse(r.report as string), folder: (r.folder as string) ?? "", tags: JSON.parse((r.tags as string) ?? "[]"), createdAt: r.created_at as string,
 });
 
 export const knitPath = (store: Store, k: Pick<KnitRecord, "projectId" | "file">) => join(store.paths.outDir(k.projectId), k.file);
 
-export function insertKnit(store: Store, k: Omit<KnitRecord, "id" | "createdAt" | "folder">): KnitRecord {
+export function insertKnit(store: Store, k: Omit<KnitRecord, "id" | "createdAt" | "folder" | "tags">): KnitRecord {
   const id = newId("kn"), t = new Date().toISOString();
   store.write(() => {
     store.db.prepare("insert into knits (id, project_id, pattern_id, pattern_name, job_id, batch_id, label, file, kind, format, width, height, bytes, duration_ms, hash, report, created_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
@@ -55,6 +57,13 @@ export function listKnits(store: Store, projectId: string, f: { patternId?: stri
 export function findKnitByHash(store: Store, projectId: string, hash: string): KnitRecord | null {
   const r = store.db.prepare("select * from knits where project_id = ? and hash = ? order by created_at desc limit 1").get(projectId, hash) as Row | undefined;
   return r ? toKnit(r) : null;
+}
+/** A knit's tags, each once, in the order given, without blanks. */
+export function setKnitTags(store: Store, id: string, tags: string[]): KnitRecord {
+  getKnit(store, id);
+  const clean = [...new Set(tags.map((t) => t.trim()).filter(Boolean))];
+  store.write(() => store.db.prepare("update knits set tags = ? where id = ?").run(JSON.stringify(clean), id));
+  return getKnit(store, id);
 }
 export async function deleteKnit(store: Store, id: string): Promise<void> {
   const k = getKnit(store, id);

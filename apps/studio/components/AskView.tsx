@@ -16,6 +16,7 @@ import { Chat, ChatList, useChats } from "./Chat";
 const { Plus } = icons;
 // The choice "the whole studio": a Select item cannot have an empty value.
 const STUDIO = "studio";
+const ALL = "all";
 
 export function AskView() {
   return <Suspense><AskInner /></Suspense>;
@@ -30,6 +31,8 @@ function AskInner() {
   const { chats: list, started } = useChats();
   const { data: projects, error: noProjects } = useLive(() => api.projects.list(), []);
   const [chosen, setChosen] = useState<string | null>(null);
+  // Which project's chats the list shows: each project's apart, so they are not mixed up.
+  const [from, setFrom] = useState<string | null>(null);
 
   // The chat in the address, else the one being had. From a project's page, that one if it can go on
   // in the project, else a new one there. Whichever opens is the one being had from now on.
@@ -42,6 +45,8 @@ function AskInner() {
   // Not before the projects are known, so a quick first message cannot go to the wrong place.
   const place = chosen ?? (asked && (!projects || projects.some((p) => p.id === asked)) ? asked : projects?.[0]?.id ?? STUDIO);
   const ready = !!shown || (shown === null && (!!projects || !!noProjects));
+  const showing = from ?? (chat ? chat.projectId ?? STUDIO : asked ?? ALL);
+  const listed = list?.filter((c) => showing === ALL || (c.projectId ?? STUDIO) === showing);
 
   // An address for a chat that is gone (deleted, say) opens the one being had, or a new one.
   const gone = !!list && !!chatId && !list.some((c) => c.id === chatId);
@@ -58,8 +63,12 @@ function AskInner() {
           <h2 className="label" style={{ margin: 0 }}>Chats</h2>
           <Button size="sm" disabled={!shown} onClick={() => { setCurrentChat(null); router.push(chat?.projectId ? `/ask?project=${chat.projectId}` : "/ask"); }}><Plus size={14} aria-hidden /> New chat</Button>
         </div>
+        <div style={{ padding: "0 var(--space-4) var(--space-3)" }}>
+          <Select aria-label="Show the chats of" value={showing} onValueChange={setFrom}
+            options={[{ value: ALL, label: "Every project" }, ...(projects ?? []).map((p) => ({ value: p.id, label: p.name })), { value: STUDIO, label: "The whole studio" }]} />
+        </div>
         <div style={{ overflowY: "auto", flex: 1, padding: "0 var(--space-2) var(--space-4)" }}>
-          {list && <ChatList chats={list} shown={shown ?? null} href={(c) => `/ask?chat=${c.id}`} onDeleted={(c) => { if (c.id === shown) router.replace("/ask"); }} />}
+          {listed && <ChatList chats={listed} shown={shown ?? null} href={(c) => `/ask?chat=${c.id}`} onDeleted={(c) => { if (c.id === shown) router.replace("/ask"); }} />}
         </div>
       </aside>
       <section aria-label={chat ? chat.title : "New chat"} style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>

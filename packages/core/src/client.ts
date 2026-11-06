@@ -130,6 +130,7 @@ export const api = {
     cancel: (id: string) => call<JobItem>("DELETE", `/api/jobs/${id}`),
     list: (projectId: string, q: { pattern?: string; batch?: string } = {}) => call<KnitRecord[]>("GET", `/api/projects/${projectId}/knits?${new URLSearchParams(Object.entries(q).filter(([, v]) => v) as [string, string][])}`),
     remove: (id: string) => call<{ ok: true }>("DELETE", `/api/knits/${id}`),
+    tag: (id: string, tags: string[]) => call<KnitRecord>("PATCH", `/api/knits/${id}`, { tags }),
   },
   agent: {
     config: () => call<ModelConfig>("GET", "/api/agent/model"),

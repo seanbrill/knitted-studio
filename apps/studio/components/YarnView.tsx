@@ -6,14 +6,14 @@ import { api, pdfPageUrl, uploadYarn, yarnFileUrl, yarnThumbUrl } from "@knitted
 import { isInside, nameOf, type CropBox, type Shelf, type Yarn, type YarnKind } from "@knitted/core";
 import {
   Button, Chip, ConfirmDialog, Dialog, Drawer, DropZone, EmptyState, Field, IconButton, Input, Menu, SegmentedControl, Skeleton, Textarea,
-  Tip, ToggleChip, icons, useToast,
+  Tip, icons, useToast,
 } from "@knitted/ui";
 import { formatBytes, timeAgo, useLive } from "@/lib/hooks";
 import { useUploads, type UploadItem } from "@/lib/uploads";
 import { FolderCrumbs, FolderDialogs, FolderList, InFolder, NewFolderButton, counted, useFolders } from "./Folders";
-import { ViewBar, commonSorts, layout, useView, type SortBy } from "./Views";
+import { TagFilter, ViewBar, commonSorts, layout, useView, type SortBy } from "./Views";
 
-const { Upload, Plus, Search, FileText, Music, Film, Type, Image: ImageIcon, X, AlertTriangle, Trash2, Download, Link2: LinkIcon, RotateCcw, FolderInput, FilePdf, Crop, BookOpen, Monitor, Smartphone, ChevronLeft, ChevronRight } = icons;
+const { Upload, Plus, Search, FileText, Music, Film, Type, Image: ImageIcon, X, AlertTriangle, Trash2, Download, Link2: LinkIcon, RotateCcw, FolderInput, FilePdf, Crop, BookOpen, Monitor, Smartphone, ChevronLeft, ChevronRight, Play } = icons;
 const spoken = (path: string) => path.split("/").join(" / ");
 
 const KINDS: { value: "all" | YarnKind; label: string }[] = [
@@ -62,6 +62,13 @@ function Waveform({ peaks }: { peaks: number[] }) {
 export function YarnThumb({ y, large, top }: { y: Yarn; large?: boolean; top?: boolean }) {
   const fontReady = useFontFace(y);
   const box: React.CSSProperties = { width: "100%", height: "100%", display: "grid", placeItems: "center", background: "var(--surface-sunken)" };
+  // A video's still says it plays: a play mark over it, wherever its picture is shown small.
+  if (y.kind === "video" && y.meta.thumb && !large) return (
+    <div style={{ position: "relative", width: "100%", height: "100%" }}>
+      <img src={yarnThumbUrl(y)} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", background: "var(--surface-sunken)" }} />
+      <span className="play-badge" aria-hidden><Play size={14} fill="currentColor" /></span>
+    </div>
+  );
   if (y.meta.thumb) return <img src={yarnThumbUrl(y)} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: large ? "contain" : "cover", objectPosition: top && !large ? "top" : undefined, background: "var(--surface-sunken)" }} />;
   if (y.kind === "font") return <div style={box}><span style={{ fontFamily: fontReady ? `yarn-${y.id}` : "var(--font-ui)", fontSize: large ? 96 : 44, lineHeight: 1 }}>Aa</span></div>;
   if (y.kind === "audio" && y.meta.peaks) return <div style={{ ...box, padding: 16 }}><Waveform peaks={y.meta.peaks} /></div>;
@@ -126,7 +133,7 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
   const reload = useCallback(async () => { await Promise.all([refresh(), refreshAll()]); }, [refresh, refreshAll]);
   const kit = useFolders(projectId, section, all, { onChanged: reload });
   const uploads = useUploads(projectId, reload, shelf);
-  const allTags = useMemo(() => [...new Set((all ?? []).flatMap((y) => y.tags))].sort(), [all]);
+  const allTags = useMemo(() => (all ?? []).map((y) => y.tags), [all]);
   // A search or a filter looks in the folder the person is in and every folder inside it;
   // otherwise the folder shows what is in it, with its folders above.
   const filtering = !!(q || tag || kind !== "all");
@@ -182,7 +189,7 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
           <Search size={15} aria-hidden style={{ position: "absolute", left: 10, top: 10, color: "var(--ink-muted)" }} />
           <Input aria-label={kit.here ? `Search ${nameOf(kit.here)} and the folders in it` : words.search} placeholder={kit.here ? `Search ${nameOf(kit.here)}` : words.search} value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 32 }} />
         </div>
-        {allTags.map((t) => <ToggleChip key={t} pressed={tag === t} onClick={() => setTag(tag === t ? undefined : t)}>{t}</ToggleChip>)}
+        <TagFilter tags={allTags} value={tag} onChange={setTag} />
         <ViewBar view={view} what={shelf === "reference" ? "the reference" : "Yarn"} />
       </div>
 
