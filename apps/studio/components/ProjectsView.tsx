@@ -266,13 +266,16 @@ function PictureDialog({ project, onOpenChange, onDone }: { project: ProjectSumm
       <div style={{ display: "grid", gap: "var(--space-4)" }}>
         {yarn && pictures.length === 0 && <p className="body-sm" style={{ color: "var(--ink-muted)", margin: 0 }}>This project has no images yet.</p>}
         {pictures.length > 0 && (
-          <div role="listbox" aria-label="The project's images" style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fill, minmax(96px, 1fr))", maxHeight: 340, overflowY: "auto", padding: 2 }}>
+          // The scroll is around the grid, not on it: a grid held to a height squeezes its rows to fit.
+          <div style={{ maxHeight: "min(420px, 50dvh)", overflowY: "auto", padding: 2 }}>
+          <div role="listbox" aria-label="The project's images" style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fill, minmax(112px, 1fr))" }}>
             {pictures.map((y) => (
               <button key={y.id} type="button" role="option" aria-selected={sel === y.id} aria-label={y.name} title={y.name} onClick={() => setSel(y.id)}
                 style={{ aspectRatio: "1", padding: 0, borderRadius: 8, overflow: "hidden", cursor: "pointer", background: "var(--surface-sunken)", border: sel === y.id ? "2px solid var(--ember)" : "1px solid var(--line-strong)" }}>
                 <img src={yarnThumbUrl(y)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
               </button>
             ))}
+          </div>
           </div>
         )}
         <div style={{ display: "flex", gap: "var(--space-3)", alignItems: "center" }}>

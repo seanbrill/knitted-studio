@@ -69,7 +69,8 @@ export function YarnThumb({ y, large, top }: { y: Yarn; large?: boolean; top?: b
       <span className="play-badge" aria-hidden><Play size={14} fill="currentColor" /></span>
     </div>
   );
-  if (y.meta.thumb) return <img src={yarnThumbUrl(y)} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: large ? "contain" : "cover", objectPosition: top && !large ? "top" : undefined, background: "var(--surface-sunken)" }} />;
+  // A picture in a tile is a square made for it, sharp; the thumbnail is too small for a tall one.
+  if (y.meta.thumb) return <img src={y.kind === "image" && !large ? yarnThumbUrl(y, top ? "top" : "tile") : yarnThumbUrl(y)} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: large ? "contain" : "cover", objectPosition: top && !large ? "top" : undefined, background: "var(--surface-sunken)" }} />;
   if (y.kind === "font") return <div style={box}><span style={{ fontFamily: fontReady ? `yarn-${y.id}` : "var(--font-ui)", fontSize: large ? 96 : 44, lineHeight: 1 }}>Aa</span></div>;
   if (y.kind === "audio" && y.meta.peaks) return <div style={{ ...box, padding: 16 }}><Waveform peaks={y.meta.peaks} /></div>;
   if (y.kind === "copy") return <div style={{ ...box, padding: 12, alignItems: "start", overflow: "hidden" }}><p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)", display: "-webkit-box", WebkitLineClamp: large ? 12 : 5, WebkitBoxOrient: "vertical", overflow: "hidden", whiteSpace: "pre-wrap" }}>{y.meta.text}</p></div>;

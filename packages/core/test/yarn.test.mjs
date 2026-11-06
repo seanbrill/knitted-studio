@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import sharp from "sharp";
-import { ValidationError, assertPublicUrl, createCopy, deleteYarn, importYarn, importYarnFromUrl, listYarn, openStore, purgeDeletedYarn, undeleteYarn, updateYarn, uploadTempPath, yarnPath, yarnPicturePath, yarnUsage } from "../src/node.ts";
+import { ValidationError, assertPublicUrl, createCopy, deleteYarn, importYarn, importYarnFromUrl, listYarn, openStore, purgeDeletedYarn, undeleteYarn, updateYarn, uploadTempPath, yarnPath, yarnPicturePath, yarnTilePath, yarnUsage } from "../src/node.ts";
 import { sanitiseSvg } from "../src/svg.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "knitted-yarn-"));
@@ -287,6 +287,20 @@ test("a project's picture is one of its own images, and its card in the list get
   assert.throws(() => store.updateProject(p.id, { coverYarnId: result.yarn.id }), /not in this project/, "another project's image is not this one's picture");
   store.updateProject(p.id, { coverYarnId: null });
   assert.equal(store.listProjects().find((x) => x.id === p.id).cover, null);
+});
+
+test("a tall page's tile is a sharp square from its top, not its thumbnail stretched", async () => {
+  // Top white, bottom black: a tile from the top is light, one from the middle is half and half.
+  const tall = await sharp({ create: { width: 1440, height: 6000, channels: 3, background: { r: 0, g: 0, b: 0 } } })
+    .composite([{ input: { create: { width: 1440, height: 1440, channels: 3, background: { r: 255, g: 255, b: 255 } } }, top: 0, left: 0 }]).png().toBuffer();
+  const { result } = await imp("Page.png", tall);
+  const top = await yarnTilePath(store, result.yarn, true);
+  const m = await sharp(top).metadata();
+  assert.deepEqual([m.width, m.height], [640, 640], "the thumbnail of this page is 77 pixels wide");
+  assert.ok((await sharp(top).stats()).channels[0].mean > 250, "from the top of the page");
+  const mid = await yarnTilePath(store, result.yarn, false);
+  assert.notEqual(mid, top);
+  assert.ok((await sharp(mid).stats()).channels[0].mean < 10, "the middle of the page is its dark part");
 });
 
 test("the card's picture is made once from the original, 960 pixels at most, and never enlarged", async () => {

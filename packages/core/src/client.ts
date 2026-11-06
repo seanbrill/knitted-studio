@@ -211,7 +211,7 @@ export function subscribeAgent(onState: (s: AgentState) => void): () => void {
 }
 
 export const yarnFileUrl = (y: Pick<Yarn, "id" | "hash">) => `/api/yarn/${y.id}/file?v=${y.hash.slice(0, 10)}`;
-export const yarnThumbUrl = (y: Pick<Yarn, "id" | "hash">) => `/api/yarn/${y.id}/thumb?v=${y.hash.slice(0, 10)}`;
+export const yarnThumbUrl = (y: Pick<Yarn, "id" | "hash">, size?: "tile" | "top") => `/api/yarn/${y.id}/thumb?v=${y.hash.slice(0, 10)}${size ? `&size=${size}` : ""}`;
 /** A bigger preview, 960 pixels on its longest side, for one picture shown large: a project's card. */
 export const yarnPictureUrl = (y: Pick<Yarn, "id" | "hash">) => `/api/yarn/${y.id}/thumb?size=large&v=${y.hash.slice(0, 10)}`;
 /** One page of a PDF, drawn about `px` pixels on its longest side. Pages count from 1. */

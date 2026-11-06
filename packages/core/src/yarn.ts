@@ -96,6 +96,29 @@ export async function yarnPicturePath(store: Store, y: Yarn): Promise<string | n
     return yarnThumbPath(store, y);
   }
 }
+/**
+ * A square picture to fill a grid's tile, sharp on a high-density screen: from the top for a
+ * picture of a page (`top`), else from the middle. Made from the file the first time it is
+ * asked for. The thumbnail is sized to fit inside 320px, so a tall page's is a sliver.
+ */
+export async function yarnTilePath(store: Store, y: Yarn, top: boolean): Promise<string | null> {
+  if (y.kind !== "image" || !y.meta.thumb) return yarnThumbPath(store, y);
+  const out = join(store.paths.yarnDir(y.projectId), ".thumbs", `${y.id}-${y.hash.slice(0, 10)}.${top ? "top" : "tile"}.webp`);
+  try {
+    await stat(out);
+    return out;
+  } catch { /* not made yet */ }
+  const part = `${out}.${Math.random().toString(36).slice(2)}.part`;
+  try {
+    await sharp(yarnPath(store, y), { animated: false }).rotate().resize(TILE, TILE, { fit: "cover", position: top ? "top" : "centre", withoutEnlargement: true }).webp({ quality: 80 }).toFile(part);
+    await rename(part, out);
+    return out;
+  } catch {
+    await rm(part, { force: true });
+    return yarnThumbPath(store, y);
+  }
+}
+const TILE = 640;
 const largePath = (store: Store, y: Pick<Yarn, "id" | "projectId" | "hash">) => join(store.paths.yarnDir(y.projectId), ".thumbs", `${y.id}-${y.hash.slice(0, 10)}.large.webp`);
 /** Where an in-flight upload is written. Inside the yarn dir so the final rename never crosses a filesystem. */
 export function uploadTempPath(store: Store, projectId: string): string {
@@ -167,7 +190,7 @@ async function dropDrawn(store: Store, y: Pick<Yarn, "id" | "projectId">, keepHa
   const dir = store.paths.yarnDir(y.projectId);
   for (const sub of [".text", ".thumbs"]) {
     const names = await readdir(join(dir, sub)).catch(() => [] as string[]);
-    for (const n of names) if (n.startsWith(`${y.id}-`) && /-p\d+-|\.json$/.test(n) && !(keepHash && n.startsWith(`${y.id}-${keepHash.slice(0, 10)}`))) await rm(join(dir, sub, n), { force: true });
+    for (const n of names) if (n.startsWith(`${y.id}-`) && /-p\d+-|\.json$|\.(top|tile)\.webp$/.test(n) && !(keepHash && n.startsWith(`${y.id}-${keepHash.slice(0, 10)}`))) await rm(join(dir, sub, n), { force: true });
   }
 }
 

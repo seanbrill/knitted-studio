@@ -1,5 +1,12 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
+  "next": {
+    "title": "Sharp pictures",
+    "items": [
+      "Pictures in Yarn and the Brief are sharp in the grid. A tall picture, such as a website page, used to show a small thumbnail stretched; its tile now shows the top of the page.",
+      "Choosing a project's picture shows its images as a proper grid of squares, instead of squeezed strips."
+    ]
+  },
   "entries": [
     {
       "version": "0.1.8",
