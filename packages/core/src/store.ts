@@ -11,7 +11,7 @@
 // document overwrite is how one writer silently erases another.
 
 import { rmSync } from "node:fs";
-import type { Actor, Motion, Pattern, Project, Refusal, Size, Stitch } from "./types.ts";
+import type { ActivityAction, Actor, Motion, Pattern, Project, Refusal, Size, Stitch } from "./types.ts";
 import { SIZES } from "./types.ts";
 import { applyCommand, type Command } from "./commands.ts";
 import { openDb, tx, type Db } from "./db.ts";
@@ -345,11 +345,11 @@ export class Store {
 
   // ── activity ────────────────────────────────────────────────────────────
   /** Append to the activity log. Use INSIDE a transaction; `log()` opens its own. */
-  logRow(projectId: string | null, actor: string, action: string, subject: string | null, detail: unknown) {
+  logRow(projectId: string | null, actor: string, action: ActivityAction, subject: string | null, detail: unknown) {
     this.db.prepare("insert into activity (id, project_id, actor, action, subject, detail, created_at) values (?, ?, ?, ?, ?, ?, ?)")
       .run(newId("ac"), projectId, actor, action, subject, detail === null || detail === undefined ? null : JSON.stringify(detail), now());
   }
-  log(projectId: string | null, actor: Actor, action: string, subject: string | null, detail?: unknown) {
+  log(projectId: string | null, actor: Actor, action: ActivityAction, subject: string | null, detail?: unknown) {
     this.write(() => this.logRow(projectId, actor, action, subject, detail));
   }
   activity(projectId: string, limit = 30): Activity[] {

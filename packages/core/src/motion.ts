@@ -106,6 +106,18 @@ export function motionEnd(m: Motion | undefined, soundMs: (yarnId: string) => nu
   return Math.max(0, ...clips, ...audio);
 }
 
+/**
+ * The moment one picture of the pattern shows, as its card does: once everything that
+ * enters before anything leaves is in. At its start, a stitch that enters later is not
+ * there yet. A pattern that is not a video is knitted at its start, so that is its moment.
+ */
+export function stillMs(p: Pick<Pattern, "motion" | "durationMs">): number {
+  if (!p.motion || !(p.durationMs > 0)) return 0;
+  const clips = Object.values(p.motion.tracks).flat();
+  const firstOut = Math.min(Infinity, ...clips.filter((c) => presetInfo(c.preset).kind === "out").map((c) => c.startMs));
+  return Math.max(0, ...clips.filter((c) => presetInfo(c.preset).kind === "in" && c.endMs <= firstOut).map((c) => c.endMs));
+}
+
 // ── motion judged for people who cannot judge it ──────────────────────────────
 export interface MotionIssue { level: "warning"; code: string; message: string; stitchId?: string; }
 

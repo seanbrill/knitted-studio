@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { api } from "@knitted/core/client";
-import { SIZES, foldersIn, nameOf, type Pattern, type Size } from "@knitted/core";
+import { FALLBACK_SWATCH, SIZES, foldersIn, nameOf, type ActivityAction, type Pattern, type Size } from "@knitted/core";
 import { Button, ConfirmDialog, ContextMenu, Dialog, EmptyState, Field, IconButton, Input, Menu, Select, Skeleton, icons, useToast, type MenuItems } from "@knitted/ui";
-import { PatternPreview } from "./PatternPreview";
+import { PatternThumb, thumbContext } from "./PatternThumb";
 import { RenameDialog } from "./ProjectsView";
 import { FolderCrumbs, FolderDialogs, FolderList, NewFolderButton, useFolders } from "./Folders";
 import { timeAgo, useLive } from "@/lib/hooks";
@@ -17,7 +17,9 @@ const ACTOR_LABEL: Record<string, string> = { human: "You", fill: "You", model: 
 // A folder is in one section: say which, as the tabs name them.
 const SECTION_NAME: Record<string, string> = { patterns: "Patterns", yarn: "Yarn", parts: "Parts", swatches: "Swatch", knits: "Knits" };
 const inSection = (detail: unknown) => { const s = (detail as { section?: string } | null)?.section; return s && SECTION_NAME[s] ? ` in ${SECTION_NAME[s]}` : ""; };
-const ACTION_TEXT: Record<string, (subject: string | null, detail: unknown) => string> = {
+type Words = (subject: string | null, detail: unknown) => string;
+// Every action the log records has words here: the type says so (ActivityAction).
+const ACTION_TEXT = {
   "project.created": (s) => `created ${s}`,
   "project.renamed": (s) => `renamed the project to ${s}`,
   "project.picture": (s) => (s ? "changed the project's picture" : "took the project's picture away"),
@@ -28,17 +30,28 @@ const ACTION_TEXT: Record<string, (subject: string | null, detail: unknown) => s
   "pattern.deleted": (s) => `deleted the pattern ${s}`,
   "edit.refused": (s) => `tried to change locked stitches in ${s}, and was told no`,
   "yarn.imported": (s) => `added ${s} to Yarn`,
+  "yarn.deleted": (s) => `deleted ${s} from Yarn`,
+  "swatch.created": (s) => `added the swatch ${s}`,
+  "part.created": (s) => `added the part ${s}`,
   "folder.created": (s, d) => `made the folder ${s}${inSection(d)}`,
   "folder.filed": (s) => `filed ${s}`,
   "folder.renamed": (s, d) => `renamed the folder ${s}${inSection(d)}`,
   "folder.deleted": (s, d) => `deleted the folder ${s}${inSection(d)}, and kept what was in it`,
-};
+} satisfies Record<ActivityAction, Words>;
+// A row is a string from the database: one an older version logged may have no words.
+const wordsFor = (action: string): Words => (ACTION_TEXT as Record<string, Words | undefined>)[action] ?? ((s) => `${action} ${s ?? ""}`);
 
 export function PatternsView({ projectId }: { projectId: string }) {
   const toast = useToast();
   const router = useRouter();
   const { data: patterns, refresh } = useLive(() => api.patterns.list(projectId), [projectId]);
   const { data: activity } = useLive(() => api.projects.activity(projectId), [projectId]);
+  // What the cards are drawn with, as the editor has it: the project's swatch, Yarn and Parts.
+  const { data: look } = useLive(async () => {
+    const [project, swatches, yarn, parts] = await Promise.all([api.projects.get(projectId), api.swatches.list(projectId), api.yarn.list(projectId), api.parts.list(projectId)]);
+    return { swatch: swatches.find((s) => s.id === project.swatchId) ?? swatches[0] ?? FALLBACK_SWATCH, yarn, parts };
+  }, [projectId]);
+  const thumbs = useMemo(() => (look ? thumbContext(projectId, look) : null), [look, projectId]);
   const kit = useFolders(projectId, "patterns", patterns, { onChanged: refresh });
   const [creating, setCreating] = useState(false);
   const [renaming, setRenaming] = useState<Pattern | null>(null);
@@ -84,7 +97,7 @@ export function PatternsView({ projectId }: { projectId: string }) {
                   <div className="thumb" style={{ aspectRatio: "4 / 5", padding: "var(--space-2)" }}>
                     <div style={{ width: "100%", maxHeight: "100%", display: "grid", placeItems: "center" }}>
                       <div style={{ width: p.size.w / p.size.h > 0.8 ? "100%" : `${(p.size.w / p.size.h / 0.8) * 100}%`, boxShadow: "0 1px 4px rgba(23,17,11,.18)" }}>
-                        <PatternPreview pattern={p} />
+                        <PatternThumb pattern={p} ctx={thumbs} />
                       </div>
                     </div>
                   </div>
@@ -106,7 +119,7 @@ export function PatternsView({ projectId }: { projectId: string }) {
           <ol style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: "var(--space-3)" }}>
             {activity.slice(0, 12).map((a) => (
               <li key={a.id} className="body-sm">
-                <strong>{ACTOR_LABEL[a.actor] ?? a.actor}</strong> {(ACTION_TEXT[a.action] ?? ((s: string | null) => `${a.action} ${s ?? ""}`))(a.subject, a.detail)}
+                <strong>{ACTOR_LABEL[a.actor] ?? a.actor}</strong> {wordsFor(a.action)(a.subject, a.detail)}
                 <span style={{ display: "block", color: "var(--ink-muted)" }}>{timeAgo(a.createdAt)}</span>
               </li>
             ))}

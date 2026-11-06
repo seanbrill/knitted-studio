@@ -186,6 +186,13 @@ export type Actor =
   | "import" // a bulk importer
   | "system";
 
+/** What a project's activity log records. The project page has words for each one, and the type makes it. */
+export type ActivityAction =
+  | "project.created" | "project.renamed" | "project.picture" | "project.duplicated" | "project.deleted"
+  | "pattern.created" | "pattern.duplicated" | "pattern.deleted" | "edit.refused"
+  | "yarn.imported" | "yarn.deleted" | "swatch.created" | "part.created"
+  | "folder.created" | "folder.filed" | "folder.renamed" | "folder.deleted";
+
 /** A refused change. Always returned, always logged, never swallowed. */
 export interface Refusal {
   stitchId?: string;

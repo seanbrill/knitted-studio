@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyCommand, compileMotion, motionEnd, motionLint, preflight, PRESETS, FALLBACK_SWATCH } from "../src/index.ts";
+import { applyCommand, compileMotion, motionEnd, motionLint, preflight, PRESETS, FALLBACK_SWATCH, stillMs } from "../src/index.ts";
 
 const base = (motion, durationMs = 6000, extra = {}) => ({
   id: "p", projectId: "pj", name: "M", size: { name: "S", w: 1080, h: 1920 }, durationMs, version: 1, updatedAt: "", motion,
@@ -48,6 +48,13 @@ test("the timeline ends where the last clip or sound ends", () => {
   assert.equal(motionEnd({ tracks: { h: [clip("a", "fade-in", 0, 800), clip("b", "fade-out", 4000, 4500)] } }), 4500);
   assert.equal(motionEnd({ tracks: {}, audio: [{ id: "v", yarnId: "y", startMs: 1000, kind: "voice" }] }, () => 3000), 4000);
   assert.equal(motionEnd(undefined), 0);
+});
+test("one picture of a video is once everything that enters before anything leaves is in", () => {
+  assert.equal(stillMs(base({ tracks: { h: [clip("a", "slide-up", 200, 1000)], b: [clip("c", "fade-in", 900, 1400)] } })), 1400, "the last entrance");
+  assert.equal(stillMs(base({ tracks: { h: [clip("a", "fade-in", 0, 600), clip("b", "fade-out", 3600, 4000)], b: [clip("c", "pop", 4000, 4400)] } })), 600, "the first scene before it leaves, not the next one coming in");
+  assert.equal(stillMs(base({ tracks: { h: [clip("a", "pulse", 0, 1200)] } })), 0, "a loop is not an entrance");
+  assert.equal(stillMs(base({ tracks: { h: [clip("a", "fade-in", 0, 600)] } }, 0)), 0, "a pattern that is not a video is knitted at its start");
+  assert.equal(stillMs(base(undefined)), 0);
 });
 
 // ── commands ────────────────────────────────────────────────────────────────
