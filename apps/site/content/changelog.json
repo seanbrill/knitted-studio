@@ -1,13 +1,15 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
-  "next": {
-    "title": "Captions, hashtags and music for each knit",
-    "items": [
-      "Open a knit and your model writes what goes with the post: a caption in the business's voice, hashtags, and a track from the project's music, with why it fits. It reads the Brief, the post's words and, for a picture, the picture itself.",
-      "Write it again as many times as you like, or say what to change first (shorter, more playful, mention Saturday). Edit any of it yourself, pick another track, and copy the caption and hashtags in one go."
-    ]
-  },
   "entries": [
+    {
+      "version": "0.1.10",
+      "date": "2026-11-06",
+      "title": "Captions, hashtags and music for each knit",
+      "items": [
+        "Open a knit and your model writes what goes with the post: a caption in the business's voice, hashtags, and a track from the project's music, with why it fits. It reads the Brief, the post's words and, for a picture, the picture itself.",
+        "Write it again as many times as you like, or say what to change first (shorter, more playful, mention Saturday). Edit any of it yourself, pick another track, and copy the caption and hashtags in one go."
+      ]
+    },
     {
       "version": "0.1.9",
       "date": "2026-11-06",
