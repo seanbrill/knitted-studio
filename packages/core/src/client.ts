@@ -131,6 +131,8 @@ export const api = {
     list: (projectId: string, q: { pattern?: string; batch?: string } = {}) => call<KnitRecord[]>("GET", `/api/projects/${projectId}/knits?${new URLSearchParams(Object.entries(q).filter(([, v]) => v) as [string, string][])}`),
     remove: (id: string) => call<{ ok: true }>("DELETE", `/api/knits/${id}`),
     tag: (id: string, tags: string[]) => call<KnitRecord>("PATCH", `/api/knits/${id}`, { tags }),
+    writePost: (id: string, ask?: string) => call<KnitRecord>("POST", `/api/knits/${id}/post`, ask ? { ask } : {}),
+    setPost: (id: string, post: { caption?: string; hashtags?: string[]; audioId?: string | null }) => call<KnitRecord>("PUT", `/api/knits/${id}/post`, post),
   },
   agent: {
     config: () => call<ModelConfig>("GET", "/api/agent/model"),

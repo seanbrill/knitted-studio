@@ -8,6 +8,12 @@ import { NotFoundError, type Store } from "./store.ts";
 import { folderNamed } from "./folders.ts";
 
 export interface KnitIssue { level: "error" | "warning"; code: string; message: string; stitchId?: string; slot?: string; }
+/** What goes with a knit when it is posted. `audioId` is a track in the project's Yarn. */
+export interface KnitPost {
+  caption?: string; hashtags?: string[]; audioId?: string | null; audioWhy?: string;
+  /** Who wrote it last, and what the person asked for when the model wrote it. */
+  by?: "model" | "human"; ask?: string; at?: string;
+}
 export interface KnitRecord {
   id: string; projectId: string; patternId: string | null; patternName: string; jobId: string | null; batchId: string | null;
   label: string; file: string; kind: "image" | "video"; format: string; width: number; height: number; bytes: number;
@@ -16,6 +22,7 @@ export interface KnitRecord {
   folder: string;
   /** Words to find it by, as Yarn has them. */
   tags: string[];
+  post: KnitPost;
   createdAt: string;
 }
 type Row = Record<string, unknown>;
@@ -24,12 +31,12 @@ const toKnit = (r: Row): KnitRecord => ({
   id: r.id as string, projectId: r.project_id as string, patternId: (r.pattern_id as string) ?? null, patternName: r.pattern_name as string,
   jobId: (r.job_id as string) ?? null, batchId: (r.batch_id as string) ?? null, label: r.label as string, file: r.file as string,
   kind: r.kind as "image" | "video", format: r.format as string, width: Number(r.width), height: Number(r.height), bytes: Number(r.bytes),
-  durationMs: r.duration_ms == null ? null : Number(r.duration_ms), hash: r.hash as string, report: JSON.parse(r.report as string), folder: (r.folder as string) ?? "", tags: JSON.parse((r.tags as string) ?? "[]"), createdAt: r.created_at as string,
+  durationMs: r.duration_ms == null ? null : Number(r.duration_ms), hash: r.hash as string, report: JSON.parse(r.report as string), folder: (r.folder as string) ?? "", tags: JSON.parse((r.tags as string) ?? "[]"), post: JSON.parse((r.post as string) ?? "{}"), createdAt: r.created_at as string,
 });
 
 export const knitPath = (store: Store, k: Pick<KnitRecord, "projectId" | "file">) => join(store.paths.outDir(k.projectId), k.file);
 
-export function insertKnit(store: Store, k: Omit<KnitRecord, "id" | "createdAt" | "folder" | "tags">): KnitRecord {
+export function insertKnit(store: Store, k: Omit<KnitRecord, "id" | "createdAt" | "folder" | "tags" | "post">): KnitRecord {
   const id = newId("kn"), t = new Date().toISOString();
   store.write(() => {
     store.db.prepare("insert into knits (id, project_id, pattern_id, pattern_name, job_id, batch_id, label, file, kind, format, width, height, bytes, duration_ms, hash, report, created_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
@@ -63,6 +70,24 @@ export function setKnitTags(store: Store, id: string, tags: string[]): KnitRecor
   getKnit(store, id);
   const clean = [...new Set(tags.map((t) => t.trim()).filter(Boolean))];
   store.write(() => store.db.prepare("update knits set tags = ? where id = ?").run(JSON.stringify(clean), id));
+  return getKnit(store, id);
+}
+/** Hashtags as a post wants them: each once, with its #, no spaces or punctuation inside. */
+export function cleanHashtags(tags: string[]): string[] {
+  const out: string[] = [];
+  for (const t of tags) {
+    const w = t.trim().replace(/^#+/, "").replace(/[^\p{L}\p{N}_]/gu, "");
+    if (w && !out.some((x) => x.toLowerCase() === `#${w}`.toLowerCase())) out.push(`#${w}`);
+  }
+  return out.slice(0, 30);
+}
+/** Change what goes with a knit when it is posted. What is not given stays as it was. */
+export function setKnitPost(store: Store, id: string, change: KnitPost): KnitRecord {
+  const k = getKnit(store, id);
+  const post: KnitPost = { ...k.post, ...change, at: new Date().toISOString() };
+  if (change.hashtags) post.hashtags = cleanHashtags(change.hashtags);
+  if (post.caption !== undefined) post.caption = post.caption.slice(0, 5000);
+  store.write(() => store.db.prepare("update knits set post = ? where id = ?").run(JSON.stringify(post), id));
   return getKnit(store, id);
 }
 export async function deleteKnit(store: Store, id: string): Promise<void> {

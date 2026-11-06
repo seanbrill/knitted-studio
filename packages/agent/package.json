@@ -3,6 +3,6 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.mjs", "./profile": "./src/profile.mjs", "./stream": "./src/stream.mjs" },
+  "exports": { ".": "./src/index.mjs", "./profile": "./src/profile.mjs", "./post": "./src/post.mjs", "./stream": "./src/stream.mjs" },
   "dependencies": { "@knitted/core": "*", "@knitted/mcp": "*", "@knitted/engine": "*" }
 }

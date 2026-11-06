@@ -108,7 +108,7 @@ async function post(fetchImpl, baseUrl, apiKey, { json, betas }, signal) {
   }
 }
 
-async function failure(res) {
+export async function failure(res) {
   if (res.status === 401 || res.status === 403) return new AgentError("That key was rejected. Check it at console.anthropic.com.", "auth");
   if (res.status === 429) return new AgentError("Anthropic is slowing this key down. Wait a minute and try again.", "rate");
   if (res.status === 413) return new AgentError(TOO_LONG, "too_long");

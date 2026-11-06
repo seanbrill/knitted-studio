@@ -244,4 +244,11 @@ export const MIGRATIONS: Migration[] = [
     // Tags on a knit, as Yarn has them: words to find it by ("launch", "winter"), a JSON list.
     sql: `alter table knits add column tags text not null default '[]';`,
   },
+  {
+    version: 10,
+    name: "knit posts",
+    // What goes with a knit when it is posted: its caption, hashtags and a track from the
+    // project's audio, written by the person's model or by the person, as JSON.
+    sql: `alter table knits add column post text not null default '{}';`,
+  },
 ];

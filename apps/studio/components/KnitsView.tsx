@@ -7,6 +7,7 @@ import { foldersIn, isInside, nameOf } from "@knitted/core";
 import { Button, Chip, ConfirmDialog, Dialog, EmptyState, Input, Select, Skeleton, StitchProgress, icons, useToast } from "@knitted/ui";
 import { formatBytes, timeAgo, useLive } from "@/lib/hooks";
 import { FolderCrumbs, FolderDialogs, FolderList, NewFolderButton, useFolders } from "./Folders";
+import { KnitPost } from "./KnitPost";
 import { TagFilter, ViewBar, layout, useView, type SortBy } from "./Views";
 
 const KNIT_SORTS: SortBy<KnitRecord>[] = [
@@ -159,6 +160,7 @@ export function KnitsView({ projectId }: { projectId: string }) {
               {open.tags.map((t) => <Chip key={t}>{t}<button className="icon-btn" style={{ width: 18, height: 18 }} aria-label={`Remove tag ${t}`} onClick={() => void retag(open.tags.filter((x) => x !== t))}><X size={11} /></button></Chip>)}
               <div style={{ width: 180 }}><Input aria-label="Add a tag" value={tagText} placeholder="Add a tag" onChange={(e) => setTagText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && tagText.trim()) { void retag([...open.tags, tagText]); setTagText(""); } }} /></div>
             </div>
+            <KnitPost knit={open} onChanged={(k) => { setOpen(k); void refresh(); }} />
             {(open.report.issues ?? []).length > 0 && <ul style={{ margin: 0, paddingLeft: 18 }}>{open.report.issues!.map((i, n) => <li key={n} className="body-sm">{i.message}</li>)}</ul>}
           </div>
         )}
