@@ -133,6 +133,10 @@ async function api(fetchImpl, baseUrl, apiKey, ask, signal) {
 
 // The text a note stands in with for work a reply was cut off before finishing: not news for the person.
 const CUT_OFF = "This part of the response was interrupted before it finished.";
+// What the model is told when its reply ran past MAX_TOKENS part way, so it goes on instead of the run stopping there.
+const CUT_SHORT = "Not run: your reply was cut off at the longest a reply may be, before it was finished, so nothing in it was done. Go on from there in smaller steps: fewer stitches or changes in each call.";
+// Cut off this many times in a row, and the run stops there: a reply that can never fit would go on for ever.
+const CUT_SHORT_TRIES = 2;
 
 /**
  * What of an answer goes back to the model. After a fallback (a declined request run again
@@ -198,6 +202,7 @@ export async function runAgent({ store, projectId = null, patternId, prompt, mod
   // Each pattern the run changes, and its revision from before: what Undo all puts back. Null for one it made.
   const before = new Map(workId ? [[workId, baseline]] : []);
   const knitIn = new Set();
+  let cutShort = 0;
 
   for (let turn = 1; turn <= maxTurns; turn++) {
     if (signal?.aborted) throw new AgentError("Stopped.", "cancelled");
@@ -219,6 +224,16 @@ export async function runAgent({ store, projectId = null, patternId, prompt, mod
       if (b.type === "text" && b.text.trim()) { finalText = b.text.trim(); onEvent({ type: "text", text: finalText }); }
       else if (b.type === "thinking" && b.thinking?.trim() && b.thinking.trim() !== CUT_OFF) onEvent({ type: "note", text: b.thinking.trim() });
     }
+    // Cut off part way: a tool call in it is not run, as it is not the one the model meant. It is
+    // told so, as each call's answer or as the next message, and goes on in smaller steps.
+    if (data.stop_reason === "max_tokens" && content.length && cutShort < CUT_SHORT_TRIES && turn < maxTurns) {
+      cutShort++;
+      const open = content.filter((b) => b.type === "tool_use");
+      messages.push({ role: "user", content: open.length ? open.map((b) => ({ type: "tool_result", tool_use_id: b.id, is_error: true, content: CUT_SHORT })) : `(${CUT_SHORT})` });
+      onEvent({ type: "note", text: "Its reply ran past the longest a reply may be, so it is going on in smaller steps." });
+      continue;
+    }
+    if (data.stop_reason !== "max_tokens") cutShort = 0;
     if (data.stop_reason === "max_tokens") onEvent({ type: "stopped", why: "The answer was cut off at the longest a reply may be." });
     if (data.stop_reason === "model_context_window_exceeded") onEvent({ type: "stopped", why: TOO_LONG });
     if (data.stop_reason !== "tool_use") { trace.stopped = data.stop_reason ?? "end_turn"; break; }

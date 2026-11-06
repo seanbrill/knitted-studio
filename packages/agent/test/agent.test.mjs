@@ -193,3 +193,34 @@ test("the key never appears in the store: not in jobs, not in activity", async (
   assert.doesNotMatch(dump, /sk-SUPER-SECRET-123/);
   f.close();
 });
+
+test("a reply cut off at the longest a reply may be goes on: the call cut off is not run, and the model is told why", async () => {
+  const p = story();
+  const f = await fake([
+    turn([{ type: "text", text: "Writing it all at once." }, use("c1", "fill_slots", { projectId: project.id, patternId: p.id, slots: { headline: "Half a hea" } })], "max_tokens"),
+    turn([use("c2", "fill_slots", { projectId: project.id, patternId: p.id, slots: { headline: "In smaller steps" } })]),
+    turn([{ type: "text", text: "Done, in two goes." }], "end_turn"),
+  ]);
+  const events = [];
+  const r = await runAgent({ store, projectId: project.id, patternId: p.id, prompt: "Write everything", apiKey: "k", baseUrl: f.baseUrl, onEvent: (e) => events.push(e) });
+  const told = f.seen[1].body.messages.at(-1).content[0];
+  assert.equal(told.type, "tool_result");
+  assert.equal(told.tool_use_id, "c1", "the call cut off part way is answered, so the conversation is whole");
+  assert.equal(told.is_error, true);
+  assert.match(told.content, /cut off at the longest a reply may be.*smaller steps/s);
+  assert.equal(slotText("headline"), "In smaller steps", "the call cut off was never run; the one after it was");
+  assert.equal(r.text, "Done, in two goes.");
+  assert.ok(!events.some((e) => e.type === "stopped"), "the run went on, so nothing says it stopped");
+  f.close();
+});
+
+test("cut off again and again, a run stops there and says why, rather than going on for ever", async () => {
+  const f = await fake([turn([{ type: "thinking", thinking: "Planning a great deal.", signature: "s" }], "max_tokens")]);
+  const events = [];
+  const r = await runAgent({ store, projectId: project.id, patternId: story().id, prompt: "Plan it", apiKey: "k", baseUrl: f.baseUrl, onEvent: (e) => events.push(e) });
+  assert.equal(f.seen.length, 3, "the reply, and two more goes");
+  assert.match(f.seen[1].body.messages.at(-1).content, /^\(Not run: your reply was cut off/, "with no call to answer, it is told in a message");
+  assert.equal(r.stopped, "max_tokens");
+  assert.ok(events.some((e) => e.type === "stopped" && /cut off at the longest/.test(e.why)));
+  f.close();
+});
