@@ -51,7 +51,7 @@ export function VoiceSettings() {
       {voices?.voices && voices.voices.length > 1 && (
         <Field label="Voice"><Select aria-label="Voice" value={cfg.voice} onValueChange={(voice) => save({ voice })} options={voices.voices.slice(0, 80).map((v) => ({ value: v.id, label: v.label }))} /></Field>
       )}
-      <Slider label="Speed" value={cfg.speed} min={0.7} max={1.4} step={0.05} unit="x" onChange={() => {}} onCommit={(speed) => save({ speed })} />
+      <Slider label="Speed" value={cfg.speed} min={0.7} max={1.4} step={0.05} unit="x" onCommit={(speed) => save({ speed })} />
 
       <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
         <Button variant="primary" onClick={test} disabled={busy}>{busy ? "Speaking..." : "Hear it"}</Button>

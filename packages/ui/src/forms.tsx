@@ -83,18 +83,25 @@ export function Switch({ checked, onCheckedChange, label, id }: { checked: boole
 
 /** The slider from the reference images: 2px track, ember fill, 14px thumb, value in a sunken box. */
 export function Slider({ label, value, onChange, onCommit, min = 0, max = 100, step = 1, unit }: {
-  label: string; value: number; onChange: (v: number) => void;
+  label: string; value: number;
+  /** Each move, to preview. Without it the slider still moves, and `onCommit` saves where it ends. */
+  onChange?: (v: number) => void;
   /** Fires once when the drag ends. Use it to save, and `onChange` to preview. */
   onCommit?: (v: number) => void;
   min?: number; max?: number; step?: number; unit?: string;
 }) {
+  // Where it was moved to, while the value it is given is still the one it was moved from: so it
+  // moves under the hand even when only a save, once the drag ends, changes that value, and does
+  // not jump back meanwhile. A new value, saved or previewed, is what it shows from then on.
+  const [moved, setMoved] = React.useState<{ from: number; to: number } | null>(null);
+  const shown = moved?.from === value ? moved.to : value;
   return (
     <div style={{ display: "grid", gap: "var(--space-2)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span className="body-sm">{label}</span>
-        <span className="slider-value">{Math.round(value * 100) / 100}{unit}</span>
+        <span className="slider-value">{Math.round(shown * 100) / 100}{unit}</span>
       </div>
-      <SL.Root className="slider" value={[value]} min={min} max={max} step={step} onValueChange={([v]) => onChange(v)} onValueCommit={onCommit ? ([v]) => onCommit(v) : undefined} aria-label={label}>
+      <SL.Root className="slider" value={[shown]} min={min} max={max} step={step} onValueChange={([v]) => { setMoved({ from: value, to: v }); onChange?.(v); }} onValueCommit={onCommit ? ([v]) => onCommit(v) : undefined} aria-label={label}>
         <SL.Track className="slider-track"><SL.Range className="slider-range" /></SL.Track>
         <SL.Thumb className="slider-thumb" aria-label={label} />
       </SL.Root>
