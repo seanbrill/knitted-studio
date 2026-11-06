@@ -1,20 +1,22 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
-  "next": {
-    "title": "Cards in colour, and one conversation",
-    "items": [
-      "The pattern cards on a project's page show each pattern as the editor draws it, in your swatch's colours and fonts, with your pictures and parts. Before, they were grey outlines. A video's card shows it once everything in it has come in.",
-      "Knits show as a grid, each on the same card, whatever its size.",
-      "Ask is one conversation, wherever you are. The Ask page opens the chat you are having, and so does the editor's Ask panel when that chat is about the project you are in, or about the whole studio. A message sent from the editor is about the pattern open there. Both list your chats, to open another, and New chat starts a new one in both.",
-      "When your model's reply runs past the longest a reply may be, it goes on in smaller steps instead of stopping there.",
-      "The sliders in Settings, Model and Voice can be dragged. Before, they would not move. Steps per request now goes up to 100.",
-      "Your model can add a file from your computer to Yarn by its path, with import_yarn_file. It copies the file in, leaves yours as it was, and does not read hidden folders or files, such as ~/.ssh.",
-      "Your model can bring a piece of copy up to date, instead of saving another beside it, and make an empty folder ready to fill. The project's Activity shows each piece of copy it changes.",
-      "get_studio_info tells your model which knitted is answering, when that build was made and when it started, so it can tell you when an older copy is still running.",
-      "A project's Activity says in words when a part or a swatch is added, or a file is deleted from Yarn."
-    ]
-  },
   "entries": [
+    {
+      "version": "0.1.6",
+      "date": "2026-11-05",
+      "title": "Cards in colour, and one conversation",
+      "items": [
+        "The pattern cards on a project's page show each pattern as the editor draws it, in your swatch's colours and fonts, with your pictures and parts. Before, they were grey outlines. A video's card shows it once everything in it has come in.",
+        "Knits show as a grid, each on the same card, whatever its size.",
+        "Ask is one conversation, wherever you are. The Ask page opens the chat you are having, and so does the editor's Ask panel when that chat is about the project you are in, or about the whole studio. A message sent from the editor is about the pattern open there. Both list your chats, to open another, and New chat starts a new one in both.",
+        "When your model's reply runs past the longest a reply may be, it goes on in smaller steps instead of stopping there.",
+        "The sliders in Settings, Model and Voice can be dragged. Before, they would not move. Steps per request now goes up to 100.",
+        "Your model can add a file from your computer to Yarn by its path, with import_yarn_file. It copies the file in, leaves yours as it was, and does not read hidden folders or files, such as ~/.ssh.",
+        "Your model can bring a piece of copy up to date, instead of saving another beside it, and make an empty folder ready to fill. The project's Activity shows each piece of copy it changes.",
+        "get_studio_info tells your model which knitted is answering, when that build was made and when it started, so it can tell you when an older copy is still running.",
+        "A project's Activity says in words when a part or a swatch is added, or a file is deleted from Yarn."
+      ]
+    },
     {
       "version": "0.1.5",
       "date": "2026-11-05",
