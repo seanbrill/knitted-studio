@@ -130,10 +130,34 @@ test("the Ask panel has no accessibility violations", async () => {
   assert.deepEqual(await axeProblems(page), []);
 });
 
-test("the Ask page: a chat about a project is kept, listed, undone and deleted", async () => {
+test("the Ask page opens the chat from the editor, and a message there goes on with it, about the same pattern", async () => {
+  const was = await headline();
+  await page.goto(`${studio.url}/`);
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Ask" }).click();
+  await page.waitForURL(/\/ask\?chat=ch_/);
+  await page.getByRole("heading", { name: "write a headline" }).waitFor();
+  const convo = page.getByRole("list", { name: "Conversation" });
+  await convo.getByText("never mind that").waitFor();
+  const name = (await pattern()).name;
+  await page.getByText(`About ${name}, in Ask e2e`).waitFor();
+  await page.getByLabel("Suggest only (works on a copy)").waitFor();
+
+  const box = page.getByLabel("Message your model");
+  await box.fill("once more, from the Ask page");
+  await box.press("Enter");
+  await convo.getByText("Headline written.").nth(3).waitFor({ timeout: 30000 });
+  assert.match(carrying("once more, from the Ask page").messages.at(-1).content, new RegExp(`You are working on this pattern \\(project ${projectId}, pattern ${patternId}\\)`));
+  await undoAll(was);
+});
+
+test("a project's Ask your model goes on with the chat about it, and New chat starts another there, kept and listed", async () => {
   const was = await headline();
   await page.goto(`${studio.url}/projects/${projectId}`);
   await page.getByRole("link", { name: "Ask your model" }).click();
+  await page.waitForURL(/\/ask\?chat=ch_/);
+  await page.getByRole("heading", { name: "write a headline" }).waitFor();
+  const chats = page.getByRole("complementary", { name: "Chats" });
+  await chats.getByRole("button", { name: "New chat" }).click();
   await page.waitForURL(/\/ask\?project=/);
   await page.getByRole("heading", { name: "New chat" }).waitFor();
   assert.equal((await page.getByRole("combobox", { name: "Where your model works" }).textContent()).trim(), "Ask e2e");
@@ -147,7 +171,6 @@ test("the Ask page: a chat about a project is kept, listed, undone and deleted",
   assert.equal(await headline(), "Written by the model");
   const name = (await pattern()).name;
   await convo.getByRole("link", { name }).waitFor();
-  const chats = page.getByRole("complementary", { name: "Chats" });
   await chats.getByRole("link", { name: /Make the post headline/ }).waitFor();
   assert.match(carrying("Make the post headline").messages[0].content, /\(Project pj_\w+\. No pattern is open\.\)/);
   assert.match(carrying("Make the post headline").system[0].text, /about the project "Ask e2e"/);
@@ -156,10 +179,55 @@ test("the Ask page: a chat about a project is kept, listed, undone and deleted",
   await page.reload();
   await convo.getByText("Headline written.").waitFor();
   await undoAll(was);
+});
 
+test("the editor's panel opens the chat from the Ask page, and a message from it is about the pattern open there", async () => {
+  const was = await headline();
+  await page.goto(`${studio.url}/projects/${projectId}/patterns/${patternId}`);
+  await page.getByRole("button", { name: "Ask", exact: true }).click();
+  const convo = page.getByRole("list", { name: "Conversation" });
+  await convo.getByText("Make the post headline").waitFor();
+  const box = page.getByLabel("Message your model");
+  await box.fill("now from the editor");
+  await box.press("Enter");
+  await convo.getByText("Headline written.").nth(1).waitFor({ timeout: 30000 });
+  const asked = carrying("now from the editor");
+  const before = sent.find((b) => b.messages.length === 3 && b.messages[0].content.startsWith("Make the post headline"));
+  assert.match(asked.messages.at(-1).content, new RegExp(`^now from the editor[\\s\\S]*You are working on this pattern \\(project ${projectId}, pattern ${patternId}\\)`));
+  assert.deepEqual(asked.messages.slice(0, 3), before.messages, "the conversation from the Ask page goes back as it was");
+  assert.deepEqual(asked.system, before.system);
+  await undoAll(was);
+
+  // Its other chats here, to open one instead; and New chat, a new one on this pattern.
+  await page.getByRole("button", { name: "Chats" }).click();
+  const panel = page.getByRole("complementary", { name: "ask panel" });
+  await panel.getByRole("button", { name: /^write a headline/ }).waitFor();
+  assert.deepEqual(await axeProblems(page), []);
+  await panel.getByRole("button", { name: /^write a headline/ }).click();
+  await convo.getByText("never mind that").waitFor();
+  await page.getByRole("button", { name: "New chat" }).click();
+  await page.getByText("It works on this pattern with you").waitFor();
+});
+
+test("a message from a pattern in another project is turned down, as the chat is about this one", async () => {
+  const other = (await j("POST", "/api/projects", { name: "Elsewhere", starter: "social" })).body.id;
+  const there = (await j("GET", `/api/projects/${other}/patterns`)).body[0].id;
+  const chat = (await j("GET", "/api/chats")).body.find((c) => c.title === "Make the post headline");
+  const r = await j("POST", `/api/chats/${chat.id}/messages`, { prompt: "over there", patternId: there });
+  assert.equal(r.status, 400);
+  assert.equal(r.body.error.kind, "elsewhere");
+  assert.equal((await j("GET", `/api/chats/${chat.id}`)).body.turns.length, 2, "nothing was sent");
+});
+
+test("deleting the chat being had leaves a new one, and the work alone", async () => {
+  const was = await headline();
+  const chat = (await j("GET", "/api/chats")).body.find((c) => c.title === "Make the post headline");
+  await page.goto(`${studio.url}/ask?chat=${chat.id}`);
+  const chats = page.getByRole("complementary", { name: "Chats" });
   await chats.getByRole("button", { name: 'Delete the chat "Make the post headline"' }).click();
   await page.getByRole("button", { name: "Delete chat", exact: true }).click();
   await page.waitForURL(/\/ask$/);
+  await page.getByRole("heading", { name: "New chat" }).waitFor();
   assert.ok(!(await j("GET", "/api/chats")).body.some((c) => c.title === "Make the post headline"));
   assert.equal(await headline(), was, "deleting the chat leaves the work alone");
 });

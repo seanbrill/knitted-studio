@@ -134,7 +134,8 @@ export const api = {
     get: (id: string) => call<ChatDetail>("GET", `/api/chats/${id}`),
     /** A new chat and its first message. `projectId` null: the whole studio. */
     start: (b: { projectId?: string | null; patternId?: string; prompt: string; mode?: "edit" | "suggest" }) => call<{ chat: ChatItem; job: AgentJob }>("POST", "/api/chats", b),
-    send: (id: string, b: { prompt: string; mode?: "edit" | "suggest" }) => call<AgentJob>("POST", `/api/chats/${id}/messages`, b),
+    /** The next message. `patternId`: the pattern open in the editor, which the message is about. */
+    send: (id: string, b: { prompt: string; mode?: "edit" | "suggest"; patternId?: string }) => call<AgentJob>("POST", `/api/chats/${id}/messages`, b),
     remove: (id: string) => call<{ ok: true }>("DELETE", `/api/chats/${id}`),
   },
   fonts: () => call<{ family: string; category: string; file: string; style: string; weight: [number, number]; license: string }[]>("GET", "/api/fonts"),
@@ -262,7 +263,9 @@ export interface ChatItem {
   id: string; title: string; projectId: string | null; patternId: string | null; createdAt: string; updatedAt: string;
   /** Whether its newest message is still being answered. */
   running: boolean;
-  project: { id: string; name: string } | null; pattern: { id: string; name: string } | null;
+  project: { id: string; name: string } | null;
+  /** The pattern it is on: the one its newest message was about, else the one it started on. */
+  pattern: { id: string; name: string; projectId: string } | null;
 }
 /** A chat with its turns: each the run that answered a message, the message in its `input`. */
 export interface ChatDetail extends ChatItem { turns: AgentJob[]; }

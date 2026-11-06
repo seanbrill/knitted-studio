@@ -1,6 +1,8 @@
 "use client";
 
-// A conversation with your model: the Ask page, and the editor's Ask panel (`compact`).
+// A conversation with your model: the Ask page, and the editor's Ask panel (`compact`). Both
+// open the chat the person is having (lib/current-chat.ts), list the chats the same way, and
+// go on with the same conversation, so it is one wherever they are.
 //
 // What it shows is the chat's runs, one per message (api/chats): what the person asked,
 // what the model did while it worked, and its answer, kept up through the change stream,
@@ -10,10 +12,11 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { api, type AgentEvent, type AgentJob, type ChatDetail, type ChatItem } from "@knitted/core/client";
-import { Button, Textarea, icons, useToast } from "@knitted/ui";
-import { useLive } from "@/lib/hooks";
+import { Button, ConfirmDialog, IconButton, Textarea, icons, useToast } from "@knitted/ui";
+import { setCurrentChat, useCurrentChat } from "@/lib/current-chat";
+import { timeAgo, useLive } from "@/lib/hooks";
 
-const { AlertTriangle, Check, Sparkles, X } = icons;
+const { AlertTriangle, Check, Sparkles, Trash2, X } = icons;
 
 const answering = (j?: AgentJob | null) => !!j && (j.status === "queued" || j.status === "running");
 const words = (tool: string) => tool.replace(/_/g, " ");
@@ -40,6 +43,60 @@ function stepsOf(events: AgentEvent[], answer?: string): Step[] {
   return out;
 }
 
+/** The chats, newest first. One started here is in it at once, ahead of the change stream bringing it. */
+export function useChats() {
+  const { data, error } = useLive(() => api.chats.list(), []);
+  const [fresh, setFresh] = useState<ChatItem | null>(null);
+  // Once listed it is let go, so a chat deleted later does not come back.
+  if (fresh && data?.some((c) => c.id === fresh.id)) setFresh(null);
+  return { chats: data && fresh ? [fresh, ...data.filter((c) => c.id !== fresh.id)] : data, error, started: setFresh };
+}
+
+const placeOf = (c: ChatItem) => c.pattern ? `${c.pattern.name}${c.project ? `, ${c.project.name}` : ""}` : c.project ? c.project.name : "The whole studio";
+const oneLine = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } as const;
+
+/**
+ * The chats as the Ask page and the editor's Ask panel list them: what each is, when, and where,
+ * to open one or delete it. A link to each on the Ask page (`href`), a button in the panel (`onOpen`).
+ */
+export function ChatList({ chats, shown, href, onOpen, onDeleted }: {
+  chats: ChatItem[];
+  /** The chat open beside the list. */
+  shown: string | null;
+  href?: (c: ChatItem) => string;
+  onOpen?: (c: ChatItem) => void;
+  /** A chat is gone. Were it the one being had, or the one open, the next is a new one. */
+  onDeleted?: (c: ChatItem) => void;
+}) {
+  const current = useCurrentChat();
+  const [doomed, setDoomed] = useState<ChatItem | null>(null);
+  const look = { flex: 1, minWidth: 0, display: "grid", gap: 2, padding: "8px 10px", color: "inherit" } as const;
+  return (
+    <>
+      <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", alignContent: "start", gap: 2 }}>
+        {chats.length === 0 && <li className="body-sm" style={{ padding: "var(--space-2)", color: "var(--ink-muted)" }}>Your conversations show here.</li>}
+        {chats.map((c) => {
+          const on = c.id === shown;
+          const what = (<>
+            <span className="label" style={oneLine}>{c.title}</span>
+            <span className="body-sm" style={{ color: "var(--ink-muted)", ...oneLine }}>{c.running ? "Answering..." : timeAgo(c.updatedAt)}, {placeOf(c)}</span>
+          </>);
+          return (
+            <li key={c.id} style={{ display: "flex", alignItems: "center", gap: 4, borderRadius: "var(--radius-md)", background: on ? "var(--tint)" : undefined }}>
+              {href ? <Link href={href(c)} aria-current={on ? "page" : undefined} style={look}>{what}</Link>
+                : <button type="button" aria-current={on || undefined} onClick={() => onOpen?.(c)} style={{ ...look, background: "transparent", border: 0, borderRadius: "var(--radius-md)", textAlign: "left", font: "inherit", cursor: "pointer" }}>{what}</button>}
+              <IconButton label={`Delete the chat "${c.title}"`} onClick={() => setDoomed(c)} style={{ flexShrink: 0, marginRight: 4 }}><Trash2 size={14} aria-hidden /></IconButton>
+            </li>
+          );
+        })}
+      </ul>
+      <ConfirmDialog open={!!doomed} onOpenChange={(o) => { if (!o) setDoomed(null); }} title="Delete this chat?" confirmLabel="Delete chat"
+        description="The conversation goes. What your model made stays, and so does its history in each pattern."
+        onConfirm={async () => { const c = doomed!; await api.chats.remove(c.id); if (c.id === current || c.id === shown) setCurrentChat(null); onDeleted?.(c); }} />
+    </>
+  );
+}
+
 const EXAMPLES = {
   pattern: ["Write a headline about the spring sale", "Make the button orange", "Check this pattern before I knit it"],
   project: ["Make a square post about our spring sale", "Which slots in the Story pattern are locked?", "Knit the Post pattern as a PNG"],
@@ -53,7 +110,7 @@ export function Chat({ chatId, onStarted, projectId = null, patternId, compact =
   onStarted: (chat: ChatItem) => void;
   /** Where a new chat works: a project, or null for the whole studio. */
   projectId?: string | null;
-  /** The pattern a chat in the editor is about. */
+  /** The pattern a message is about: the one open in the editor, or the one the chat is on. It offers Suggest only. */
   patternId?: string;
   compact?: boolean;
   /** A run ended, or the person undid one: the editor shows the pattern as it is now. */
@@ -82,20 +139,23 @@ export function Chat({ chatId, onStarted, projectId = null, patternId, compact =
   }, [last?.id, last?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The message shows the moment it is sent, before the change stream brings the chat back with it.
+  // The chat written in is the one being had, here and on the other side.
   const send = async (prompt = text.trim()) => {
     if (!prompt || sending || running) return;
     setError(undefined); setSending(true);
     const mode = patternId && suggest ? "suggest" : "edit";
     try {
       if (chatId) {
-        const job = await api.chats.send(chatId, { prompt, mode });
+        const job = await api.chats.send(chatId, { prompt, mode, patternId });
         watched.add(job.id);
         setData((d) => (d && d.id === chatId && !d.turns.some((t) => t.id === job.id) ? { ...d, turns: [...d.turns, job] } : d));
+        setCurrentChat(chatId);
       } else {
         const r = await api.chats.start({ projectId, patternId, prompt, mode });
         watched.add(r.job.id);
         seeded.set(r.chat.id, { ...r.chat, turns: [r.job] });
         onStarted(r.chat);
+        setCurrentChat(r.chat.id);
       }
       setText(""); stick.current = true;
     } catch (e) { setError((e as Error).message); } finally { setSending(false); }
