@@ -408,3 +408,98 @@ test("a model files things into folders, and filing one changes nothing else abo
   await tools.move_to_folder({ ...at, folder: "", yarnIds: [hero.id] });
   assert.deepEqual([lastCall().summary, listYarn(store, project.id).find((y) => y.id === hero.id).folder], ["Filing 1 file at the top", ""]);
 });
+
+// ── The notch.fm field report of 2026-11-05: copy brought up to date, an empty folder, which build ──
+
+const { createCopy, getYarn } = await import("@knitted/core/node");
+
+test("a model brings a piece of copy up to date by its id, instead of saving another beside it", async () => {
+  const at = { projectId: project.id };
+  const note = await tools.import_yarn({ ...at, text: "THE IMAGES ARE NOT HERE YET", name: "Status note", tags: ["note"] });
+  const r = await tools.import_yarn({ ...at, yarnId: note.id, text: "All 30 images are in.", tags: ["done"] });
+  assert.deepEqual([r.id, r.name, r.kind, r.tags, r.existing, r.changed], [note.id, "Status note", "copy", ["note", "done"], true, true]);
+  assert.equal(getYarn(store, note.id).meta.text, "All 30 images are in.");
+  assert.deepEqual(listYarn(store, project.id, { q: "Status note" }).map((y) => y.id), [note.id], "no second note beside it");
+  assert.equal(lastCall().summary, "Changing the copy \"Status note\"");
+  assert.ok(store.activity(project.id).some((a) => a.action === "yarn.changed" && a.subject === "Status note" && a.actor === "model"), "the person can see it changed");
+  assert.equal((await tools.import_yarn({ ...at, yarnId: note.id, text: "All 30 images are in." })).changed, false, "the same text again changes nothing");
+  const moved = await tools.import_yarn({ ...at, yarnId: note.id, text: "All 30 are in, and tagged.", name: "Status", folder: "Notes" });
+  assert.deepEqual([moved.id, moved.name, moved.folder, getYarn(store, note.id).meta.text], [note.id, "Status", "Notes", "All 30 are in, and tagged."]);
+
+  // Copy the person saved changes too, and the Activity says who changed it.
+  const mine = (await createCopy(store, project.id, { name: "Tagline", text: "Made by hand." })).yarn;
+  assert.equal((await tools.import_yarn({ ...at, yarnId: mine.id, text: "Made by hand, edited by a model." })).changed, true);
+  assert.equal(getYarn(store, mine.id).meta.text, "Made by hand, edited by a model.");
+  assert.ok(store.activity(project.id).some((a) => a.action === "yarn.changed" && a.subject === "Tagline" && a.actor === "model"));
+
+  // A file, another project's copy, and no text: each is said.
+  await assert.rejects(tools.import_yarn({ ...at, yarnId: hero.id, text: "x" }), /is a file, not copy/);
+  const other = store.createProject({ name: "Other copy" });
+  await assert.rejects(tools.import_yarn({ projectId: other.id, yarnId: note.id, text: "x" }), /is not in this project's Yarn/);
+  await assert.rejects(tools.import_yarn({ ...at, yarnId: note.id, url: "https://example.com/a.png" }), /give its yarnId with the new text/);
+});
+
+test("move_to_folder with no ids makes the folder, empty, in the section it is given", async () => {
+  const at = { projectId: project.id };
+  assert.deepEqual(await tools.move_to_folder({ ...at, folder: "Landing page/Reference", section: "yarn" }), { folder: "Landing page/Reference", section: "yarn" });
+  assert.deepEqual([lastCall().summary, lastCall().where], ["Making the folder \"Landing page/Reference\"", { projectId: project.id, section: "yarn" }]);
+  assert.deepEqual((await tools.list_folders({ ...at, section: "yarn" })).folders.filter((f) => f.path.startsWith("Landing page")), [{ path: "Landing page", items: 0 }, { path: "Landing page/Reference", items: 0 }]);
+  assert.equal((await tools.move_to_folder({ ...at, folder: "landing PAGE/reference", section: "yarn" })).folder, "Landing page/Reference", "one that is there is the one returned");
+  assert.equal(store.activity(project.id).filter((a) => a.action === "folder.created" && a.subject === "Landing page/Reference").length, 1, "made once, and said once");
+  assert.equal((await tools.list_folders({ ...at, section: "patterns" })).folders.some((f) => f.path.startsWith("Landing page")), false, "only in that section");
+  await assert.rejects(tools.move_to_folder({ ...at, folder: "Elsewhere" }), /Give the ids of what to move.*give its section/);
+  await assert.rejects(tools.move_to_folder({ ...at, folder: "", section: "yarn" }), /Give the folder a name/);
+});
+
+test("get_studio_info says which knitted is answering, since when, and where its library is", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const { version } = JSON.parse(await readFile(new URL("../apps/studio/package.json", import.meta.url), "utf8"));
+  const { TOOLS } = await import("@knitted/mcp/context");
+  const { READ_ONLY } = await import("@knitted/mcp/tools");
+  const r = await tools.get_studio_info({});
+  assert.deepEqual(Object.keys(r), ["version", "builtAt", "startedAt", "home", "toolCount"]);
+  assert.deepEqual([r.version, r.builtAt, r.home, r.toolCount], [version, null, home, TOOLS.length], "from source there is no build");
+  const started = Date.parse(r.startedAt);
+  assert.ok(started <= Date.now() && Date.now() - started < 15 * 60_000, `startedAt is when this process started: ${r.startedAt}`);
+  assert.ok(READ_ONLY.has("get_studio_info"), "it only reads, so it works while paused");
+});
+
+test("import_yarn_file copies a file on this computer in by its path, and leaves the file as it was", async () => {
+  const { mkdir, readFile, symlink, writeFile } = await import("node:fs/promises");
+  const at = { projectId: project.id };
+  const dir = await mkdtemp(join(tmpdir(), "knitted-files-"));
+  const png = await sharp({ create: { width: 64, height: 48, channels: 3, background: { r: 20, g: 120, b: 220 } } }).png().toBuffer();
+  const file = join(dir, "Landing hero.png");
+  await writeFile(file, png);
+  const r = await tools.import_yarn_file({ ...at, path: file, tags: ["reference"], folder: "Landing page/Reference" });
+  assert.deepEqual([r.name, r.kind, r.tags, r.folder, r.existing], ["Landing hero", "image", ["reference"], "Landing page/Reference", false]);
+  assert.deepEqual(await readFile(file), png, "the file on the computer is left as it was");
+  assert.equal(getYarn(store, r.id).width, 64);
+  assert.deepEqual([lastCall().summary, lastCall().where.yarnId], ["Bringing \"Landing hero.png\" into Yarn from this computer", r.id]);
+  assert.ok(store.activity(project.id).some((a) => a.action === "yarn.imported" && a.subject === "Landing hero" && a.actor === "model"));
+
+  // The same file again is the one there, with the new tags. A text file is copy.
+  const again = await tools.import_yarn_file({ ...at, path: file, tags: ["desktop"] });
+  assert.deepEqual([again.id, again.tags, again.existing], [r.id, ["reference", "desktop"], true]);
+  await writeFile(join(dir, "Brief.md"), "# Spring launch\nThree posts.");
+  const brief = await tools.import_yarn_file({ ...at, path: join(dir, "Brief.md") });
+  assert.deepEqual([brief.kind, getYarn(store, brief.id).meta.text], ["copy", "# Spring launch\nThree posts."]);
+
+  // What it will not read, and what it cannot, each said.
+  await assert.rejects(tools.import_yarn_file({ ...at, path: "Landing hero.png" }), /whole path, from the top/);
+  await mkdir(join(dir, ".ssh"));
+  await writeFile(join(dir, ".ssh", "id.txt"), "secret");
+  await assert.rejects(tools.import_yarn_file({ ...at, path: join(dir, ".ssh", "id.txt") }), /does not read hidden folders or files/);
+  await writeFile(join(dir, ".env.txt"), "KEY=secret");
+  await assert.rejects(tools.import_yarn_file({ ...at, path: join(dir, ".env.txt") }), /does not read hidden/);
+  await symlink(join(dir, ".ssh", "id.txt"), join(dir, "notes.txt"));
+  await assert.rejects(tools.import_yarn_file({ ...at, path: join(dir, "notes.txt") }), /does not read hidden/, "a link is checked by the file it stands for");
+  await assert.rejects(tools.import_yarn_file({ ...at, path: join(dir, "nonesuch.png") }), /cannot open .* on the computer it runs on.*public address/);
+  await assert.rejects(tools.import_yarn_file({ ...at, path: dir }), /is a folder, not a file/);
+  await writeFile(join(dir, "data.json"), "{}");
+  await assert.rejects(tools.import_yarn_file({ ...at, path: join(dir, "data.json") }), /cannot use \.json yet/);
+  await writeFile(join(dir, "fake.png"), "not a picture");
+  await assert.rejects(tools.import_yarn_file({ ...at, path: join(dir, "fake.png") }), /not a real PNG image/);
+  assert.equal(await readFile(join(dir, "fake.png"), "utf8"), "not a picture", "a file refused is left as it was too");
+  assert.ok(!listYarn(store, project.id).some((y) => /secret/.test(y.meta.text ?? "")), "nothing hidden came in");
+});

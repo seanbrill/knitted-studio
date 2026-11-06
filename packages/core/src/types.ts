@@ -190,7 +190,7 @@ export type Actor =
 export type ActivityAction =
   | "project.created" | "project.renamed" | "project.picture" | "project.duplicated" | "project.deleted"
   | "pattern.created" | "pattern.duplicated" | "pattern.deleted" | "edit.refused"
-  | "yarn.imported" | "yarn.deleted" | "swatch.created" | "part.created"
+  | "yarn.imported" | "yarn.changed" | "yarn.deleted" | "swatch.created" | "part.created"
   | "folder.created" | "folder.filed" | "folder.renamed" | "folder.deleted";
 
 /** A refused change. Always returned, always logged, never swallowed. */

@@ -38,4 +38,4 @@ In Knits, **Download folder** makes a zip of the folder you are in, with the fol
 
 ## Your model
 
-Your model can sort a project too. It sees which folder each thing is in, lists the folders with `list_folders`, files things with `move_to_folder`, and renames or moves a folder with `rename`. It can put a new Pattern, Part, Swatch or piece of Yarn straight into a folder. It cannot delete a folder: that stays your call. See the [MCP reference](/docs/mcp-reference/).
+Your model can sort a project too. It sees which folder each thing is in, lists the folders with `list_folders`, files things with `move_to_folder`, and renames or moves a folder with `rename`. It can put a new Pattern, Part, Swatch or piece of Yarn straight into a folder, or make a folder empty, ready to fill. It cannot delete a folder: that stays your call. See the [MCP reference](/docs/mcp-reference/).

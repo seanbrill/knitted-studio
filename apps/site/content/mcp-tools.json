@@ -1,5 +1,10 @@
 [
   {
+    "name": "get_studio_info",
+    "summary": "Which knitted is answering you: its version, when the build that is running was made (builtAt, null when it runs from source) and when it started (startedAt), the folder its library is in (home), and how many tools it has. When the app on this computer was built after builtAt, an older copy is still running: ask the person to quit knitted and open it again.",
+    "params": []
+  },
+  {
     "name": "list_projects",
     "summary": "List the projects in this studio: id, name and how many patterns each has. Start here when you do not know a project id.",
     "params": []
@@ -90,7 +95,7 @@
   },
   {
     "name": "import_yarn",
-    "summary": "Add a file to a project's Yarn from a public web address: an image, a video, a sound, a font (to use it in a swatch) or a text file. Or save a piece of text as reusable copy. Local files are not accepted here; ask the person to upload them in the studio. A file that is already there is not added twice: you get the one there, with these tags added.",
+    "summary": "Add a file to a project's Yarn from a public web address: an image, a video, a sound, a font (to use it in a swatch) or a text file. Or save a piece of text as reusable copy. A file on this computer goes in with import_yarn_file instead. A file that is already there is not added twice: you get the one there, with these tags added. To bring a piece of copy up to date, give its yarnId with the new text: it keeps its id, and no second copy is saved beside it.",
     "params": [
       {
         "name": "projectId",
@@ -111,10 +116,52 @@
         "description": "Copy to save, instead of a file"
       },
       {
+        "name": "yarnId",
+        "type": "string",
+        "required": false,
+        "description": "A piece of copy already in Yarn, by its id, to give it this text instead of saving new copy"
+      },
+      {
         "name": "name",
         "type": "string",
         "required": false,
         "description": "What to call it"
+      },
+      {
+        "name": "tags",
+        "type": "string[]",
+        "required": false,
+        "description": "Tags to give it, like [\"product\"], so a slot can take `tag:product`"
+      },
+      {
+        "name": "folder",
+        "type": "string",
+        "required": false,
+        "description": "The folder it goes in, as a path from the top of its section, like Royalty free music/Lo-fi. Made when it is not there. Left out, the top."
+      }
+    ]
+  },
+  {
+    "name": "import_yarn_file",
+    "summary": "Add a file on this computer to a project's Yarn, by its whole path, like /Users/you/Pictures/hero.png: an image, a video, a sound, a font or a text file, for one that has no public address. It is copied in, and the file on the computer is left as it is. A file that is already there is not added twice: you get the one there, with these tags added. Hidden folders and files, like ~/.ssh or .env, are not read. The studio reads the computer it runs on: when you are on another one, publish the file at a public address and use import_yarn with its url.",
+    "params": [
+      {
+        "name": "projectId",
+        "type": "string",
+        "required": true,
+        "description": "The project id, like pj_01..."
+      },
+      {
+        "name": "path",
+        "type": "string",
+        "required": true,
+        "description": "The whole path of a PNG, JPG, WebP, GIF, AVIF, SVG, MP4, MOV, WebM, MP3, WAV, M4A, OGG, TTF, OTF, WOFF, WOFF2 or a text file on this computer"
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "required": false,
+        "description": "What to call it, instead of the file's own name"
       },
       {
         "name": "tags",
@@ -826,7 +873,7 @@
   },
   {
     "name": "move_to_folder",
-    "summary": "File things into a folder, to sort a project the way its person thinks of it: one folder per campaign, a folder for royalty free music with one inside for each kind. Give the folder as a path, like Royalty free music/Lo-fi, or \"\" for the top; it is made when it is not there, in each section the things are from. Give the ids of what to move, of one kind or several. Moving changes nothing else about them. To move or rename a folder itself, use rename.",
+    "summary": "File things into a folder, to sort a project the way its person thinks of it: one folder per campaign, a folder for royalty free music with one inside for each kind. Give the folder as a path, like Royalty free music/Lo-fi, or \"\" for the top; it is made when it is not there, in each section the things are from. Give the ids of what to move, of one kind or several. Moving changes nothing else about them. With no ids, give a section, and the folder is made there, empty, ready to fill. To move or rename a folder itself, use rename.",
     "params": [
       {
         "name": "projectId",
@@ -869,6 +916,12 @@
         "type": "string[]",
         "required": false,
         "description": "The ids of the knits to move"
+      },
+      {
+        "name": "section",
+        "type": "string",
+        "required": false,
+        "description": "With no ids, the section to make the folder in, empty. One of patterns, yarn, parts, swatches, knits."
       }
     ]
   }

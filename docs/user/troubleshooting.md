@@ -27,6 +27,10 @@ Video needs ffmpeg. Check that `ffmpeg -version` prints a version in your termin
 
 Restart the model's app after editing its MCP settings. With the desktop app, knitted has to be open, and the address has to be the one in Settings, Model: making a new address shuts the old one. With a clone, check that the path points at `packages/mcp/src/server.mjs` inside it, and that Node 22.13 or newer is installed.
 
+## My model is missing a tool the docs list
+
+An older copy of knitted may still be running: the app keeps the one it started with until you quit it. Your model can tell by asking `get_studio_info`, which says the version answering, when that build was made and when it started. Quit knitted and open it again.
+
 ## My model says a slot was refused
 
 That slot is locked by the Pattern. This is the brand lock working. Unlock it in the studio if you really mean to change it.

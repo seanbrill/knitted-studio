@@ -34,12 +34,14 @@ function stitchIdFor(p, ref) {
 
 // What each tool is doing, given its arguments and what was looked up for them.
 const SAY = {
+  get_studio_info: () => "Checking which knitted this is",
   list_projects: () => "Looking at your projects",
   create_project: (a) => `Making a project, ${quote(a.name)}`,
   get_project: (a, c) => `Reading ${c.project ?? "a project"}`,
   set_project_picture: (a, c) => (a.yarnId ? `Choosing ${possessive(c.project, "the project's")} picture` : `Taking away ${possessive(c.project, "the project's")} picture`),
   list_yarn: (a, c) => `Looking through ${possessive(c.project, "the")} Yarn`,
-  import_yarn: (a) => (a.text ? `Saving copy, ${quote(a.name ?? "Copy")}` : `Bringing ${a.name ? quote(a.name) : fileOf(a.url)} into Yarn`),
+  import_yarn: (a, c) => (a.yarnId ? `Changing the copy ${quote(c.yarn ?? a.name ?? "")}` : a.text ? `Saving copy, ${quote(a.name ?? "Copy")}` : `Bringing ${a.name ? quote(a.name) : fileOf(a.url)} into Yarn`),
+  import_yarn_file: (a) => `Bringing ${quote(a.name ?? String(a.path ?? "").split(/[\\/]/).pop())} into Yarn from this computer`,
   tag_yarn: (a, c) => `Tagging ${c.yarn ? quote(c.yarn) : "a file"}${Array.isArray(a.tags) && a.tags.length ? ` ${a.tags.join(", ")}` : ""}`,
   rename: (a, c) => `Renaming ${a.folder ? `the folder ${quote(a.folder)}` : c.pattern ? c.pattern.name : c.yarn ? quote(c.yarn) : "something"} to ${quote(a.name)}`,
   get_brand_guidelines: (a, c) => `Reading ${possessive(c.project, "the")} brand`,
@@ -69,7 +71,7 @@ const SAY = {
   cancel_job: () => "Stopping a job",
   list_knits: (a, c) => `Looking at what ${c.project ?? "the project"} has knitted`,
   list_folders: (a, c) => `Looking at ${possessive(c.project, "the")} ${HOLDS[a.section] ? `${SECTION_WORD[a.section]} ` : ""}folders`,
-  move_to_folder: (a) => filing(a),
+  move_to_folder: (a) => (moving(a).length ? filing(a) : `Making the folder ${quote(a.folder)}`),
 };
 
 /** The stitches a call works on, by id, from the slot names and ids it was given. */
@@ -99,7 +101,7 @@ export function describeCall(name, a, store) {
   const summary = safe(() => SAY[name]?.(a, c)) ?? name.replace(/_/g, " ");
   const stitchIds = p ? stitchesOf(name, a, p) : [];
   // A call on folders works in one section: the page Follow opens. Moving things of several kinds, the first.
-  const section = name === "move_to_folder" ? moving(a)[0]?.[0] : (name === "list_folders" || (name === "rename" && a.folder)) && HOLDS[a.section] ? a.section : undefined;
+  const section = (name === "move_to_folder" ? moving(a)[0]?.[0] : undefined) ?? ((name === "move_to_folder" || name === "list_folders" || (name === "rename" && a.folder)) && HOLDS[a.section] ? a.section : undefined);
   const where = Object.fromEntries(Object.entries({ projectId, patternId: p?.id, stitchIds: stitchIds.length ? stitchIds : undefined, yarnId: yarn?.id, partId: a.partId, jobId: a.jobId, section }).filter(([, v]) => v !== undefined));
   return { summary, where };
 }
@@ -111,7 +113,7 @@ export function endOf(name, a, out, store) {
   if (name === "create_project" && out?.id) where.projectId = out.id;
   if ((name === "create_pattern" || name === "duplicate_pattern") && out?.id) { where.patternId = out.id; where.stitchIds = undefined; }
   if (name === "add_stitch" && out?.id) where.stitchIds = [out.id];
-  if (name === "import_yarn" && out?.id) where.yarnId = out.id;
+  if ((name === "import_yarn" || name === "import_yarn_file") && out?.id) where.yarnId = out.id;
   if (name === "propose_swatch" && out?.id) where.swatchId = out.id;
   if (name === "create_part" && out?.id) where.partId = out.id;
   if (name === "insert_part" && out?.inserted) { const id = stitchIdFor(safe(() => store.getPattern(a.patternId)), out.inserted); if (id) where.stitchIds = [id]; }

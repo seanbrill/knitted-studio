@@ -30,6 +30,7 @@ const ACTION_TEXT = {
   "pattern.deleted": (s) => `deleted the pattern ${s}`,
   "edit.refused": (s) => `tried to change locked stitches in ${s}, and was told no`,
   "yarn.imported": (s) => `added ${s} to Yarn`,
+  "yarn.changed": (s) => `changed the copy ${s}`,
   "yarn.deleted": (s) => `deleted ${s} from Yarn`,
   "swatch.created": (s) => `added the swatch ${s}`,
   "part.created": (s) => `added the part ${s}`,

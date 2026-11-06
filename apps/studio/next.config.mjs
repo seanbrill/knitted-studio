@@ -17,8 +17,9 @@ export default {
   outputFileTracingRoot: join(here, "../.."),
   transpilePackages: ["@knitted/agent", "@knitted/mcp", "@knitted/core", "@knitted/ui", "@knitted/render", "@knitted/engine"],
   devIndicators: false,
-  // Settings, About shows the version a release is named for (scripts/release.mjs).
-  env: { KNITTED_VERSION: version },
+  // Settings, About shows the version a release is named for (scripts/release.mjs). A model
+  // asks get_studio_info when this build was made, to tell an older copy still running.
+  env: { KNITTED_VERSION: version, KNITTED_BUILT_AT: new Date().toISOString() },
   // The engine shells out to ffmpeg and Playwright; neither belongs in a
   // client bundle, and Next will try to trace them without this.
   serverExternalPackages: ["playwright", "sharp"],

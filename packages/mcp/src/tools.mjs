@@ -18,7 +18,7 @@
 //    one, and never makes one the project's.
 
 import { applyCommand, instanceOf, joinFolder, motionLint, parentOf, partFromStitches, preflight, uniqueSlotName, COLOR_ROLES, FOLDER_SECTIONS, PRESETS, SIZES, CommandSchema } from "@knitted/core";
-import { activeSwatch, cleanFolder, createPart, createSwatch, createSwatchFromProposal, folderCounts, getKnit, getPart, importYarn, importYarnFromUrl, createCopy, knitPath, listFolders, listKnits, listParts, listYarn, moveAllToFolder, proposeFromWebsite, renameFolder, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
+import { activeSwatch, cleanFolder, createFolder, createPart, createSwatch, createSwatchFromProposal, folderCounts, getKnit, getPart, getYarn, importYarn, importYarnFromPath, importYarnFromUrl, createCopy, knitPath, listFolders, listKnits, listParts, listYarn, moveAllToFolder, proposeFromWebsite, renameFolder, setCopyText, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
 
 const obj = (properties, required = []) => ({ type: "object", properties, required, additionalProperties: false });
 const str = (description) => ({ type: "string", description });
@@ -38,7 +38,29 @@ const untrusted = (label, text) => `<untrusted_data source="${label}">\n${String
 // The tools that only look. They change nothing, so a client may run them without asking
 // (tools/list says readOnlyHint), and they still work while the person has paused the
 // model in the studio. Every other tool changes something.
-export const READ_ONLY = new Set(["list_projects", "get_project", "list_yarn", "get_brand_guidelines", "list_patterns", "get_pattern", "describe_pattern", "list_parts", "list_presets", "list_voices", "preview_pattern", "check_pattern", "get_job", "list_knits", "list_folders"]);
+export const READ_ONLY = new Set(["get_studio_info", "list_projects", "get_project", "list_yarn", "get_brand_guidelines", "list_patterns", "get_pattern", "describe_pattern", "list_parts", "list_presets", "list_voices", "preview_pattern", "check_pattern", "get_job", "list_knits", "list_folders"]);
+
+// When the process answering started. A build made after it means an older copy is answering.
+const STARTED_AT = new Date(Date.now() - process.uptime() * 1000).toISOString();
+
+const tagList = (tags) => { if (tags !== undefined && !(Array.isArray(tags) && tags.every((t) => typeof t === "string"))) throw new Error("tags is a list of words, like [\"product\", \"shot\"]."); };
+/** What an import added. The same file twice is the same Yarn, so the tags asked for land on the one there, and it stays where it is filed. */
+function added(store, r, tags) {
+  const y = r.existing && tags?.length ? updateYarn(store, r.yarn.id, { tags: [...r.yarn.tags, ...tags] }) : r.yarn;
+  return { id: y.id, name: y.name, kind: y.kind, tags: y.tags, ...filed(y), existing: r.existing };
+}
+
+/** import_yarn with a yarnId: a piece of copy gets new text, and the name, tags and folder given. */
+async function newText(store, { projectId, yarnId, text, name, tags, folder }) {
+  if (!text) throw new Error("To change a piece of copy, give its yarnId with the new text. A file is not changed this way: add the new one, and fill the slots with it.");
+  if (getYarn(store, yarnId).projectId !== projectId) throw new Error(`${yarnId} is not in this project's Yarn. list_yarn shows what is.`);
+  cleanFolder(folder);
+  const { changed } = await setCopyText(store, yarnId, text, "model");
+  if (folder !== undefined) moveAllToFolder(store, projectId, { yarn: [yarnId] }, folder, "model");
+  const was = getYarn(store, yarnId);
+  const y = name || tags?.length ? updateYarn(store, yarnId, { name: name || undefined, tags: tags ? [...was.tags, ...tags] : undefined }) : was;
+  return { id: y.id, name: y.name, kind: y.kind, tags: y.tags, ...filed(y), existing: true, changed };
+}
 
 function brief(p) {
   return { id: p.id, name: p.name, size: `${p.size.name} ${p.size.w}x${p.size.h}`, durationMs: p.durationMs, version: p.version, ...filed(p) };
@@ -103,6 +125,10 @@ function fontNames(fonts) {
 }
 
 export const TOOLS = [
+  // ── the studio ──
+  { name: "get_studio_info", description: "Which knitted is answering you: its version, when the build that is running was made (builtAt, null when it runs from source) and when it started (startedAt), the folder its library is in (home), and how many tools it has. When the app on this computer was built after builtAt, an older copy is still running: ask the person to quit knitted and open it again.", inputSchema: obj({}),
+    async handler(_, { store }) { return { version: process.env.KNITTED_VERSION || "unknown", builtAt: process.env.KNITTED_BUILT_AT || null, startedAt: STARTED_AT, home: store.paths.root, toolCount: TOOLS.length }; } },
+
   // ── projects ──
   { name: "list_projects", description: "List the projects in this studio: id, name and how many patterns each has. Start here when you do not know a project id.", inputSchema: obj({}),
     async handler(_, { store }) { return store.listProjects().map((p) => ({ id: p.id, name: p.name, patterns: p.counts.patterns, yarn: p.counts.yarn })); } },
@@ -118,16 +144,20 @@ export const TOOLS = [
     async handler({ projectId, kind, tag, q, folder }, { store }) {
       return listYarn(store, projectId, { kind, tag, q, folder }).slice(0, 60).map((y) => ({ id: y.id, name: y.name, kind: y.kind, tags: y.tags, ...filed(y), ...(y.width ? { size: `${y.width}x${y.height}` } : {}), ...(y.durationMs ? { seconds: +(y.durationMs / 1000).toFixed(1) } : {}), ...(y.kind === "copy" ? { text: untrusted(`yarn:${y.name}`, (y.meta.text ?? "").slice(0, 800)) } : {}), ...(y.meta.warnings?.length ? { warnings: y.meta.warnings } : {}) }));
     } },
-  { name: "import_yarn", description: "Add a file to a project's Yarn from a public web address: an image, a video, a sound, a font (to use it in a swatch) or a text file. Or save a piece of text as reusable copy. Local files are not accepted here; ask the person to upload them in the studio. A file that is already there is not added twice: you get the one there, with these tags added.", inputSchema: obj({ projectId: PROJECT, url: str(`A public https link to a ${SUPPORTED} file`), text: str("Copy to save, instead of a file"), name: str("What to call it"), tags: { type: "array", items: { type: "string" }, description: "Tags to give it, like [\"product\"], so a slot can take `tag:product`" }, folder: FOLDER("it") }, ["projectId"]),
-    async handler({ projectId, url, text, name, tags, folder }, { store }) {
-      if (tags !== undefined && !(Array.isArray(tags) && tags.every((t) => typeof t === "string"))) throw new Error("tags is a list of words, like [\"product\", \"shot\"].");
+  { name: "import_yarn", description: "Add a file to a project's Yarn from a public web address: an image, a video, a sound, a font (to use it in a swatch) or a text file. Or save a piece of text as reusable copy. A file on this computer goes in with import_yarn_file instead. A file that is already there is not added twice: you get the one there, with these tags added. To bring a piece of copy up to date, give its yarnId with the new text: it keeps its id, and no second copy is saved beside it.", inputSchema: obj({ projectId: PROJECT, url: str(`A public https link to a ${SUPPORTED} file`), text: str("Copy to save, instead of a file"), yarnId: str("A piece of copy already in Yarn, by its id, to give it this text instead of saving new copy"), name: str("What to call it"), tags: { type: "array", items: { type: "string" }, description: "Tags to give it, like [\"product\"], so a slot can take `tag:product`" }, folder: FOLDER("it") }, ["projectId"]),
+    async handler({ projectId, url, text, yarnId, name, tags, folder }, { store }) {
+      tagList(tags);
+      if (yarnId) return newText(store, { projectId, yarnId, text, name, tags, folder });
       let r;
       if (text) r = await createCopy(store, projectId, { name: name ?? "Copy", text, tags, folder }, "model");
       else if (url) r = await importYarnFromUrl(store, projectId, url, { name, tags, folder, actor: "model" });
-      else throw new Error("Give a url to fetch, or text to save.");
-      // The same file twice is the same Yarn, so the tags asked for land on the one there, and it stays where it is filed.
-      const y = r.existing && tags?.length ? updateYarn(store, r.yarn.id, { tags: [...r.yarn.tags, ...tags] }) : r.yarn;
-      return { id: y.id, name: y.name, kind: y.kind, tags: y.tags, ...filed(y), existing: r.existing };
+      else throw new Error("Give a url to fetch, or text to save. For a file on this computer, use import_yarn_file.");
+      return added(store, r, tags);
+    } },
+  { name: "import_yarn_file", description: `Add a file on this computer to a project's Yarn, by its whole path, like /Users/you/Pictures/hero.png: an image, a video, a sound, a font or a text file, for one that has no public address. It is copied in, and the file on the computer is left as it is. A file that is already there is not added twice: you get the one there, with these tags added. Hidden folders and files, like ~/.ssh or .env, are not read. The studio reads the computer it runs on: when you are on another one, publish the file at a public address and use import_yarn with its url.`, inputSchema: obj({ projectId: PROJECT, path: str(`The whole path of a ${SUPPORTED} on this computer`), name: str("What to call it, instead of the file's own name"), tags: { type: "array", items: { type: "string" }, description: "Tags to give it, like [\"product\"], so a slot can take `tag:product`" }, folder: FOLDER("it") }, ["projectId", "path"]),
+    async handler({ projectId, path, name, tags, folder }, { store }) {
+      tagList(tags);
+      return added(store, await importYarnFromPath(store, projectId, path, { name, tags, folder, actor: "model" }), tags);
     } },
   { name: "tag_yarn", description: "Set the tags on a piece of Yarn. Tags let a batch pick from a group, like `tag:product`.", inputSchema: obj({ yarnId: str("The yarn id"), tags: { type: "array", items: { type: "string" } } }, ["yarnId", "tags"]),
     async handler({ yarnId, tags }, { store }) { return { id: yarnId, tags: updateYarn(store, yarnId, { tags }).tags }; } },
@@ -326,12 +356,15 @@ export const TOOLS = [
       const of = (sec) => { const n = folderCounts(store, projectId, sec); return { top: n.get("") ?? 0, folders: listFolders(store, projectId, sec).map((path) => ({ path, items: n.get(path) ?? 0 })) }; };
       return section ? { section, ...of(section) } : Object.fromEntries(FOLDER_SECTIONS.map((sec) => [sec, of(sec)]));
     } },
-  { name: "move_to_folder", description: "File things into a folder, to sort a project the way its person thinks of it: one folder per campaign, a folder for royalty free music with one inside for each kind. Give the folder as a path, like Royalty free music/Lo-fi, or \"\" for the top; it is made when it is not there, in each section the things are from. Give the ids of what to move, of one kind or several. Moving changes nothing else about them. To move or rename a folder itself, use rename.", inputSchema: obj({ projectId: PROJECT, folder: str("The folder's path, like Royalty free music/Lo-fi, or \"\" for the top"), yarnIds: IDS("Yarn"), patternIds: IDS("patterns"), partIds: IDS("parts (not the starter parts)"), swatchIds: IDS("swatches"), knitIds: IDS("knits") }, ["projectId"]),
-    async handler({ projectId, folder, yarnIds, patternIds, partIds, swatchIds, knitIds }, { store }) {
+  { name: "move_to_folder", description: "File things into a folder, to sort a project the way its person thinks of it: one folder per campaign, a folder for royalty free music with one inside for each kind. Give the folder as a path, like Royalty free music/Lo-fi, or \"\" for the top; it is made when it is not there, in each section the things are from. Give the ids of what to move, of one kind or several. Moving changes nothing else about them. With no ids, give a section, and the folder is made there, empty, ready to fill. To move or rename a folder itself, use rename.", inputSchema: obj({ projectId: PROJECT, folder: str("The folder's path, like Royalty free music/Lo-fi, or \"\" for the top"), yarnIds: IDS("Yarn"), patternIds: IDS("patterns"), partIds: IDS("parts (not the starter parts)"), swatchIds: IDS("swatches"), knitIds: IDS("knits"), section: { ...SECTION, description: "With no ids, the section to make the folder in, empty" } }, ["projectId"]),
+    async handler({ projectId, folder, yarnIds, patternIds, partIds, swatchIds, knitIds, section }, { store }) {
       if (folder === undefined || folder === null) throw new Error("move_to_folder needs folder: a path like Royalty free music/Lo-fi, or \"\" for the top.");
       const groups = { yarn: yarnIds, patterns: patternIds, parts: partIds, swatches: swatchIds, knits: knitIds };
       for (const [sec, ids] of Object.entries(groups)) if (ids !== undefined && !(Array.isArray(ids) && ids.every((x) => typeof x === "string"))) throw new Error(`${{ yarn: "yarnIds", patterns: "patternIds", parts: "partIds", swatches: "swatchIds", knits: "knitIds" }[sec]} is a list of ids, like ["yr_01..."].`);
-      if (!Object.values(groups).some((ids) => ids?.length)) throw new Error("Give the ids of what to move: yarnIds, patternIds, partIds, swatchIds or knitIds.");
+      if (!Object.values(groups).some((ids) => ids?.length)) {
+        if (!section) throw new Error(`Give the ids of what to move: yarnIds, patternIds, partIds, swatchIds or knitIds. Or, to make the folder empty, ready to fill, give its section: ${FOLDER_SECTIONS.join(", ")}.`);
+        return { folder: createFolder(store, projectId, section, folder, "model"), section };
+      }
       return { moved: moveAllToFolder(store, projectId, groups, folder, "model") };
     } },
 ];

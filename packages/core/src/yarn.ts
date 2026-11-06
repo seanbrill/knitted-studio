@@ -8,10 +8,10 @@
 
 import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
-import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { basename, extname, join } from "node:path";
+import { basename, extname, isAbsolute, join, resolve } from "node:path";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import sharp, { type Sharp } from "sharp";
@@ -156,6 +156,24 @@ export async function createCopy(store: Store, projectId: string, input: { name:
   cleanFolder(input.folder);
   const tmp = await writeTemp(store, projectId, Buffer.from(text, "utf8"));
   return importYarn(store, projectId, tmp, `${input.name || "Copy"}.txt`, { name: input.name || "Copy", tags: input.tags, folder: input.folder, actor });
+}
+
+/**
+ * New text for a piece of copy, which keeps its id, name, tags and folder: a model's note
+ * brought up to date, instead of a second one saved beside it. The project's Activity says
+ * who changed it.
+ */
+export async function setCopyText(store: Store, id: string, text: string, actor: ImportOptions["actor"] = "human"): Promise<{ yarn: Yarn; changed: boolean }> {
+  const y = getYarn(store, id);
+  if (y.deletedAt) throw new NotFoundError("That copy is not in Yarn any more.");
+  if (y.kind !== "copy") throw new ValidationError(`${y.name} is a file, not copy, so it has no text to change.`);
+  text = String(text ?? "");
+  if (!text.trim()) throw new ValidationError("Write some copy first.");
+  if (text === y.meta.text) return { yarn: y, changed: false };
+  const tmp = await writeTemp(store, y.projectId, Buffer.from(text, "utf8"));
+  const r = await importYarn(store, y.projectId, tmp, y.originalName || `${y.name}.txt`, { replaceId: y.id, actor });
+  store.write(() => store.logRow(y.projectId, actor, "yarn.changed", y.name, { kind: "copy" }));
+  return { yarn: r.yarn, changed: true };
 }
 
 async function writeTemp(store: Store, projectId: string, data: Buffer): Promise<string> {
@@ -377,4 +395,39 @@ export async function importYarnFromUrl(store: Store, projectId: string, rawUrl:
     if (ext) name += ext;
   }
   return importYarn(store, projectId, tmp, name, opts);
+}
+
+// ── from a path on this computer ─────────────────────────────────────────────
+// A hidden folder or file is where keys and settings live (~/.ssh, .env), never a brand's
+// pictures, so nothing in one is read, whatever a link to it is called.
+const hiddenIn = (p: string) => p.split(/[\\/]/).some((part) => part.startsWith(".") && part !== "." && part !== "..");
+
+/**
+ * Add a file on this computer by its whole path: for a model with a file here and no public
+ * address for it. The file is copied in, and the one on the computer is never moved or changed.
+ * It is checked as an upload is, and a file that is already there is the one returned.
+ */
+export async function importYarnFromPath(store: Store, projectId: string, raw: string, opts: ImportOptions = {}): Promise<ImportResult> {
+  store.getProject(projectId);
+  cleanFolder(opts.folder);
+  const given = String(raw ?? "").trim();
+  if (!isAbsolute(given)) throw new ValidationError("Give the file's whole path, from the top, like /Users/you/Pictures/hero.png.");
+  const at = resolve(given);
+  const hidden = new ValidationError("knitted does not read hidden folders or files, like ~/.ssh or .env. Move the file somewhere plain, or ask the person to upload it.");
+  if (hiddenIn(at)) throw hidden;
+  // A link is followed to the file it stands for, and that is what is read and checked.
+  const opened = await realpath(at).then(async (real) => ({ real, info: await stat(real) })).catch(() => null);
+  if (!opened) throw new ValidationError(`knitted cannot open ${given} on the computer it runs on: it is not there, or knitted may not read it. When the studio is on another computer than you, publish the file at a public address and use import_yarn with its url.`);
+  const { real, info } = opened;
+  if (hiddenIn(real)) throw hidden;
+  if (!info.isFile()) throw new ValidationError(`${given} is a folder, not a file. Give the path of one file.`);
+  const ext = extname(at).toLowerCase();
+  if (!EXT[ext]) throw new ValidationError(`knitted cannot use ${ext || "a file with no extension"} yet. Try ${SUPPORTED}.`);
+  const max = opts.maxBytes ?? store.getSetting("yarn.maxBytes", DEFAULT_MAX_BYTES);
+  if (info.size > max) throw new ValidationError(`That file is ${(info.size / 1024 ** 3).toFixed(1)}GB. The limit is ${(max / 1024 ** 3).toFixed(0)}GB; the person can raise it in Settings.`);
+  const tmp = uploadTempPath(store, projectId);
+  await mkdir(join(tmp, ".."), { recursive: true });
+  try { await copyFile(real, tmp); }
+  catch { await rm(tmp, { force: true }); throw new ValidationError(`knitted could not read ${given}. It may not be allowed to open it.`); }
+  return importYarn(store, projectId, tmp, basename(at), opts);
 }

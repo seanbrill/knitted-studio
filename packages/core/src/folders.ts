@@ -98,8 +98,9 @@ export function createFolder(store: Store, projectId: string, section: FolderSec
   sectionOf(section);
   if (!cleanFolder(raw)) throw new ValidationError("Give the folder a name.");
   return store.write(() => {
+    const had = new Set(listFolders(store, projectId, section));
     const path = fileInto(store, projectId, section, raw);
-    if (actor !== "human") store.logRow(projectId, actor, "folder.created", path, { section });
+    if (actor !== "human" && !had.has(path)) store.logRow(projectId, actor, "folder.created", path, { section });
     return path;
   });
 }
