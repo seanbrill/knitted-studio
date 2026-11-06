@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { cx } from "./cx.ts";
-import { Tooltip } from "./overlay.tsx";
+import { Tip, Tooltip } from "./overlay.tsx";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger" | "dark";
 type Size = "sm" | "md" | "lg";
@@ -11,37 +11,43 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
   variant?: Variant;
   size?: Size;
   block?: boolean;
+  /** One line on what it does, shown when the pointer rests on it. Its words say what it is. */
+  tip?: string;
 }
 
 /** One `primary` per view: that is a design rule, and the reason ember is not a general background. */
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { variant = "secondary", size = "md", block, className, type = "button", ...rest },
+  { variant = "secondary", size = "md", block, className, type = "button", tip, ...rest },
   ref,
 ) {
   return (
-    <button
-      ref={ref}
-      type={type}
-      className={cx("btn", `btn-${variant}`, size !== "md" && `btn-${size}`, block && "btn-block", className)}
-      {...rest}
-    />
+    <Tip text={tip}>
+      <button
+        ref={ref}
+        type={type}
+        className={cx("btn", `btn-${variant}`, size !== "md" && `btn-${size}`, block && "btn-block", className)}
+        {...rest}
+      />
+    </Tip>
   );
 });
 
 export interface IconButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   /** Required: an icon alone is not a name. Also used as the tooltip. */
   label: string;
+  /** One line on what it does, under the name in its tooltip. */
+  hint?: string;
   large?: boolean;
   pressed?: boolean;
   shortcut?: string;
 }
 
 export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
-  { label, large, pressed, shortcut, className, type = "button", ...rest },
+  { label, hint, large, pressed, shortcut, className, type = "button", ...rest },
   ref,
 ) {
   return (
-    <Tooltip label={label} shortcut={shortcut}>
+    <Tooltip label={label} hint={hint} shortcut={shortcut}>
       <button
         ref={ref}
         type={type}

@@ -10,6 +10,7 @@ import { useLive } from "@/lib/hooks";
 import { SwatchPreview } from "./SwatchPreview";
 import { ContrastPanel } from "./ContrastPanel";
 import { FolderCrumbs, FolderDialogs, FolderList, NewFolderButton, byFolder, useFolders } from "./Folders";
+import { ViewBar, commonSorts, layout, useView } from "./Views";
 
 const { Plus, Trash2, Copy, Download, Upload, Link2, Wand2, AlertTriangle, Check, FolderInput } = icons;
 
@@ -29,6 +30,8 @@ export function SwatchView({ projectId }: { projectId: string }) {
   const { data: yarn } = useLive(() => api.yarn.list(projectId), [projectId]);
   const { data: fonts } = useLive(() => api.fonts(), []);
   const kit = useFolders(projectId, "swatches", swatches, { onChanged: refresh });
+  const view = useView<Swatch>("swatches", commonSorts<Swatch>(), { mode: "list" });
+  const [find, setFind] = useState("");
   const [pickedId, setPickedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -105,13 +108,24 @@ export function SwatchView({ projectId }: { projectId: string }) {
       <div style={{ display: "grid", gap: "var(--space-6)" }}>
         {(kit.here || (kit.folders ?? []).length > 0) && <div><FolderCrumbs kit={kit} /><FolderList kit={kit} /></div>}
         <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center", flexWrap: "wrap" }}>
-          {swatches.filter((s) => s.folder === kit.here).map((s) => (
-            <button key={s.id} className="chip chip-button" aria-pressed={s.id === current.id} draggable onDragStart={kit.dragThings([s.id])} onClick={() => { dirty.current = false; setPickedId(s.id); }}>
-              {s.name}{s.id === project?.swatchId && <Chip tone="ember">Active</Chip>}
-            </button>
-          ))}
-          <Button size="sm" onClick={() => setDialog("new")}><Plus size={13} aria-hidden /> New swatch</Button>
+          {swatches.length > 4 && <Input aria-label="Search swatches" placeholder="Search swatches" value={find} onChange={(e) => setFind(e.target.value)} style={{ width: 200 }} />}
+          <Button size="sm" tip="A brand of its own: colours, fonts, logos and voice" onClick={() => setDialog("new")}><Plus size={13} aria-hidden /> New swatch</Button>
           <NewFolderButton kit={kit} size="sm" />
+          <ViewBar view={view} what="swatches" />
+        </div>
+        <ul aria-label="Swatches" style={view.mode === "grid" ? layout("grid", 150) : { ...layout("list"), gap: 4 }}>
+          {view.sorted(swatches.filter((s) => (find.trim() ? s.name.toLowerCase().includes(find.trim().toLowerCase()) : s.folder === kit.here))).map((s) => (
+            <li key={s.id}>
+              <button type="button" className={`card card-link swatch-pick swatch-pick-${view.mode}`} aria-pressed={s.id === current.id} draggable onDragStart={kit.dragThings([s.id])} onClick={() => { dirty.current = false; setPickedId(s.id); }}>
+                <span aria-hidden className="swatch-pick-colors">{s.colors.slice(0, 6).map((c) => <span key={c.role} style={{ background: c.hex }} />)}</span>
+                <span className="label" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{s.name}</span>
+                {view.mode === "list" && <span className="body-sm" style={{ color: "var(--ink-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.fonts.display.family}, {s.fonts.body.family}</span>}
+                {s.id === project?.swatchId && <Chip tone="ember">Active</Chip>}
+              </button>
+            </li>
+          ))}
+        </ul>
+        <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center", flexWrap: "wrap" }}>
           <div style={{ flex: 1 }} />
           <span className="body-sm" role="status" aria-live="polite" style={{ color: saving === "error" ? "var(--danger)" : "var(--ink-muted)" }}>
             {saving === "saving" ? "Saving..." : saving === "saved" ? "Saved" : saving === "error" ? "Not saved" : ""}

@@ -90,6 +90,10 @@
 @keyframes dialog-in { from { opacity: 0; transform: translate(-50%, calc(-50% + 8px)); } to { opacity: 1; transform: translate(-50%, -50%); } }
 
 .tooltip { background: var(--rail); color: var(--on-rail); font-size: 12px; padding: 5px 8px; border-radius: var(--radius-sm); z-index: 70; animation: fade-in var(--t-ui) var(--ease) both; }
+.tooltip-label { font-weight: 600; }
+.tooltip-kbd { margin-left: 8px; opacity: 0.7; font-family: var(--font-mono); }
+.tooltip-hint { max-width: 280px; padding: 7px 10px; line-height: 1.45; }
+.tooltip-more { display: block; margin-top: 2px; color: var(--on-rail-muted); font-weight: 400; }
 
 /* ── Tabs ────────────────────────────────────────────────────────────────── */
 .tabs-list { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--line); }
@@ -122,6 +126,13 @@
 .crumbs a, .crumbs button { color: var(--ink-muted); border: 0; background: transparent; font: inherit; padding: 2px 6px; border-radius: var(--radius-sm); cursor: pointer; text-decoration: none; }
 .crumbs a:hover, .crumbs button:hover { color: var(--ink); background: var(--tint); }
 .crumbs [aria-current] { color: var(--ink); font-weight: 600; }
+/* The trail at the top of a page: one line, each step cut short before it wraps. */
+.crumbs-trail { flex-wrap: nowrap; min-width: 0; }
+.crumbs-trail li { min-width: 0; }
+.crumbs-trail .crumb-step, .crumbs-trail .crumb-here { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 28ch; }
+.crumbs-trail .crumb-here { padding: 2px 6px; }
+.crumbs-trail .crumb-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crumb-sep { flex-shrink: 0; color: var(--ink-muted); opacity: 0.7; }
 .thumb { aspect-ratio: 4 / 5; background: var(--surface-sunken); border-radius: var(--radius-md); overflow: hidden; display: grid; place-items: center; position: relative; }
 .skeleton { background: linear-gradient(90deg, var(--surface-sunken), var(--line), var(--surface-sunken)); background-size: 200% 100%; animation: heat-shimmer 1.4s linear infinite; border-radius: var(--radius-sm); }
 
@@ -164,9 +175,115 @@
 .yarn-card { position: relative; }
 .yarn-card .yarn-check { position: absolute; top: 10px; left: 10px; z-index: 3; opacity: 0; }
 .yarn-card:hover .yarn-check, .yarn-card:focus-within .yarn-check, .yarn-card[data-selected="true"] .yarn-check { opacity: 1; }
+/* A section as a list: a row each, the checkbox at its start. */
+.yarn-row { display: grid; grid-template-columns: 20px minmax(0, 1fr); align-items: center; gap: var(--space-2); }
+/* Cutting a part out of a picture: the part kept is clear, the rest dimmed. */
+.crop-box { border: 2px solid var(--ember); box-shadow: 0 0 0 9999px rgb(0 0 0 / 0.45); border-radius: 2px; pointer-events: none; }
+.crop-area { overflow: hidden; }
+/* A swatch to pick, as a card or a row: its colours, its name, whether it is the project's. */
+.swatch-pick { width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; display: grid; gap: 8px; align-items: center; }
+.swatch-pick-grid { padding: var(--space-3); grid-template-rows: auto auto; justify-items: start; }
+.swatch-pick-list { padding: 6px var(--space-3); grid-template-columns: 96px minmax(0, 1fr) minmax(0, 1fr) auto; }
+.swatch-pick[aria-pressed="true"] { outline: 2px solid var(--ember); outline-offset: -1px; }
+.swatch-pick-colors { display: flex; height: 18px; width: 100%; max-width: 160px; border-radius: 4px; overflow: hidden; box-shadow: 0 0 0 1px var(--line-strong); }
+.swatch-pick-colors > span { flex: 1; }
+/* A sync's steps: waiting, going now, skipped. */
+.sync-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line-strong); display: inline-block; }
+.sync-dot-live { background: var(--ember); animation: sync-pulse 1.2s ease-in-out infinite; }
+.sync-dot-off { background: transparent; box-shadow: inset 0 0 0 1.5px var(--line-strong); }
+@keyframes sync-pulse { 50% { opacity: 0.35; transform: scale(0.8); } }
+@media (prefers-reduced-motion: reduce) { .sync-dot-live { animation: none; } }
+.sync-card[data-state="running"] { box-shadow: 0 0 0 1px var(--ember), var(--shadow-1, none); }
 
 .inspector { display: block; }
 .inspector details > summary::-webkit-details-marker { display: none; }
 
 .contrast-sample { width: 34px; height: 22px; border-radius: 4px; display: grid; place-items: center; font-weight: 800; font-size: 12px; box-shadow: 0 0 0 1px var(--line-strong); }
 .contrast-sample::before { content: attr(data-sample); }
+
+/* ── Editor and chat ── */
+
+/* Markdown (markdown.tsx): a reply, a note, a brief. It takes its size and colour from where it is. */
+.md { line-height: 1.55; overflow-wrap: anywhere; }
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md p, .md ul, .md ol, .md pre, .md blockquote, .md table { margin: 0 0 0.7em; }
+.md h1, .md h2, .md h3, .md h4, .md h5, .md h6 { margin: 1em 0 0.35em; font-family: var(--font-ui); font-size: 1em; font-weight: 700; line-height: 1.3; letter-spacing: 0; }
+.md h1, .md h2, .md h3 { font-size: 1.12em; }
+.md ul, .md ol { padding-left: 1.35em; }
+.md li { margin: 0.2em 0; }
+.md li > ul, .md li > ol, .md li > p { margin: 0.2em 0; }
+.md strong { font-weight: 650; }
+.md a { color: var(--ember-ink); text-decoration: underline; text-underline-offset: 2px; }
+.md code { font-family: var(--font-mono); font-size: 0.9em; background: var(--surface-sunken); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+/* Code wraps rather than scrolls: nothing in a reply is a box to scroll. */
+.md pre { background: var(--surface-sunken); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.md pre code { background: none; border: 0; padding: 0; font-size: 0.88em; }
+.md blockquote { border-left: 3px solid var(--line-strong); padding-left: 10px; color: var(--ink-muted); }
+.md hr { border: 0; border-top: 1px solid var(--line); margin: 1em 0; }
+.md table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 0.92em; }
+.md th, .md td { border: 1px solid var(--line); padding: 4px 6px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.md th { background: var(--surface-sunken); font-weight: 600; }
+
+/* A conversation (Chat.tsx): the person's words on the right in a box, the model's on the left under its name. */
+.chat { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-6); font-size: 15px; }
+.chat[data-compact] { gap: var(--space-5); font-size: 13.5px; }
+.chat-turn { display: grid; gap: var(--space-3); }
+.chat-you { justify-self: end; max-width: 80%; background: var(--surface-sunken); border: 1px solid var(--line); border-radius: 14px 14px 4px 14px; padding: 8px 12px; }
+.chat[data-compact] .chat-you { max-width: 92%; }
+.chat-you-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; color: var(--ink); }
+.chat-model { display: grid; gap: 8px; min-width: 0; padding-left: 12px; border-left: 2px solid var(--line-strong); }
+.chat-model-name { margin: 0; display: flex; gap: 6px; align-items: center; color: var(--ember-ink); }
+.chat-answer { color: var(--ink); }
+.chat-note { color: var(--ink-muted); }
+.chat-live[data-cut] { -webkit-mask-image: linear-gradient(to bottom, transparent, #000 2.5em); mask-image: linear-gradient(to bottom, transparent, #000 2.5em); }
+.chat-working { margin: 0; display: flex; gap: 8px; align-items: center; font-size: 12.5px; color: var(--ink-muted); }
+.chat-steps > summary { cursor: pointer; font-size: 12.5px; color: var(--ink-muted); }
+.chat-steps ol { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 5px; font-size: 12.5px; }
+.chat-steps li { display: grid; grid-template-columns: 14px 1fr; gap: 6px; align-items: start; line-height: 1.45; }
+.chat-steps li[data-kind="say"] { color: var(--ink-muted); }
+.chat-steps li[data-kind="refused"], .chat-steps li[data-state="failed"] { color: var(--danger); }
+.chat-step-mark { display: inline-grid; place-items: center; height: 1.45em; }
+.chat-step-mark .working { width: 7px; height: 7px; border-radius: 50%; }
+.chat-steps li[data-state="done"] .chat-step-mark { color: var(--success); }
+
+/* The canvas (Canvas.tsx): it moves about the frame and never lets it out of reach. */
+.canvas-view { cursor: default; }
+.canvas-view[data-dragging] { cursor: grabbing; }
+.canvas-bar { position: absolute; z-index: 2; background: var(--ink-muted); opacity: 0.35; border-radius: 2px; pointer-events: none; }
+.canvas-bar-x { bottom: 3px; height: 4px; }
+.canvas-bar-y { right: 3px; width: 4px; }
+.editor-trail { min-width: 0; flex-shrink: 1; }
+
+/* Where a model works (ModelLayer.tsx), in the model's red. */
+.model-layer { position: absolute; inset: 0; z-index: 3; pointer-events: none; overflow: hidden; }
+.model-frame { position: absolute; border: 2px solid var(--red); border-radius: 6px; box-shadow: 0 0 0 4px color-mix(in srgb, var(--red) 16%, transparent); }
+.model-frame[data-running] { animation: model-glow 2.4s ease-in-out infinite; }
+@keyframes model-glow { 50% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--red) 8%, transparent); } }
+.model-mark { position: absolute; border: 2px solid var(--red); border-radius: 2px; }
+.model-mark[data-lead="false"] { border-width: 1.5px; opacity: 0.5; }
+.model-tag { position: absolute; display: inline-flex; align-items: center; gap: 5px; overflow: hidden; background: var(--red); color: var(--on-red); font-size: 11px; font-weight: 600; line-height: 16px; padding: 2px 7px; border-radius: 4px; white-space: nowrap; }
+.model-mark-tag { left: -2px; bottom: 100%; margin-bottom: 2px; padding: 1px 6px; }
+.model-tag-what { font-weight: 400; overflow: hidden; text-overflow: ellipsis; }
+.model-tag-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.model-pointer { position: absolute; pointer-events: auto; display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border: 0; border-radius: var(--radius-pill); background: var(--red); color: var(--on-red); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; box-shadow: var(--shadow-lift); }
+.model-pointer-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-pointer:focus-visible, .model-dot:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+/* What the studio's own model is thinking, over the canvas (ModelBubble.tsx). */
+.model-bubble { position: absolute; pointer-events: auto; display: grid; gap: 6px; padding: 8px 8px 10px 12px; background: var(--surface-raised); color: var(--ink); border: 1px solid var(--line-strong); border-left: 3px solid var(--red); border-radius: var(--radius-md); box-shadow: var(--shadow-lift); animation: fade-in var(--t-ui) var(--ease) both; }
+.model-bubble[data-ended] { opacity: 0.92; }
+.model-bubble-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.model-bubble-head .icon-btn { width: 26px; height: 26px; flex-shrink: 0; }
+.model-bubble-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.model-bubble-dot:not(.working) { background: var(--red); }
+.model-bubble-who { flex: 1; min-width: 0; display: grid; font-size: 12px; line-height: 1.35; }
+.model-bubble-status { color: var(--ink-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The newest words at the bottom; what does not fit goes out at the top, fading. */
+.model-bubble-text { max-height: 7.5em; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; font-size: 13px; line-height: 1.5; }
+.model-bubble-text[data-over] { -webkit-mask-image: linear-gradient(to bottom, transparent, #000 2em); mask-image: linear-gradient(to bottom, transparent, #000 2em); }
+.model-bubble-text[data-kind="note"] { color: var(--ink-muted); }
+.model-bubble-text[data-kind="text"] { color: var(--ink); }
+.model-dot { position: absolute; pointer-events: auto; width: 32px; height: 32px; display: grid; place-items: center; padding: 0; border: 1px solid var(--line-strong); border-radius: 50%; background: var(--surface-raised); box-shadow: var(--shadow-lift); cursor: pointer; }
+.model-dot > span { width: 12px; height: 12px; border-radius: 50%; }
+.model-dot > span:not(.working) { background: var(--red); }

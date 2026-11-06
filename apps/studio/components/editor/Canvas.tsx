@@ -1,17 +1,27 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { yarnFileUrl, yarnThumbUrl } from "@knitted/core/client";
 import { bounds, center, intersects, resizeBox, rotatePt, snapMove, toFrac, toPx, union, angleTo, type Box, type Command, type Guide, type Handle, type Stitch } from "@knitted/core";
 import { bodyHtml, pageFor } from "@knitted/render/pure";
-import { liveStitches, useEditor } from "@/lib/editor/store";
-import { marksOn, useAgent, useNow } from "@/lib/agent";
+import { liveStitches, useEditor, ZOOM_MAX, ZOOM_MIN } from "@/lib/editor/store";
 import { resolveStyle, compileMotion } from "@knitted/core";
+import type { Rect } from "@/lib/editor/live";
+import { ModelLayer } from "./ModelLayer";
 
 const HANDLES: Handle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
 const CURSOR: Record<Handle, string> = { nw: "nwse-resize", se: "nwse-resize", ne: "nesw-resize", sw: "nesw-resize", n: "ns-resize", s: "ns-resize", e: "ew-resize", w: "ew-resize" };
 const HANDLE_POS: Record<Handle, [number, number]> = { nw: [0, 0], n: [0.5, 0], ne: [1, 0], e: [1, 0.5], se: [1, 1], s: [0.5, 1], sw: [0, 1], w: [0, 0.5] };
 const SNAP_PX = 6;
+
+// The canvas moves about the frame, and the frame never goes out of reach: on a side where it
+// fits, it sits in the middle; where it does not, its edge comes this far in at most.
+const PAD = 48;
+// A scroll moves the canvas a little less than the system would move a page: the frame is
+// placed by eye. A pinch zooms this much a pixel, and one step of a wheel at most this much.
+const PAN_RATE = 0.85;
+const ZOOM_RATE = 0.006;
+const ZOOM_EVENT = 1.08;
 
 type Gesture =
   | { kind: "move"; start: { x: number; y: number }; orig: Record<string, Box>; moved: boolean }
@@ -19,11 +29,13 @@ type Gesture =
   | { kind: "rotate"; id: string; c: { x: number; y: number }; origStyle: Stitch["style"] }
   | { kind: "marquee"; start: { x: number; y: number }; additive: boolean; base: string[] };
 
-export function Canvas({ projectId }: { projectId: string }) {
+type Point = { x: number; y: number };
+
+export function Canvas({ projectId, chatOpen, onOpenChat }: { projectId: string; chatOpen?: boolean; onOpenChat?: () => void }) {
   const st = useEditor();
   const { pattern, swatch, yarn, parts, mode, selection, draft } = st;
   const W = pattern.size.w, H = pattern.size.h;
-  const wrap = useRef<HTMLDivElement>(null);
+  const view = useRef<HTMLDivElement>(null);
   const overlay = useRef<HTMLDivElement>(null);
   const frameEl = useRef<HTMLIFrameElement>(null);
   const [box, setBox] = useState({ w: 900, h: 600 });
@@ -35,11 +47,96 @@ export function Canvas({ projectId }: { projectId: string }) {
   const [editing, setEditing] = useState<string | null>(null);
 
   useEffect(() => {
-    const el = wrap.current; if (!el) return;
+    const el = view.current; if (!el) return;
     const ro = new ResizeObserver(([e]) => setBox({ w: e.contentRect.width, h: e.contentRect.height }));
     ro.observe(el); return () => ro.disconnect();
   }, []);
-  const scale = st.zoom === "fit" ? Math.min(1, Math.max(0.05, Math.min((box.w - 96) / W, (box.h - 96) / H))) : st.zoom;
+  const fit = Math.min(1, Math.max(0.05, Math.min((box.w - 2 * PAD) / W, (box.h - 2 * PAD) / H)));
+  const scale = st.zoom === "fit" ? fit : st.zoom;
+  useEffect(() => { useEditor.getState().setFitScale(fit); }, [fit]);
+
+  // ── where the frame is: its top-left corner in the canvas, null for the middle ──
+  const [pan, setPan] = useState<Point | null>(null);
+  const place = useCallback((p: Point | null, s: number): Point => {
+    const axis = (v: number | undefined, a: number, room: number) => (v === undefined || a + 2 * PAD <= room ? (room - a) / 2 : Math.min(PAD, Math.max(room - PAD - a, v)));
+    return { x: axis(p?.x, W * s, box.w), y: axis(p?.y, H * s, box.h) };
+  }, [W, H, box.w, box.h]);
+  // A zoom keeps the point under the pointer where it is: the middle, for the buttons and keys.
+  const [anchor, setAnchor] = useState<Point | null>(null);
+  const [drawnAt, setDrawnAt] = useState(scale);
+  if (drawnAt !== scale) {
+    setDrawnAt(scale); setAnchor(null);
+    if (st.zoom === "fit") setPan(null);
+    else {
+      const was = place(pan, drawnAt), a = anchor ?? { x: box.w / 2, y: box.h / 2 }, k = scale / drawnAt;
+      setPan(place({ x: a.x - (a.x - was.x) * k, y: a.y - (a.y - was.y) * k }, scale));
+    }
+  }
+  const at = place(pan, scale);
+  // What the last drawing showed, for the handlers bound once.
+  const shown = useRef({ at, scale, place });
+  useLayoutEffect(() => { shown.current = { at, scale, place }; });
+
+  const panBy = useCallback((dx: number, dy: number) => {
+    setPan((p) => {
+      const { place: pl, scale: s } = shown.current;
+      const from = pl(p, s);
+      return pl({ x: from.x + dx, y: from.y + dy }, s);
+    });
+  }, []);
+  /** Bring a place on the canvas, as it is drawn now, to the middle: where a model works, say. */
+  const panTo = useCallback((r: Rect) => {
+    const { at: a, place: pl, scale: s } = shown.current;
+    setPan(pl({ x: a.x + box.w / 2 - (r.x + r.w / 2), y: a.y + box.h / 2 - (r.y + r.h / 2) }, s));
+  }, [box.w, box.h]);
+
+  // Every wheel over the canvas is the canvas's: the page under it never zooms or scrolls with it.
+  useEffect(() => {
+    const el = view.current; if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientHeight : 1;
+      let dx = e.deltaX * unit, dy = e.deltaY * unit;
+      if (e.ctrlKey || e.metaKey) {
+        const z = useEditor.getState();
+        const now = z.zoom === "fit" ? z.fitScale : z.zoom;
+        const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, now * Math.min(ZOOM_EVENT, Math.max(1 / ZOOM_EVENT, Math.exp(-dy * ZOOM_RATE)))));
+        if (next === now) return;
+        const r = el.getBoundingClientRect();
+        setAnchor({ x: e.clientX - r.left, y: e.clientY - r.top });
+        z.setZoom(next);
+        return;
+      }
+      // A mouse wheel with Shift held goes sideways.
+      if (e.shiftKey && !dx) { dx = dy; dy = 0; }
+      panBy(-dx * PAN_RATE, -dy * PAN_RATE);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [panBy]);
+
+  // Dragging the space around the frame, or dragging anywhere with the middle button, moves the canvas.
+  const drag = useRef<{ id: number; x: number; y: number; from: Point; moved: boolean } | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const panDown = (e: React.PointerEvent) => {
+    if (!(e.button === 1 || (e.button === 0 && e.target === e.currentTarget))) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY, from: at, moved: false };
+  };
+  const panMove = (e: React.PointerEvent) => {
+    const d = drag.current; if (!d || d.id !== e.pointerId) return;
+    const dx = e.clientX - d.x, dy = e.clientY - d.y;
+    if (!d.moved && Math.hypot(dx, dy) < 3) return;
+    if (!d.moved) { d.moved = true; setDragging(true); }
+    setPan(place({ x: d.from.x + dx, y: d.from.y + dy }, scale));
+  };
+  const panUp = (e: React.PointerEvent) => {
+    const d = drag.current; if (!d || d.id !== e.pointerId) return;
+    drag.current = null; setDragging(false);
+    // A click on the space around the frame, not a drag, lets go of what is selected.
+    if (!d.moved && e.button === 0 && !editing) st.select([]);
+  };
 
   // ── the page in the iframe: the SAME renderer the engine uses ──────────────
   const ctx = useMemo(() => ({
@@ -60,6 +157,7 @@ export function Canvas({ projectId }: { projectId: string }) {
     if (!ready) return;
     (frameEl.current?.contentWindow as (Window & { __stage?: { seek(ms: number): void } }) | null)?.__stage?.seek(st.playhead);
   }, [st.playhead, ready]);
+  // Drawn again when what is drawn changes, not when the canvas moves or the pointer passes over it.
   useEffect(() => {
     if (!ready) return;
     cancelAnimationFrame(raf.current);
@@ -69,7 +167,7 @@ export function Canvas({ projectId }: { projectId: string }) {
       w?.__stage?.seek(useEditor.getState().playhead);
     });
     return () => cancelAnimationFrame(raf.current);
-  });
+  }, [ready, pattern, draft, ctx]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const stitchBox = useCallback((s: Stitch): Box => toPx(s, pattern.size, Number(resolveStyle(swatch, s.style).rotate ?? 0)), [pattern.size, swatch]);
   const hittable = (s: Stitch) => !(resolveStyle(swatch, s.style).hidden) && !(mode === "fill" && s.locked);
@@ -199,40 +297,50 @@ export function Canvas({ projectId }: { projectId: string }) {
         border: kind === "hover" && !selection.includes(s.id) ? "1px solid var(--ember)" : s.locked ? "1.5px dashed var(--ember)" : kind === "select" ? "2px solid var(--ember)" : "1px solid var(--line-strong)" }} />
     );
   };
+  // The selection as drawn now: what the model's bubble keeps clear of.
+  const selRect: Rect | null = group ? { x: at.x + group.x * scale, y: at.y + group.y * scale, w: group.w * scale, h: group.h * scale } : null;
+
+  // How far the canvas goes, as thin bars at its edges: shown on a side only when it can move that way.
+  const room = { w: W * scale + 2 * PAD, h: H * scale + 2 * PAD };
+  const barX = room.w > box.w + 0.5 ? { left: ((PAD - at.x) / room.w) * box.w, width: (box.w / room.w) * box.w } : null;
+  const barY = room.h > box.h + 0.5 ? { top: ((PAD - at.y) / room.h) * box.h, height: (box.h / room.h) * box.h } : null;
 
   return (
-    <div ref={wrap} style={{ flex: 1, minWidth: 0, overflow: "auto", background: "var(--surface-sunken)", position: "relative" }} onWheel={(e) => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); st.setZoom(Math.min(4, Math.max(0.1, scale * (e.deltaY < 0 ? 1.1 : 0.9)))); } }}>
-      <div style={{ minWidth: "100%", minHeight: "100%", display: "grid", placeItems: "center", padding: 48, width: "max-content" }}>
-        <div style={{ position: "relative", width: W * scale, height: H * scale, boxShadow: "var(--shadow-lift)", borderRadius: 2 }}>
-          <iframe ref={frameEl} title="Pattern canvas" srcDoc={srcDoc} onLoad={() => setReady(true)} tabIndex={-1}
-            style={{ position: "absolute", left: 0, top: 0, width: W, height: H, border: 0, transform: `scale(${scale})`, transformOrigin: "0 0", background: "var(--surface-raised)", pointerEvents: "none" }} />
-          <div ref={overlay} data-testid="canvas-overlay" role="application" aria-label="Pattern canvas"
-            onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
-            onDoubleClick={(e) => { const h = hitTest(toFrame(e)); if (h?.kind === "text") { setEditing(h.id); st.select([h.id]); } }}
-            onDragOver={(e) => { if (e.dataTransfer.types.includes("application/x-knitted-yarn")) e.preventDefault(); }} onDrop={onDrop}
-            style={{ position: "absolute", inset: 0, touchAction: "none", cursor: gesture?.kind === "move" ? "grabbing" : hover ? "move" : "default" }}>
-            {hover && !gesture && stitches.filter((s) => s.id === hover).map((s) => outline(s, "hover"))}
-            {stitches.filter((s) => s.locked && !selection.includes(s.id) && !(resolveStyle(swatch, s.style).hidden)).map((s) => {
-              const b = stitchBox(s);
-              return <div key={`lock-${s.id}`} aria-hidden style={{ position: "absolute", left: b.x * scale, top: b.y * scale, width: b.w * scale, height: b.h * scale, transform: `rotate(${b.rotate ?? 0}deg)`, border: "1.5px dashed var(--ember)", opacity: 0.55, pointerEvents: "none", borderRadius: 2 }} />;
-            })}
-            <ModelMarks patternId={pattern.id} stitches={stitches} box={stitchBox} scale={scale} />
-            {selected.map((s) => outline(s, "select"))}
-            {group && showHandles && !editing && (
-              <div aria-hidden style={{ position: "absolute", left: group.x * scale, top: group.y * scale, width: group.w * scale, height: group.h * scale, transform: single ? `rotate(${stitchBox(single).rotate ?? 0}deg)` : undefined, pointerEvents: "none" }}>
-                {HANDLES.map((h) => {
-                  const [fx, fy] = HANDLE_POS[h];
-                  return <span key={h} data-handle={h} onPointerDown={(e) => startResize(e, h)} style={{ position: "absolute", left: `${fx * 100}%`, top: `${fy * 100}%`, width: 12, height: 12, margin: -6, background: "var(--surface-raised)", border: "2px solid var(--ember)", borderRadius: 3, cursor: CURSOR[h], pointerEvents: "auto" }} />;
-                })}
-                {single && <span data-handle="rotate" onPointerDown={startRotate} style={{ position: "absolute", left: "50%", top: -28, width: 12, height: 12, margin: "-6px 0 0 -6px", background: "var(--ember)", borderRadius: "50%", cursor: "grab", pointerEvents: "auto" }} />}
-              </div>
-            )}
-            {guides.map((g, i) => <div key={i} aria-hidden style={{ position: "absolute", background: "#e5484d", ...(g.axis === "x" ? { left: g.pos * scale, top: 0, bottom: 0, width: 1 } : { top: g.pos * scale, left: 0, right: 0, height: 1 }) }} />)}
-            {marquee && <div aria-hidden style={{ position: "absolute", left: marquee.x * scale, top: marquee.y * scale, width: marquee.w * scale, height: marquee.h * scale, background: "var(--tint)", border: "1px solid var(--ember)" }} />}
-            {editing && <TextEditor id={editing} scale={scale} onDone={() => setEditing(null)} />}
-          </div>
+    <div ref={view} data-testid="canvas-view" className="canvas-view" data-dragging={dragging || undefined}
+      onPointerDown={panDown} onPointerMove={panMove} onPointerUp={panUp} onPointerCancel={panUp} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
+      style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: "hidden", background: "var(--surface-sunken)", position: "relative", touchAction: "none", overscrollBehavior: "none" }}>
+      <div data-testid="canvas-frame" style={{ position: "absolute", left: 0, top: 0, width: W * scale, height: H * scale, transform: `translate(${at.x}px, ${at.y}px)`, boxShadow: "var(--shadow-lift)", borderRadius: 2 }}>
+        <iframe ref={frameEl} title="Pattern canvas" srcDoc={srcDoc} onLoad={() => setReady(true)} tabIndex={-1}
+          style={{ position: "absolute", left: 0, top: 0, width: W, height: H, border: 0, transform: `scale(${scale})`, transformOrigin: "0 0", background: "var(--surface-raised)", pointerEvents: "none" }} />
+        <div ref={overlay} data-testid="canvas-overlay" role="application" aria-label="Pattern canvas"
+          onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
+          onDoubleClick={(e) => { const h = hitTest(toFrame(e)); if (h?.kind === "text") { setEditing(h.id); st.select([h.id]); } }}
+          onDragOver={(e) => { if (e.dataTransfer.types.includes("application/x-knitted-yarn")) e.preventDefault(); }} onDrop={onDrop}
+          style={{ position: "absolute", inset: 0, touchAction: "none", cursor: gesture?.kind === "move" ? "grabbing" : hover ? "move" : "default" }}>
+          {hover && !gesture && stitches.filter((s) => s.id === hover).map((s) => outline(s, "hover"))}
+          {stitches.filter((s) => s.locked && !selection.includes(s.id) && !(resolveStyle(swatch, s.style).hidden)).map((s) => {
+            const b = stitchBox(s);
+            return <div key={`lock-${s.id}`} aria-hidden style={{ position: "absolute", left: b.x * scale, top: b.y * scale, width: b.w * scale, height: b.h * scale, transform: `rotate(${b.rotate ?? 0}deg)`, border: "1.5px dashed var(--ember)", opacity: 0.55, pointerEvents: "none", borderRadius: 2 }} />;
+          })}
+          {selected.map((s) => outline(s, "select"))}
+          {group && showHandles && !editing && (
+            <div aria-hidden style={{ position: "absolute", left: group.x * scale, top: group.y * scale, width: group.w * scale, height: group.h * scale, transform: single ? `rotate(${stitchBox(single).rotate ?? 0}deg)` : undefined, pointerEvents: "none" }}>
+              {HANDLES.map((h) => {
+                const [fx, fy] = HANDLE_POS[h];
+                return <span key={h} data-handle={h} onPointerDown={(e) => startResize(e, h)} style={{ position: "absolute", left: `${fx * 100}%`, top: `${fy * 100}%`, width: 12, height: 12, margin: -6, background: "var(--surface-raised)", border: "2px solid var(--ember)", borderRadius: 3, cursor: CURSOR[h], pointerEvents: "auto" }} />;
+              })}
+              {single && <span data-handle="rotate" onPointerDown={startRotate} style={{ position: "absolute", left: "50%", top: -28, width: 12, height: 12, margin: "-6px 0 0 -6px", background: "var(--ember)", borderRadius: "50%", cursor: "grab", pointerEvents: "auto" }} />}
+            </div>
+          )}
+          {guides.map((g, i) => <div key={i} aria-hidden style={{ position: "absolute", background: "#e5484d", ...(g.axis === "x" ? { left: g.pos * scale, top: 0, bottom: 0, width: 1 } : { top: g.pos * scale, left: 0, right: 0, height: 1 }) }} />)}
+          {marquee && <div aria-hidden style={{ position: "absolute", left: marquee.x * scale, top: marquee.y * scale, width: marquee.w * scale, height: marquee.h * scale, background: "var(--tint)", border: "1px solid var(--ember)" }} />}
+          {editing && <TextEditor id={editing} scale={scale} onDone={() => setEditing(null)} />}
         </div>
       </div>
+      <ModelLayer patternId={pattern.id} stitches={stitches} box={stitchBox} scale={scale} at={at} size={box} frame={{ w: W * scale, h: H * scale }}
+        selection={editing ? null : selRect} onShow={panTo} chatOpen={!!chatOpen} onOpenChat={onOpenChat} />
+      {barX && <span aria-hidden className="canvas-bar canvas-bar-x" style={{ left: Math.max(0, barX.left), width: barX.width }} />}
+      {barY && <span aria-hidden className="canvas-bar canvas-bar-y" style={{ top: Math.max(0, barY.top), height: barY.height }} />}
       <output className="sr-only" aria-live="polite">{selected.length ? `${selected.length} selected: ${selected.map((s) => s.slot ?? s.kind).join(", ")}` : "Nothing selected"}</output>
     </div>
   );
@@ -256,29 +364,4 @@ function TextEditor({ id, scale, onDone }: { id: string; scale: number; onDone: 
       style={{ position: "absolute", left: b.x * scale, top: b.y * scale, width: b.w * scale, minHeight: b.h * scale, resize: "none", padding: 0, margin: 0, border: "2px solid var(--ember)", outline: "none", background: "rgba(255,255,255,.88)", color: "#17110b",
         fontFamily: `"${st.fontFamily ?? "Geist"}", sans-serif`, fontSize: Number(st.fontSize ?? 0.05) * pattern.size.w * scale, fontWeight: Number(st.fontWeight ?? 700), lineHeight: Number(st.lineHeight ?? 1.05), letterSpacing: `${Number(st.letterSpacing ?? -0.02)}em` }} />
   );
-}
-
-/**
- * The stitches a model is changing, or changed a moment ago, outlined in red with its name,
- * so a person watching sees where it works and does not edit the same thing at once. Its
- * own component, so only it redraws as the moment passes.
- */
-function ModelMarks({ patternId, stitches, box, scale }: { patternId: string; stitches: Stitch[]; box: (s: Stitch) => Box; scale: number }) {
-  const agent = useAgent();
-  const now = useNow((t) => !!marksOn(agent, patternId, t), 500);
-  const marks = marksOn(agent, patternId, now);
-  if (!marks) return null;
-  return stitches.filter((s) => marks.ids.includes(s.id)).map((s, i) => {
-    const b = box(s);
-    return (
-      <div key={`model-${s.id}`} data-testid={`model-${s.id}`} aria-hidden style={{ position: "absolute", left: b.x * scale, top: b.y * scale, width: b.w * scale, height: b.h * scale, transform: `rotate(${b.rotate ?? 0}deg)`, border: "2px solid var(--red)", borderRadius: 2, pointerEvents: "none" }}>
-        {i === 0 && (
-          <span style={{ position: "absolute", left: -2, bottom: "100%", marginBottom: 2, display: "inline-flex", alignItems: "center", gap: 5, background: "var(--red)", color: "var(--on-red)", fontSize: 11, fontWeight: 600, lineHeight: "16px", padding: "1px 6px", borderRadius: 4, whiteSpace: "nowrap" }}>
-            {marks.running && <span className="working" style={{ width: 6, height: 6, borderRadius: "50%" }} />}
-            {marks.who}
-          </span>
-        )}
-      </div>
-    );
-  });
 }

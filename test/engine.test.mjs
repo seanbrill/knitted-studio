@@ -78,3 +78,31 @@ test("every style a stitch declares survives into the page, including after a fo
   assert.match(style, /color:#112233/);
   assert.match(style, /font-weight:800/);
 });
+
+test("a capture job reads the site for its pages, pictures them, says how it went, and stops when cancelled", async () => {
+  const { mkdtempSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { getBrief, openStore } = await import("@knitted/core/node");
+  const { cancelJob, startCaptureJob } = await import("@knitted/engine");
+  const store = openStore(join(mkdtempSync(join(tmpdir(), "knitted-capjob-")), "k.db"));
+  const project = store.createProject({ name: "Capture job" });
+  const settled = async (id) => { for (let i = 0; i < 200; i++) { const j = store.getJob(id); if (!["queued", "running"].includes(j.status)) return j; await new Promise((r) => setTimeout(r, 10)); } return store.getJob(id); };
+  const reader = async (url) => ({ url, name: "Hollow Oak", pages: [{ url: `${url}/`, title: "Home" }, { url: `${url}/about`, title: "About" }], notes: [] });
+  const capture = async (_s, _p, pages, o) => {
+    pages.forEach((p, i) => o.onShot({ url: p.url, done: i + 1, total: pages.length }));
+    return { shots: pages.map((p, i) => ({ yarnId: `yr_${i}`, url: p.url, device: "desktop", replaced: i === 0 })), skipped: [] };
+  };
+  const done = await settled(startCaptureJob(store, { projectId: project.id, url: "https://hollowoak.example", reader, capture }).id);
+  assert.equal(done.status, "done");
+  assert.deepEqual([done.result.pictures, done.result.replaced, done.result.yarnIds], [2, 1, ["yr_0", "yr_1"]]);
+  assert.deepEqual([getBrief(store, project.id).site.url, getBrief(store, project.id).site.pictures], ["https://hollowoak.example", 2]);
+  assert.ok(store.activity(project.id).some((a) => a.action === "brief.synced" && a.actor === "model"));
+
+  const none = await settled(startCaptureJob(store, { projectId: project.id, url: "https://x.example", reader, capture: async () => ({ shots: [], skipped: [{ url: "https://x.example/", why: "it answered 500" }] }) }).id);
+  assert.deepEqual([none.status, none.error], ["failed", "None could be taken: it answered 500."]);
+
+  const slow = startCaptureJob(store, { projectId: project.id, url: "https://slow.example", reader: (_u, o) => new Promise((_r, no) => o.signal.addEventListener("abort", () => no(new Error("aborted")))), capture });
+  cancelJob(store, slow.id);
+  assert.equal((await settled(slow.id)).status, "cancelled");
+});

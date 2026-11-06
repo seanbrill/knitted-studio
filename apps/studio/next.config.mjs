@@ -21,8 +21,9 @@ export default {
   // asks get_studio_info when this build was made, to tell an older copy still running.
   env: { KNITTED_VERSION: version, KNITTED_BUILT_AT: new Date().toISOString() },
   // The engine shells out to ffmpeg and Playwright; neither belongs in a
-  // client bundle, and Next will try to trace them without this.
-  serverExternalPackages: ["playwright", "sharp"],
+  // client bundle, and Next will try to trace them without this. PDFium is
+  // WebAssembly that loads itself, which a bundler would only get in the way of.
+  serverExternalPackages: ["playwright", "sharp", "@hyzyla/pdfium"],
   // Rendered pages are cached in memory, never written beside the server. In the
   // desktop app the server lives inside the signed app, and one written file breaks
   // the signature (macOS then calls the app damaged); it may not be writable at all.
@@ -40,5 +41,7 @@ export default {
       ...["package.json", "index.js", "index.mjs", "LICENSE", "NOTICE"].map((f) => `../../node_modules/playwright/${f}`),
       "../../node_modules/playwright-core/**",
     ],
+    // core reads the wasm by path (pdf.ts), out of the tracer's sight.
+    "/api/yarn/[yid]/page": ["../../node_modules/@hyzyla/pdfium/dist/pdfium.wasm"],
   },
 };

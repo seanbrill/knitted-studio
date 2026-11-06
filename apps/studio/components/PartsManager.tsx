@@ -2,11 +2,12 @@
 
 import { useMemo, useRef, useState } from "react";
 import { api } from "@knitted/core/client";
-import { foldersIn, hasLintErrors, lintCodePart, nameOf, type Part, type PartCategory } from "@knitted/core";
+import { foldersIn, hasLintErrors, isInside, lintCodePart, nameOf, type Part, type PartCategory } from "@knitted/core";
 import { Button, Chip, ConfirmDialog, Dialog, EmptyState, Field, Input, Select, Skeleton, Textarea, icons, useToast } from "@knitted/ui";
 import { useLive } from "@/lib/hooks";
 import { PartThumb } from "./editor/PartThumb";
 import { FolderCrumbs, FolderDialogs, FolderList, NewFolderButton, useFolders } from "./Folders";
+import { ViewBar, commonSorts, layout, useView } from "./Views";
 
 const { Plus, Upload, Download, Copy, Trash2, AlertTriangle, FolderInput } = icons;
 const CATS: { value: PartCategory; label: string }[] = [{ value: "text", label: "Text" }, { value: "media", label: "Media" }, { value: "motion", label: "Motion" }, { value: "frame", label: "Frame" }, { value: "cta", label: "Call to action" }, { value: "other", label: "Other" }];
@@ -25,6 +26,9 @@ export function PartsManager({ projectId }: { projectId: string }) {
   // Folders sort the parts that are yours. The starter parts stay as they come.
   const mine = useMemo(() => (parts ?? []).filter((p) => !p.builtin), [parts]);
   const kit = useFolders(projectId, "parts", parts ? mine : null, { onChanged: refresh });
+  const view = useView<Part>("parts", commonSorts<Part>());
+  const [q, setQ] = useState("");
+  const [cat, setCat] = useState<"all" | PartCategory>("all");
 
   const act = async (fn: () => Promise<unknown>, msg?: string) => { try { await fn(); await refresh(); if (msg) toast(msg); } catch (e) { toast((e as Error).message); } };
   const download = async (p: Part) => {
@@ -35,15 +39,19 @@ export function PartsManager({ projectId }: { projectId: string }) {
   };
 
   if (!parts || !swatch || !kit.folders) return <Skeleton height={300} />;
-  const here = mine.filter((p) => p.folder === kit.here);
-  const builtin = parts.filter((p) => p.builtin);
+  // A search or a kind looks in the folder the person is in and every folder inside it, and the starters too.
+  const filtering = !!q.trim() || cat !== "all";
+  const matches = (p: Part) => (cat === "all" || p.category === cat) && `${p.name} ${p.description}`.toLowerCase().includes(q.trim().toLowerCase());
+  const here = view.sorted(mine.filter((p) => (filtering ? isInside(p.folder, kit.here) && matches(p) : p.folder === kit.here)));
+  const builtin = view.sorted(parts.filter((p) => p.builtin && (!filtering || matches(p))));
 
   const grid = (list: Part[], editable: boolean) => (
-    <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: "var(--space-4)", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
+    <ul style={layout(view.mode, 240)}>
       {list.map((p) => (
-        <li key={p.id} className="card" draggable={editable} onDragStart={editable ? kit.dragThings([p.id]) : undefined} style={{ padding: "var(--space-3)", display: "grid", gap: 8 }}>
-          <PartThumb part={p} swatch={swatch} projectId={projectId} width={216} />
-          <div>
+        <li key={p.id} className="card" draggable={editable} onDragStart={editable ? kit.dragThings([p.id]) : undefined}
+          style={view.mode === "grid" ? { padding: "var(--space-3)", display: "grid", gap: 8 } : { padding: "var(--space-2) var(--space-3)", display: "grid", gridTemplateColumns: "120px minmax(0, 1fr) auto", gap: "var(--space-3)", alignItems: "center" }}>
+          <PartThumb part={p} swatch={swatch} projectId={projectId} width={view.mode === "grid" ? 216 : 120} />
+          <div style={{ minWidth: 0 }}>
             <p className="label" style={{ margin: 0 }}>{p.name}</p>
             <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>{p.builtin ? "Starter" : p.projectId ? "This project" : "Library"} · {p.kind === "code" ? "code" : "stitches"} · v{p.version}</p>
             {p.slots.length > 0 && <p className="body-sm" style={{ margin: "2px 0 0" }}>{p.slots.map((s) => <Chip key={s.name} className="code">{s.name}{s.locked ? " locked" : ""}</Chip>)}</p>}
@@ -76,14 +84,20 @@ export function PartsManager({ projectId }: { projectId: string }) {
           </div>
         </div>
         <FolderCrumbs kit={kit} />
-        <FolderList kit={kit} />
-        {mine.length === 0 && kit.folders.length === 0 ? <EmptyState title="No parts of your own yet" body="Select stitches in the editor and choose Save as part, or write one in code here." />
+        <div style={{ display: "flex", gap: "var(--space-3)", alignItems: "center", flexWrap: "wrap", marginBottom: "var(--space-4)" }}>
+          <Input aria-label="Search parts" placeholder="Search parts" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 220 }} />
+          <div style={{ minWidth: 160 }}><Select aria-label="Kind of part" value={cat} onValueChange={(v) => setCat(v as "all" | PartCategory)} options={[{ value: "all", label: "Every kind" }, ...CATS]} /></div>
+          <ViewBar view={view} what="parts" />
+        </div>
+        {filtering ? (kit.here && <p className="body-sm" style={{ margin: "0 0 var(--space-3)", color: "var(--ink-muted)" }}>Looking in {nameOf(kit.here)} and the folders in it.</p>) : <FolderList kit={kit} />}
+        {filtering && here.length === 0 ? <p className="body-sm" style={{ color: "var(--ink-muted)" }}>None of your parts match.</p>
+          : mine.length === 0 && kit.folders.length === 0 ? <EmptyState title="No parts of your own yet" body="Select stitches in the editor and choose Save as part, or write one in code here." />
           : here.length > 0 ? grid(here, true)
           : kit.here && !kit.gone && foldersIn(kit.folders, kit.here).length === 0 && <EmptyState title={`Nothing in ${nameOf(kit.here)} yet`} body="Drag parts onto this folder, or choose Move to folder on one. A part made, imported or duplicated from the starters here goes in it." />}
       </section>
       <section aria-label="Starter parts">
         <h2 className="h2" style={{ marginBottom: "var(--space-4)" }}>Starter parts</h2>
-        {grid(builtin, false)}
+        {builtin.length ? grid(builtin, false) : <p className="body-sm" style={{ color: "var(--ink-muted)" }}>No starter parts match.</p>}
       </section>
       <CodePartDialog open={creating} onOpenChange={setCreating} projectId={projectId} folder={kit.here} swatch={swatch} onDone={refresh} />
       <ConfirmDialog open={!!del} onOpenChange={(o) => !o && setDel(null)} title={`Delete ${del?.part.name ?? "part"}?`}

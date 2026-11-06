@@ -17,6 +17,29 @@ const undoAll = async (was) => {
   await page.getByRole("button", { name: "Undo all" }).click();
   await serverHas(studio, `/api/patterns/${patternId}`, (p) => p.stitches.find((s) => s.slot === "headline").content === was);
 };
+/** A message streamed as the API streams it, an event at a time, `gap` ms apart. */
+async function stream(res, model, blocks, stop, gap) {
+  res.setHeader("content-type", "text/event-stream");
+  const send = (e) => res.write(`event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`);
+  send({ type: "message_start", message: { id: "msg_live", type: "message", role: "assistant", model, content: [], stop_reason: null, usage: { input_tokens: 10, output_tokens: 1 } } });
+  for (const [index, b] of blocks.entries()) {
+    if (b.type === "tool_use") {
+      send({ type: "content_block_start", index, content_block: { ...b, input: {} } });
+      send({ type: "content_block_delta", index, delta: { type: "input_json_delta", partial_json: JSON.stringify(b.input) } });
+    } else {
+      const key = b.type === "thinking" ? "thinking" : "text";
+      send({ type: "content_block_start", index, content_block: { type: b.type, [key]: "" } });
+      for (const w of b[key].split(/(?<= )/)) { send({ type: "content_block_delta", index, delta: { type: `${key}_delta`, [key]: w } }); await new Promise((r) => setTimeout(r, gap)); }
+      if (b.type === "thinking") send({ type: "content_block_delta", index, delta: { type: "signature_delta", signature: "sig" } });
+    }
+    send({ type: "content_block_stop", index });
+  }
+  send({ type: "message_delta", delta: { stop_reason: stop, stop_sequence: null }, usage: { output_tokens: 20 } });
+  send({ type: "message_stop" });
+  res.end();
+}
+const NOTE = "First I will read the headline as it is now. Then I will make it say what the sale is about, short and warm.";
+
 /** The request that carried a message, found by its words. */
 const carrying = (words) => sent.find((b) => { const m = b.messages.at(-1); return m.role === "user" && typeof m.content === "string" && m.content.includes(words); });
 
@@ -27,6 +50,12 @@ before(async () => {
     let b = ""; for await (const c of req) b += c;
     const body = JSON.parse(b); sent.push(body);
     const last = body.messages.at(-1);
+    // "Think out loud" is answered as a stream, slowly: a note a word at a time, the headline, then an answer.
+    const asked = [...body.messages].reverse().find((m) => m.role === "user" && typeof m.content === "string");
+    if (body.stream && asked?.content.includes("think out loud")) {
+      if (last === asked) return stream(res, body.model, [{ type: "thinking", thinking: NOTE }, { type: "tool_use", id: `t${sent.length}`, name: "fill_slots", input: { projectId, patternId, slots: { headline: "Thought out loud" } } }], "tool_use", 350);
+      return stream(res, body.model, [{ type: "text", text: "The headline says it now, short and warm." }], "end_turn", 250);
+    }
     res.setHeader("content-type", "application/json");
     if (last.role === "user" && typeof last.content === "string") {
       if (last.content.includes("slowly")) await new Promise((r) => setTimeout(r, 8000));
@@ -237,4 +266,42 @@ test("the Ask page is in the main navigation", async () => {
   await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Ask" }).click();
   await page.waitForURL(/\/ask$/);
   await page.getByLabel("Message your model").waitFor();
+});
+
+test("with the chat closed, the canvas shows what your model thinks as it thinks it, and it can be made small or closed", async () => {
+  await page.goto(`${studio.url}/projects/${projectId}/patterns/${patternId}`);
+  await page.getByRole("application", { name: "Pattern canvas" }).waitFor();
+  assert.equal(await page.getByRole("complementary", { name: "ask panel" }).count(), 0, "the chat is closed");
+  assert.equal((await j("POST", "/api/chats", { patternId, prompt: "think out loud about the headline" })).status, 202);
+  const bubble = page.getByRole("group", { name: "What your model is thinking" });
+  await bubble.getByText("First I will read").waitFor({ timeout: 15000 });
+  assert.ok(!(await bubble.innerText()).includes("short and warm"), "the note shows as it is written, before it is finished");
+  assert.match(await bubble.innerText(), /Thinking/);
+  assert.deepEqual((await axeProblems(page)).filter((p) => !p.startsWith("scrollable-region")), []);
+
+  // Small, it is a dot, and stays one after a reload; the dot opens it again.
+  await bubble.getByRole("button", { name: "Make it small" }).click();
+  await page.getByTestId("model-bubble-dot").waitFor();
+  assert.equal(await bubble.count(), 0);
+  await page.reload();
+  await page.getByTestId("model-bubble-dot").click();
+  await bubble.getByText(/short and warm\./).waitFor({ timeout: 15000 });
+  await page.locator('[aria-live="polite"]').filter({ hasText: "Your model thought: First I will read" }).waitFor();
+
+  // The stitch it changes is outlined with its name, and the answer comes in, then it says it is finished.
+  const head = (await pattern()).stitches.find((s) => s.slot === "headline");
+  await page.getByTestId(`model-${head.id}`).waitFor({ timeout: 15000 });
+  assert.equal(await page.getByTestId(`model-${head.id}`).innerText(), "Your model");
+  await bubble.getByText("Finished").waitFor({ timeout: 15000 });
+  assert.match(await bubble.innerText(), /The headline says it now, short and warm\./);
+  assert.equal(await headline(), "Thought out loud");
+  await bubble.waitFor({ state: "detached", timeout: 10000 });
+
+  // Closed, it stays closed for the rest of that run.
+  assert.equal((await j("POST", "/api/chats", { patternId, prompt: "think out loud once more" })).status, 202);
+  await bubble.getByText("First I will read").waitFor({ timeout: 15000 });
+  await bubble.getByRole("button", { name: "Close" }).click();
+  assert.equal(await bubble.count(), 0);
+  await page.getByTestId(`model-${head.id}`).waitFor({ timeout: 20000 });
+  assert.equal(await bubble.count() + await page.getByTestId("model-bubble-dot").count(), 0, "it is still working, and still closed");
 });

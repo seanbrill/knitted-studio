@@ -33,3 +33,16 @@ test("no bundled source imports a Node built-in at run time", () => {
   const offenders = files.flatMap((f) => findDynamicNodeImports(read(f)).map((h) => `${f}:${h.line}: ${h.text.slice(0, 100)}`));
   assert.deepEqual(offenders, [], `import these at the top of the file instead:\n${offenders.join("\n")}`);
 });
+
+// Every bundled font failed in the desktop app with ENOENT: in the server, `import.meta.url`
+// is not where the file is but where it was when the server was BUILT, which the bundler
+// writes in, and the pipeline builds in a folder no one else has. A file found from it has
+// to be looked for from where the server runs as well (process.cwd(), apps/studio).
+test("bundled source that finds files from import.meta.url also looks where the server runs", () => {
+  // The MCP server for Claude Code runs on Node as it is, so its import.meta.url is true.
+  const asItIs = new Set(["packages/mcp/src/server.mjs"]);
+  const files = projectFiles().filter(bundled).filter((f) => !asItIs.has(f));
+  const offenders = files.filter((f) => /import\.meta\.url/.test(read(f)) && !/process\.cwd\(\)/.test(read(f)));
+  assert.ok(files.includes("packages/fonts/src/index.mjs"), "the sweep covers the fonts package");
+  assert.deepEqual(offenders, [], `these find files only where they were built:\n${offenders.join("\n")}`);
+});

@@ -13,15 +13,20 @@ import { NotFoundError, ValidationError, type Store } from "./store.ts";
 import type { Actor } from "./types.ts";
 import { FOLDER_DEPTH, FOLDER_SECTIONS, compareFolders, depthOf, folderNames, folderProblem, isInside, joinFolder, nameOf, parentOf, refiled, type FolderSection } from "./folders-pure.ts";
 
-/** The rows a section's folders sort, in one project, and what to call them. */
-const SECTION: Record<FolderSection, { table: string; scope: string; name: string; one: string; many: string }> = {
+/**
+ * The rows a section's folders sort, in one project, and what to call them. `shelf`: Yarn
+ * and the reference are files in one table, each on its own shelf, so filing a file in the
+ * other's folder moves it to that shelf.
+ */
+const SECTION: Record<FolderSection, { table: string; scope: string; name: string; one: string; many: string; shelf?: "yarn" | "reference" }> = {
   patterns: { table: "patterns", scope: "project_id = ?", name: "Patterns", one: "pattern", many: "patterns" },
   // Deleted Yarn too: a file brought back with Undo comes back to its folder.
-  yarn: { table: "yarn", scope: "project_id = ?", name: "Yarn", one: "file", many: "files" },
+  yarn: { table: "yarn", scope: "project_id = ? and shelf = 'yarn'", name: "Yarn", one: "file", many: "files", shelf: "yarn" },
   // A library part is the project's to sort as much as its own. The starter parts stay where they are.
   parts: { table: "parts", scope: "(project_id = ? or project_id is null) and builtin = 0", name: "Parts", one: "part", many: "parts" },
   swatches: { table: "swatches", scope: "project_id = ?", name: "Swatches", one: "swatch", many: "swatches" },
   knits: { table: "knits", scope: "project_id = ?", name: "Knits", one: "knit", many: "knits" },
+  reference: { table: "yarn", scope: "project_id = ? and shelf = 'reference'", name: "the reference", one: "reference file", many: "reference files", shelf: "reference" },
 };
 
 function sectionOf(section: string): (typeof SECTION)[FolderSection] {
@@ -52,7 +57,7 @@ export function listFolders(store: Store, projectId: string, section: FolderSect
 /** How many things each folder holds itself, not counting the folders inside it. Deleted Yarn does not count. */
 export function folderCounts(store: Store, projectId: string, section: FolderSection): Map<string, number> {
   const s = sectionOf(section);
-  const live = section === "yarn" ? " and deleted_at is null" : "";
+  const live = s.table === "yarn" ? " and deleted_at is null" : "";
   const rows = store.db.prepare(`select folder, count(*) as n from ${s.table} where ${s.scope}${live} group by folder`).all(projectId) as { folder: string; n: number }[];
   return new Map(rows.map((r) => [r.folder, Number(r.n)]));
 }
@@ -115,14 +120,18 @@ export function moveToFolder(store: Store, projectId: string, section: FolderSec
 /**
  * File things from several sections into the folder of that path in each, all or none:
  * an id that is not the project's moves nothing. Says, for each section, where they went.
+ * A file filed in Yarn or the reference moves to that shelf, from either.
  */
 export function moveAllToFolder(store: Store, projectId: string, groups: Partial<Record<FolderSection, string[]>>, raw: unknown, actor: Actor = "human"): Partial<Record<FolderSection, { folder: string; moved: number }>> {
   store.getProject(projectId);
   cleanFolder(raw);
   const asked = Object.entries(groups).map(([section, ids]) => [section, sectionOf(section), [...new Set((ids ?? []).map(String))]] as const).filter(([, , ids]) => ids.length);
   if (!asked.length) throw new ValidationError("Say what to move.");
+  const twice = asked.filter(([, s]) => s.shelf).flatMap(([, , ids]) => ids).find((id, i, all) => all.indexOf(id) !== i);
+  if (twice) throw new ValidationError(`${twice} cannot go in Yarn and the reference at once. Give it once.`);
   for (const [section, s, ids] of asked) {
-    const mine = store.db.prepare(`select 1 from ${s.table} where id = ? and ${s.scope}`);
+    // A file is the project's on either shelf: filing it in the other one moves it there.
+    const mine = store.db.prepare(`select 1 from ${s.table} where id = ? and ${s.shelf ? "project_id = ?" : s.scope}`);
     for (const id of ids) {
       if (mine.get(id, projectId)) continue;
       if (section === "parts" && store.db.prepare("select 1 from parts where id = ? and builtin = 1").get(id)) throw new ValidationError("The starter parts stay where they are. Duplicate one to file the copy.");
@@ -133,7 +142,9 @@ export function moveAllToFolder(store: Store, projectId: string, groups: Partial
     const out: Partial<Record<FolderSection, { folder: string; moved: number }>> = {};
     for (const [section, s, ids] of asked) {
       const folder = fileInto(store, projectId, section as FolderSection, raw);
-      const set = store.db.prepare(`update ${s.table} set folder = ? where id = ? and folder != ?`);
+      const set = s.shelf
+        ? store.db.prepare(`update yarn set folder = ?, shelf = '${s.shelf}' where id = ? and (folder != ? or shelf != '${s.shelf}')`)
+        : store.db.prepare(`update ${s.table} set folder = ? where id = ? and folder != ?`);
       let moved = 0;
       for (const id of ids) moved += Number(set.run(folder, id, folder).changes);
       if (actor !== "human" && moved) store.logRow(projectId, actor, "folder.filed", `${count(moved, s)} ${folder ? `into ${folder}` : `to the top of ${s.name}`}`, { section, folder, ids });

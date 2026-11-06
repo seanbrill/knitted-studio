@@ -25,7 +25,8 @@ async function mcp(method, params) {
 const call = async (name, args) => JSON.parse((await mcp("tools/call", { name, arguments: args })).content[0].text);
 const yarn = async (name) => (await j("GET", `/api/projects/${projectId}/yarn`)).body.find((y) => y.name === name);
 const folders = async (section) => (await j("GET", `/api/projects/${projectId}/folders?section=${section}`)).body.folders;
-const trail = () => page.getByRole("navigation", { name: "Where you are in Yarn" });
+// The project's one trail: Projects, the project, then Yarn and the folders down to this one.
+const trail = () => page.getByRole("navigation", { name: "Breadcrumbs" });
 /** Serious accessibility problems once whatever is opening has finished its animation. */
 async function problems() {
   await page.locator(".dialog, .menu").evaluateAll((els) => Promise.all(els.flatMap((e) => e.getAnimations()).map((a) => a.finished)));
@@ -51,7 +52,7 @@ test("a folder can hold folders of its own, made in one go with a /", async () =
   await dialog.getByLabel("Name").fill("Royalty free music/Lo-fi");
   await dialog.getByRole("button", { name: "Make folder" }).click();
   await page.getByRole("link", { name: "Royalty free music, folder, 1 folder" }).click();
-  await trail().waitFor();
+  await trail().getByText("Royalty free music").waitFor();
   assert.match(page.url(), /folder=Royalty/, "where the person is, is in the address, so Back goes up");
   await page.getByRole("link", { name: "Lo-fi, folder, Empty" }).waitFor();
   assert.deepEqual(await folders("yarn"), ["Royalty free music", "Royalty free music/Lo-fi"]);

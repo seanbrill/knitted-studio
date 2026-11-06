@@ -1,7 +1,7 @@
 "use client";
 
 import { colorFor, COLOR_ROLES, type ColorRole, type Swatch } from "@knitted/core";
-import { ColorField, Input } from "@knitted/ui";
+import { ColorField, Input, Tip } from "@knitted/ui";
 
 /** A number field in the frame's own pixels: type a value, or use the arrow keys. */
 export function NumberField({ label, value, onCommit, step = 1, min, max, suffix }: {
@@ -53,10 +53,11 @@ export function TokenColor({ label, value, swatch, onChange, allowNone }: { labe
   );
 }
 
-export function Section({ title, children, defaultOpen = true }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) {
+/** A part of the Inspector that folds away. `hint`, one line on what is in it, shows when the pointer rests on its title. */
+export function Section({ title, hint, children, defaultOpen = true }: { title: string; hint?: string; children: React.ReactNode; defaultOpen?: boolean }) {
   return (
     <details open={defaultOpen} style={{ borderTop: "1px solid var(--line)", padding: "var(--space-3) 0" }}>
-      <summary className="eyebrow" style={{ cursor: "pointer", listStyle: "none", padding: "4px 0" }}>{title}</summary>
+      <Tip text={hint} side="left"><summary className="eyebrow" style={{ cursor: "pointer", listStyle: "none", padding: "4px 0" }}>{title}</summary></Tip>
       <div style={{ display: "grid", gap: "var(--space-3)", paddingTop: "var(--space-2)" }}>{children}</div>
     </details>
   );

@@ -109,11 +109,11 @@ export function Timeline() {
   return (
     <section aria-label="Timeline" ref={wrap} onPointerMove={onMove} onPointerUp={onUp} style={{ borderTop: "1px solid var(--line)", background: "var(--surface)", padding: "8px 8px 10px", maxHeight: 280, overflow: "auto", flexShrink: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-        <IconButton label={playing ? "Pause" : "Play"} shortcut="Space" onClick={() => { if (!playing && playhead >= (pattern.durationMs || total) - 20) st.setPlayhead(0); st.setPlaying(!playing); }}>{playing ? <Pause size={16} /> : <Play size={16} />}</IconButton>
+        <IconButton label={playing ? "Pause" : "Play"} shortcut="Space" hint={playing ? undefined : "Plays the pattern from the playhead, as it will be knitted."} onClick={() => { if (!playing && playhead >= (pattern.durationMs || total) - 20) st.setPlayhead(0); st.setPlaying(!playing); }}>{playing ? <Pause size={16} /> : <Play size={16} />}</IconButton>
         <span className="code" aria-label="Playhead time" style={{ minWidth: 56 }}>{fmt(playhead)}</span>
         <span className="body-sm" style={{ color: "var(--ink-muted)" }}>of</span>
         <div style={{ width: 120 }}><NumberField label="Len" value={pattern.durationMs} min={0} max={120000} step={100} suffix="ms" onCommit={(v) => st.dispatch({ type: "setMeta", durationMs: v }, { label: "Length", coalesce: true })} /></div>
-        <Button size="sm" onClick={() => st.dispatch({ type: "setMeta", durationMs: Math.max(1000, motionEnd(pattern.motion) + 600) }, { label: "Fit length" })}>Fit to clips</Button>
+        <Button size="sm" tip="Makes the pattern as long as its animations, and a moment more." onClick={() => st.dispatch({ type: "setMeta", durationMs: Math.max(1000, motionEnd(pattern.motion) + 600) }, { label: "Fit length" })}>Fit to clips</Button>
         <span className="body-sm" style={{ color: "var(--ink-muted)", flex: 1 }}>{pattern.durationMs === 0 ? "This pattern is a still. Add an animation to make it a video." : "What you see here is what gets knitted."}</span>
       </div>
 

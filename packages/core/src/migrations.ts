@@ -213,4 +213,29 @@ export const MIGRATIONS: Migration[] = [
       create index chats_updated on chats (updated_at);
     `,
   },
+  {
+    version: 8,
+    name: "briefs",
+    // A project's Brief: its profile, what the person and their model know about the brand,
+    // and its reference, files for a model to look at. A reference file is Yarn on another
+    // shelf, with folders of its own: one import, one way to delete and bring back, and
+    // moving a file between Yarn and the reference is changing its shelf. `previous` is the
+    // profile before it was last replaced, by a build or a model, for Undo. `site` is the
+    // business's website and what its last sync did, so a sync can be run again from there.
+    sql: `
+      alter table yarn add column shelf text not null default 'yarn';
+
+      create table briefs (
+        project_id text primary key references projects(id) on delete cascade,
+        profile text not null default '',
+        previous text,
+        notes text not null default '',
+        source text not null default '{}',
+        by text not null default 'human',
+        built_at text,
+        site text not null default '{}',
+        updated_at text not null
+      );
+    `,
+  },
 ];

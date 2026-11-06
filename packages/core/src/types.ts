@@ -41,13 +41,16 @@ export interface Swatch {
   updatedAt: string;
 }
 
-export type YarnKind = "image" | "video" | "audio" | "font" | "copy";
+export type YarnKind = "image" | "video" | "audio" | "font" | "copy" | "pdf";
+/** Where a file is kept: Yarn, to use in patterns, or the Brief's reference, for a model to look at. */
+export type Shelf = "yarn" | "reference";
 
 /** A raw asset. */
 export interface Yarn {
   id: string;
   projectId: string;
   kind: YarnKind;
+  shelf: Shelf;
   /** What it is called in knitted. A rename never touches the file on disk. */
   name: string;
   /** Path relative to the project's yarn directory. Never absolute. */
@@ -70,6 +73,9 @@ export interface Yarn {
   updatedAt: string;
 }
 
+/** A part of a picture or a page: fractions of its width and height, from its top left corner. */
+export interface CropBox { x: number; y: number; w: number; h: number; }
+
 export interface YarnMeta {
   thumb?: string;
   colors?: string[];
@@ -80,8 +86,57 @@ export interface YarnMeta {
   family?: string;
   weight?: number;
   text?: string;
+  /** A PDF's pages, and how much text it has: none, and it is pictures of pages, like a scan. */
+  pages?: number;
+  textChars?: number;
+  /** A picture cut from another file: which, from which page of a PDF, and what part of it. */
+  from?: { id: string; name: string; page?: number; box: CropBox };
+  /** A picture of a page of the business's website, as a visitor sees it: which page, on what, and when. */
+  site?: { url: string; device: "desktop" | "mobile"; at: string };
   /** Plain-language problems found at import, shown beside the file. */
   warnings?: string[];
+}
+
+/**
+ * What a model knows about a project's brand, beside its Swatch: a profile of it, in
+ * markdown, built from its website or written by a person, and the reference to look at
+ * (Yarn on the reference shelf, listed apart).
+ */
+export interface Brief {
+  projectId: string;
+  profile: string;
+  /** What the person wrote for the builder to go on, kept for the next build. */
+  notes: string;
+  source: BriefSource;
+  /** Who changed the profile last. */
+  by: "human" | "model";
+  builtAt: string | null;
+  updatedAt: string | null;
+  /** Whether Undo has a profile to go back to. */
+  canUndo: boolean;
+  /** The business's website, and what its last sync did. */
+  site: BriefSite;
+}
+/** What the last sync with the website did, step by step, so it can be run again from there. */
+export interface BriefSite {
+  url?: string;
+  syncedAt?: string;
+  /** Pages read, and pictures taken of them. */
+  pages?: number;
+  pictures?: number;
+  /** The swatch it read from the site, when it was asked to. */
+  swatchId?: string;
+}
+/** Where a profile came from: built from a website, or written. `pages`: what was read. */
+export interface BriefSource {
+  kind?: "site" | "written";
+  url?: string;
+  model?: string;
+  pages?: { url: string; title: string }[];
+  /** Pages it could not read, or was asked not to, and other things to know about the build. */
+  notes?: string[];
+  /** Reference files it read as well, by name. */
+  reference?: string[];
 }
 
 export type StitchKind = "text" | "image" | "shape" | "video" | "audio" | "part";
@@ -191,7 +246,8 @@ export type ActivityAction =
   | "project.created" | "project.renamed" | "project.picture" | "project.duplicated" | "project.deleted"
   | "pattern.created" | "pattern.duplicated" | "pattern.deleted" | "edit.refused"
   | "yarn.imported" | "yarn.changed" | "yarn.deleted" | "swatch.created" | "part.created"
-  | "folder.created" | "folder.filed" | "folder.renamed" | "folder.deleted";
+  | "folder.created" | "folder.filed" | "folder.renamed" | "folder.deleted"
+  | "brief.built" | "brief.changed" | "brief.synced";
 
 /** A refused change. Always returned, always logged, never swallowed. */
 export interface Refusal {
@@ -231,8 +287,30 @@ export interface AgentCall {
   startedAt: string;
   endedAt?: string;
 }
+/**
+ * What the studio's own model is writing in one run, as it writes it: a note between its
+ * steps about what it found and will do next, or its answer. The editor shows it beside
+ * the canvas, so a person sees what it is thinking with the chat closed.
+ */
+export interface AgentLive {
+  /** The run it is writing in: a job. */
+  jobId: string;
+  client: string;
+  /** The pattern it works on now: the one asked about, then whichever its newest step changes. */
+  where: { projectId?: string | null; patternId?: string | null };
+  /** Working on a copy (Suggest only): the pattern it was asked from. */
+  from?: string | null;
+  kind: "note" | "text";
+  /** The newest of it, the last few hundred characters. Empty while it thinks before writing. */
+  text: string;
+  /** Whether that note or answer is finished: what a screen reader is told. */
+  done: boolean;
+  /** How the run ended, for its last words to stay a moment after. Absent while it runs. */
+  ended?: "done" | "failed" | "cancelled";
+  at: string;
+}
 /** What models have been doing lately, oldest first, and whether the person has paused them. */
-export interface AgentState { paused: boolean; calls: AgentCall[]; }
+export interface AgentState { paused: boolean; calls: AgentCall[]; live?: AgentLive[]; }
 
 export type PartCategory = "text" | "media" | "motion" | "frame" | "cta" | "other";
 export interface PartSlot { name: string; kind: "text" | "image"; default?: string; locked: boolean; }

@@ -6,3 +6,4 @@
 - **Electron / Chromium.** Licences are in the app (`LICENSES.chromium.html`).
 - **Fonts** are open licences (OFL / Apache); each is listed in `packages/fonts/src/manifest.json` with its licence.
 - **Voices** are not shipped. Piper and others are downloaded only on request, with their own licences shown first.
+- **PDFium** (reading and drawing PDFs), through `@hyzyla/pdfium` (MIT), which ships PDFium built as WebAssembly. PDFium is BSD-3-Clause, with parts under Apache-2.0; its licences are in the PDFium source from Google.

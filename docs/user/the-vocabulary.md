@@ -12,14 +12,15 @@ knitted uses a small set of craft words, the same in the app, the docs and the t
 |---|---|
 | **Pattern** | A reusable layout with locked brand slots. |
 | **Swatch** | A brand kit: colours, fonts, logos and a written voice. |
-| **Yarn** | Your raw material: photos, logos, video, audio and copy. |
+| **Yarn** | Your raw material: photos, logos, video, audio, PDFs and copy. |
+| **Brief** | What your model knows about the business: a profile, and reference files to look at. |
 | **Stitch** | One element in a Pattern: a text box, an image slot, a shape. |
 | **Knit** | The verb for producing output. "Knit 12 posts from this Pattern." |
 | **Part** | A reusable fragment smaller than a Pattern, such as a lower-third or a logo sting. |
 
 ## How they fit together
 
-A Part is made of Stitches. A Pattern is made of Stitches and Parts. A Pattern uses one Swatch and draws on your Yarn. You Knit a Pattern to get files.
+A Part is made of Stitches. A Pattern is made of Stitches and Parts. A Pattern uses one Swatch and draws on your Yarn. You Knit a Pattern to get files. The Brief is what your model reads to know what to say.
 
 ## Locked and free
 

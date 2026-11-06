@@ -13,7 +13,7 @@
 import { tx } from "./db.ts";
 import { newId } from "./ids.ts";
 import type { Store } from "./store.ts";
-import type { AgentCall, AgentState, AgentWhere } from "./types.ts";
+import type { AgentCall, AgentLive, AgentState, AgentWhere } from "./types.ts";
 
 const KEEP = 30;
 // A call that never said it ended: its process stopped. A knit that waits can run long, so this is generous.
@@ -35,7 +35,34 @@ export function agentState(store: Store): AgentState {
   return {
     paused: read(store, "agent.paused") === "1",
     calls: calls.map((c) => (c.state === "running" && now - Date.parse(c.startedAt) > STALE_MS ? { ...c, state: "failed", note: "It stopped without saying how it went." } : c)),
+    // A run the app closed on was marked interrupted as it started again: its words went with it.
+    live: liveNow(store).filter((l) => fresh(l, now) && (!!l.ended || running(store, l.jobId))),
   };
+}
+
+// A run says it is still going at least this often, so one its process stopped with goes quiet.
+const LIVE_STALE_MS = 90_000;
+// How long a run's last words stay after it ends.
+const LIVE_ENDED_MS = 6_000;
+const fresh = (l: AgentLive, now: number) => now - Date.parse(l.at) < (l.ended ? LIVE_ENDED_MS : LIVE_STALE_MS);
+function running(store: Store, jobId: string) {
+  try { return store.getJob(jobId).status === "running"; } catch { return false; }
+}
+function liveNow(store: Store): AgentLive[] {
+  try { return JSON.parse(read(store, "agent.live") ?? "[]"); } catch { return []; }
+}
+
+/**
+ * What a run of the studio's own model is writing, as it writes it, or null to take it away. Many
+ * times a second at most a few, so it is on the models' own counter, not the library's: a
+ * word written is not a change any open window should fetch again for.
+ */
+export function agentLive(store: Store, jobId: string, live: Omit<AgentLive, "jobId" | "at"> | null) {
+  tx(store.db, () => {
+    const rest = liveNow(store).filter((l) => l.jobId !== jobId && fresh(l, Date.now()));
+    put(store, "agent.live", JSON.stringify(live ? [...rest, { ...live, jobId, at: new Date().toISOString() }].slice(-4) : rest));
+    bump(store);
+  });
 }
 
 function update(store: Store, fn: (calls: AgentCall[]) => AgentCall[]) {

@@ -8,14 +8,14 @@
 
 import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
-import { copyFile, mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { basename, extname, isAbsolute, join, resolve } from "node:path";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import sharp, { type Sharp } from "sharp";
-import type { Yarn, YarnKind, YarnMeta } from "./types.ts";
+import type { CropBox, Shelf, Yarn, YarnKind, YarnMeta } from "./types.ts";
 import { newId } from "./ids.ts";
 import { NotFoundError, ValidationError, type Store } from "./store.ts";
 import { hasTool, run } from "./proc.ts";
@@ -23,6 +23,7 @@ import { looksLikeSvg, sanitiseSvg } from "./svg.ts";
 import { readFont } from "./fonts.ts";
 import { cleanFolder, fileInto, folderNamed } from "./folders.ts";
 import { isInside } from "./folders-pure.ts";
+import { drawPdfPage, readPdf, PDF_MAX_SIDE } from "./pdf.ts";
 
 const EXT: Record<string, { kind: YarnKind; mime: string }> = {
   ".png": { kind: "image", mime: "image/png" }, ".jpg": { kind: "image", mime: "image/jpeg" }, ".jpeg": { kind: "image", mime: "image/jpeg" },
@@ -33,15 +34,24 @@ const EXT: Record<string, { kind: YarnKind; mime: string }> = {
   ".ogg": { kind: "audio", mime: "audio/ogg" }, ".aac": { kind: "audio", mime: "audio/aac" }, ".flac": { kind: "audio", mime: "audio/flac" },
   ".ttf": { kind: "font", mime: "font/ttf" }, ".otf": { kind: "font", mime: "font/otf" }, ".woff": { kind: "font", mime: "font/woff" }, ".woff2": { kind: "font", mime: "font/woff2" },
   ".txt": { kind: "copy", mime: "text/plain" }, ".md": { kind: "copy", mime: "text/markdown" },
+  ".pdf": { kind: "pdf", mime: "application/pdf" },
 };
-export const SUPPORTED = "PNG, JPG, WebP, GIF, AVIF, SVG, MP4, MOV, WebM, MP3, WAV, M4A, OGG, TTF, OTF, WOFF, WOFF2 or a text file";
+export const SUPPORTED = "PNG, JPG, WebP, GIF, AVIF, SVG, MP4, MOV, WebM, MP3, WAV, M4A, OGG, TTF, OTF, WOFF, WOFF2, PDF or a text file";
+/** A shelf, as a person reads it. */
+export const SHELF_NAME: Record<Shelf, string> = { yarn: "Yarn", reference: "the reference" };
+const KIND_WORD: Record<YarnKind, string> = { image: "a picture", video: "a video", audio: "a sound", font: "a font", copy: "copy", pdf: "a PDF" };
+export function cleanShelf(s: unknown): Shelf {
+  if (s === undefined || s === null || s === "" || s === "yarn") return "yarn";
+  if (s === "reference") return "reference";
+  throw new ValidationError("A file is in Yarn or in the reference: say yarn or reference.");
+}
 export const DEFAULT_MAX_BYTES = 2 * 1024 ** 3;
 
 type Row = Record<string, unknown>;
 
 function toYarn(r: Row): Yarn {
   return {
-    id: r.id as string, projectId: r.project_id as string, kind: r.kind as YarnKind, name: r.name as string, file: r.file as string,
+    id: r.id as string, projectId: r.project_id as string, kind: r.kind as YarnKind, shelf: (r.shelf as Shelf) ?? "yarn", name: r.name as string, file: r.file as string,
     originalName: r.original_name as string, mime: r.mime as string, bytes: Number(r.bytes), hash: r.hash as string,
     width: r.width == null ? undefined : Number(r.width), height: r.height == null ? undefined : Number(r.height),
     durationMs: r.duration_ms == null ? undefined : Number(r.duration_ms),
@@ -102,11 +112,12 @@ export function getYarn(store: Store, id: string): Yarn {
   return toYarn(r);
 }
 
-/** `folder`: only what is in that folder, or in the folders inside it. */
-export function listYarn(store: Store, projectId: string, f: { kind?: string; q?: string; tag?: string; folder?: string; deleted?: boolean } = {}): Yarn[] {
-  const rows = (store.db.prepare(`select * from yarn where project_id = ? and deleted_at is ${f.deleted ? "not null" : "null"} order by created_at desc, rowid desc`).all(projectId) as Row[]).map(toYarn);
+/** `folder`: only what is in that folder, or in the folders inside it. `shelf`: Yarn, unless it says the reference. */
+export function listYarn(store: Store, projectId: string, f: { kind?: string; q?: string; tag?: string; folder?: string; deleted?: boolean; shelf?: Shelf } = {}): Yarn[] {
+  const shelf = cleanShelf(f.shelf);
+  const rows = (store.db.prepare(`select * from yarn where project_id = ? and shelf = ? and deleted_at is ${f.deleted ? "not null" : "null"} order by created_at desc, rowid desc`).all(projectId, shelf) as Row[]).map(toYarn);
   const q = f.q?.trim().toLowerCase();
-  const folder = folderNamed(store, projectId, "yarn", f.folder);
+  const folder = folderNamed(store, projectId, shelf, f.folder);
   return rows.filter((y) => (!f.kind || y.kind === f.kind) && (!f.tag || y.tags.includes(f.tag)) && isInside(y.folder, folder) && (!q || y.name.toLowerCase().includes(q) || y.tags.some((t) => t.includes(q))));
 }
 
@@ -130,7 +141,7 @@ export function deleteYarn(store: Store, id: string) {
   const y = getYarn(store, id);
   store.write(() => {
     store.db.prepare("update yarn set deleted_at = ?, updated_at = ? where id = ?").run(new Date().toISOString(), new Date().toISOString(), id);
-    store.logRow(y.projectId, "human", "yarn.deleted", y.name, null);
+    store.logRow(y.projectId, "human", "yarn.deleted", y.name, { shelf: y.shelf });
   });
 }
 export function undeleteYarn(store: Store, id: string) {
@@ -145,17 +156,28 @@ export async function purgeDeletedYarn(store: Store, olderThanMs = 24 * 3600_000
     const t = yarnThumbPath(store, y);
     if (t) await rm(t, { force: true });
     await rm(largePath(store, y), { force: true });
+    await dropDrawn(store, y);
     store.write(() => store.db.prepare("delete from yarn where id = ?").run(y.id));
   }
   return rows.length;
 }
 
-export async function createCopy(store: Store, projectId: string, input: { name: string; text: string; tags?: string[]; folder?: string }, actor: ImportOptions["actor"] = "human"): Promise<{ yarn: Yarn; existing: boolean }> {
+/** What was made from a file besides its thumbnail, named for it: a PDF's text and its pages, drawn. */
+async function dropDrawn(store: Store, y: Pick<Yarn, "id" | "projectId">, keepHash?: string) {
+  const dir = store.paths.yarnDir(y.projectId);
+  for (const sub of [".text", ".thumbs"]) {
+    const names = await readdir(join(dir, sub)).catch(() => [] as string[]);
+    for (const n of names) if (n.startsWith(`${y.id}-`) && /-p\d+-|\.json$/.test(n) && !(keepHash && n.startsWith(`${y.id}-${keepHash.slice(0, 10)}`))) await rm(join(dir, sub, n), { force: true });
+  }
+}
+
+export async function createCopy(store: Store, projectId: string, input: { name: string; text: string; tags?: string[]; folder?: string; shelf?: Shelf }, actor: ImportOptions["actor"] = "human"): Promise<{ yarn: Yarn; existing: boolean }> {
   const text = String(input.text ?? "");
   if (!text.trim()) throw new ValidationError("Write some copy first.");
   cleanFolder(input.folder);
+  const shelf = cleanShelf(input.shelf);
   const tmp = await writeTemp(store, projectId, Buffer.from(text, "utf8"));
-  return importYarn(store, projectId, tmp, `${input.name || "Copy"}.txt`, { name: input.name || "Copy", tags: input.tags, folder: input.folder, actor });
+  return importYarn(store, projectId, tmp, `${input.name || "Copy"}.txt`, { name: input.name || (shelf === "reference" ? "Note" : "Copy"), tags: input.tags, folder: input.folder, actor, shelf });
 }
 
 /**
@@ -221,9 +243,17 @@ async function probe(file: string): Promise<{ durationMs?: number; width?: numbe
   return { durationMs: Number.isFinite(dur) ? Math.round(dur * 1000) : undefined, width: v ? Number(v.width) : undefined, height: v ? Number(v.height) : undefined, fps: den ? Math.round((num / den) * 100) / 100 : undefined, hasAudio: !!a, hasVideo: !!v };
 }
 
-/** `folder`: the Yarn folder a new file goes in, made when it is not there. A file already in Yarn stays where it is. */
-export interface ImportOptions { name?: string; tags?: string[]; folder?: string; replaceId?: string; maxBytes?: number; actor?: "human" | "model" | "import"; }
+/**
+ * `folder`: the folder a new file goes in, made when it is not there. A file already there stays
+ * where it is. `shelf`: Yarn, or the Brief's reference, each with folders of its own. The same
+ * file may be on both: the reference is what a model looks at, Yarn what a pattern uses.
+ */
+export interface ImportOptions { name?: string; tags?: string[]; folder?: string; replaceId?: string; maxBytes?: number; actor?: "human" | "model" | "import"; shelf?: Shelf; /** Set by cropToYarn: what it was cut from. */ from?: YarnMeta["from"]; /** Set by the engine's site pictures: the page it shows. */ site?: YarnMeta["site"]; /** Not said in the project's Activity: a batch of many says what it did once. */ quiet?: boolean; }
 export interface ImportResult { yarn: Yarn; existing: boolean; }
+
+// A PDF's text is kept beside it, page by page, not in its row: a long one is megabytes, and
+// every list of Yarn would carry it.
+const pdfTextPath = (store: Store, y: Pick<Yarn, "id" | "projectId" | "hash">) => join(store.paths.yarnDir(y.projectId), ".text", `${y.id}-${y.hash.slice(0, 10)}.json`);
 
 /**
  * Take a finished file at `tmpPath` and make it Yarn. The file is MOVED into the
@@ -231,12 +261,17 @@ export interface ImportResult { yarn: Yarn; existing: boolean; }
  * caller never has to clean up after a failure.
  */
 export async function importYarn(store: Store, projectId: string, tmpPath: string, originalName: string, opts: ImportOptions = {}): Promise<ImportResult> {
+  let pdfTexts: string[] | undefined;
   try {
     store.getProject(projectId);
     cleanFolder(opts.folder);
+    const replacing = opts.replaceId ? getYarn(store, opts.replaceId) : undefined;
+    const shelf = replacing?.shelf ?? cleanShelf(opts.shelf);
     const ext = extname(originalName).toLowerCase();
     const spec = EXT[ext];
     if (!spec) throw new ValidationError(`knitted cannot use ${ext || "that kind of file"} yet. Try ${SUPPORTED}.`);
+    // What uses a file uses it as what it is: a picture's slot cannot show a PDF.
+    if (replacing && replacing.kind !== spec.kind) throw new ValidationError(`${replacing.name} is ${KIND_WORD[replacing.kind]}, and that is ${KIND_WORD[spec.kind]}. Replace it with ${KIND_WORD[replacing.kind]}, or add the new file on its own.`);
     const bytes = (await stat(tmpPath)).size;
     const max = opts.maxBytes ?? store.getSetting("yarn.maxBytes", DEFAULT_MAX_BYTES);
     if (bytes === 0) throw new ValidationError("That file is empty.");
@@ -244,7 +279,7 @@ export async function importYarn(store: Store, projectId: string, tmpPath: strin
 
     const hash = await sha256(tmpPath);
     if (!opts.replaceId) {
-      const dup = store.db.prepare("select * from yarn where project_id = ? and hash = ? and deleted_at is null limit 1").get(projectId, hash) as Row | undefined;
+      const dup = store.db.prepare("select * from yarn where project_id = ? and shelf = ? and hash = ? and deleted_at is null limit 1").get(projectId, shelf, hash) as Row | undefined;
       if (dup) { await rm(tmpPath, { force: true }); return { yarn: toYarn(dup), existing: true }; }
     }
 
@@ -315,12 +350,34 @@ export async function importYarn(store: Store, projectId: string, tmpPath: strin
       if (text.includes("\u0000")) throw new ValidationError("That does not look like a text file.");
       if (bytes > 1024 * 1024) throw new ValidationError("Copy over 1MB is probably not copy. Split it up.");
       meta.text = text;
+    } else if (spec.kind === "pdf") {
+      const buf = await readFile(tmpPath);
+      if (!buf.subarray(0, 1024).toString("latin1").includes("%PDF-")) throw new ValidationError("That file says it is a PDF but is not one.");
+      const pdf = await readPdf(buf);
+      width = Math.round(pdf.width); height = Math.round(pdf.height);
+      meta.pages = pdf.pages;
+      pdfTexts = pdf.texts;
+      meta.textChars = pdf.texts.reduce((n, t) => n + t.length, 0);
+      if (!meta.textChars) warn("This PDF has no text in it, only pictures of pages, like a scan. Your model can look at its pages, but cannot read it as text.");
+      try {
+        const page = await drawPdfPage(buf, 0, 640);
+        const img = sharp(page.data, { raw: { width: page.width, height: page.height, channels: 4 } });
+        await img.clone().resize(320, 320, { fit: "inside" }).webp({ quality: 78 }).toFile(`${thumbBase}.webp`);
+        meta.thumb = `${id}.webp`;
+        meta.colors = (await dominantColors(img)).colors;
+      } catch { warn("Its first page could not be drawn, so it has no picture here."); }
     }
     if (!meta.warnings!.length) delete meta.warnings;
 
+    if (opts.from) meta.from = opts.from;
+    if (opts.site) meta.site = opts.site;
+
     await mkdir(dir, { recursive: true });
-    let prior: Yarn | undefined;
-    if (opts.replaceId) prior = getYarn(store, opts.replaceId);
+    const prior = replacing;
+    if (pdfTexts) {
+      await mkdir(join(dir, ".text"), { recursive: true });
+      await writeFile(pdfTextPath(store, { id, projectId, hash }), JSON.stringify({ pages: pdfTexts }));
+    }
     try { await rename(tmpPath, final); } catch { await copyFile(tmpPath, final); await rm(tmpPath, { force: true }); }
 
     const now = new Date().toISOString();
@@ -331,19 +388,152 @@ export async function importYarn(store: Store, projectId: string, tmpPath: strin
         store.db.prepare("update yarn set file = ?, original_name = ?, mime = ?, bytes = ?, hash = ?, width = ?, height = ?, duration_ms = ?, meta = ?, updated_at = ? where id = ?")
           .run(file, basename(originalName), spec.mime, bytes, hash, width ?? null, height ?? null, durationMs ?? null, JSON.stringify(meta), now, id);
       } else {
-        store.db.prepare("insert into yarn (id, project_id, kind, name, file, original_name, mime, bytes, hash, width, height, duration_ms, tags, folder, meta, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-          .run(id, projectId, spec.kind, name, file, basename(originalName), spec.mime, bytes, hash, width ?? null, height ?? null, durationMs ?? null, JSON.stringify(tags), fileInto(store, projectId, "yarn", opts.folder), JSON.stringify(meta), now, now);
-        store.logRow(projectId, opts.actor ?? "human", "yarn.imported", name, { kind: spec.kind });
+        store.db.prepare("insert into yarn (id, project_id, kind, shelf, name, file, original_name, mime, bytes, hash, width, height, duration_ms, tags, folder, meta, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+          .run(id, projectId, spec.kind, shelf, name, file, basename(originalName), spec.mime, bytes, hash, width ?? null, height ?? null, durationMs ?? null, JSON.stringify(tags), fileInto(store, projectId, shelf, opts.folder), JSON.stringify(meta), now, now);
+        if (!opts.quiet) store.logRow(projectId, opts.actor ?? "human", "yarn.imported", name, { kind: spec.kind, shelf, ...(opts.from ? { from: opts.from.name } : {}) });
       }
       store.db.prepare("update projects set updated_at = ? where id = ?").run(now, projectId);
     });
     if (prior && prior.file !== file) await rm(yarnPath(store, prior), { force: true });
-    if (prior && prior.hash !== hash) await rm(largePath(store, prior), { force: true });
+    if (prior && prior.hash !== hash) { await rm(largePath(store, prior), { force: true }); await dropDrawn(store, prior, hash); }
     return { yarn: getYarn(store, id), existing: false };
   } catch (e) {
     await rm(tmpPath, { force: true }).catch(() => {});
     throw e;
   }
+}
+
+// ── a PDF's pages and text ───────────────────────────────────────────────────
+// The sizes a page is drawn at, each kept once it is made: a list's picture, a page to read,
+// one to look closely at, and the most a model is sent.
+const PAGE_SIZES = [320, 800, 1600, 2400];
+
+function pagesOf(y: Yarn, page: number): void {
+  if (y.kind !== "pdf") throw new ValidationError(`${y.name} is ${KIND_WORD[y.kind]}, with no pages.`);
+  const n = y.meta.pages ?? 1;
+  if (!Number.isInteger(page) || page < 1 || page > n) throw new ValidationError(`${y.name} has ${n} page${n === 1 ? "" : "s"}. Ask for one from 1 to ${n}.`);
+}
+
+/** A PDF's text, page by page, the first page first. A page with none was a picture, like a scan. */
+export async function pdfText(store: Store, y: Yarn): Promise<string[]> {
+  if (y.kind !== "pdf") throw new ValidationError(`${y.name} is ${KIND_WORD[y.kind]}, not a PDF.`);
+  const at = pdfTextPath(store, y);
+  try { return (JSON.parse(await readFile(at, "utf8")) as { pages: string[] }).pages; }
+  catch { /* not kept beside it: read from the PDF, and kept now */ }
+  const { texts } = await readPdf(await readFile(yarnPath(store, y)));
+  await mkdir(join(at, ".."), { recursive: true });
+  await writeFile(at, JSON.stringify({ pages: texts }));
+  return texts;
+}
+
+/**
+ * One page of a PDF as a picture, about `px` on its longest side (the next size up it is kept
+ * at), drawn the first time it is asked for. Pages count from 1, as a person counts them.
+ */
+export async function pdfPagePath(store: Store, y: Yarn, page: number, px = 1600): Promise<string> {
+  pagesOf(y, page);
+  const size = PAGE_SIZES.find((s) => s >= px) ?? PAGE_SIZES.at(-1)!;
+  const out = join(store.paths.yarnDir(y.projectId), ".thumbs", `${y.id}-${y.hash.slice(0, 10)}-p${page}-${size}.webp`);
+  try { await stat(out); return out; } catch { /* not drawn yet */ }
+  const drawn = await drawPdfPage(await readFile(yarnPath(store, y)), page - 1, size);
+  await mkdir(join(out, ".."), { recursive: true });
+  const part = `${out}.${Math.random().toString(36).slice(2)}.part`;   // two requests at once each write their own
+  try {
+    await sharp(drawn.data, { raw: { width: drawn.width, height: drawn.height, channels: 4 } }).webp({ quality: 82 }).toFile(part);
+    await rename(part, out);
+  } catch (e) { await rm(part, { force: true }); throw e; }
+  return out;
+}
+
+// ── a part of a picture, cut out ─────────────────────────────────────────────
+function cleanBox(b: unknown): CropBox {
+  const o = (b ?? {}) as Record<string, unknown>;
+  const n = (k: string) => { const v = Number(o[k]); if (!Number.isFinite(v)) throw new ValidationError("Say which part to keep as x, y, w and h, each a fraction from 0 to 1 of the width or height, from the top left."); return v; };
+  let x = n("x"), y = n("y"), w = n("w"), h = n("h");
+  x = Math.min(1, Math.max(0, x)); y = Math.min(1, Math.max(0, y));
+  w = Math.min(1 - x, Math.max(0, w)); h = Math.min(1 - y, Math.max(0, h));
+  if (w <= 0 || h <= 0) throw new ValidationError("That part has no size. Frame some of the picture.");
+  return { x, y, w, h };
+}
+
+/** A picture's pixels the right way up, or a PDF page's drawn PDF_MAX_SIDE on its longest side: what a crop or a look cuts from. */
+async function pixelsOf(store: Store, src: Yarn, asked: number | undefined): Promise<{ img: Sharp; W: number; H: number; page?: number }> {
+  if (src.kind === "pdf") {
+    const page = asked ?? 1;
+    pagesOf(src, page);
+    const drawn = await drawPdfPage(await readFile(yarnPath(store, src)), page - 1, PDF_MAX_SIDE);
+    return { img: sharp(drawn.data, { raw: { width: drawn.width, height: drawn.height, channels: 4 } }), W: drawn.width, H: drawn.height, page };
+  }
+  if (asked !== undefined && asked !== 1) throw new ValidationError(`${src.name} is a picture, with no pages.`);
+  const file = yarnPath(store, src);
+  let density: number | undefined;
+  if (src.mime === "image/svg+xml") {
+    // A drawing has no pixels of its own: drawn big enough that the part kept is sharp.
+    const m = await sharp(file).metadata();
+    density = Math.min(2400, Math.max(72, Math.round((72 * PDF_MAX_SIDE) / Math.max(m.width ?? 1, m.height ?? 1, 1))));
+  }
+  const m = await sharp(file, { animated: false, ...(density ? { density } : {}) }).metadata();
+  // The picture the right way up, as it is shown: a phone's photo can be stored on its side.
+  const turned = (m.orientation ?? 1) >= 5;
+  return { img: sharp(file, { animated: false, ...(density ? { density } : {}) }).autoOrient(), W: (turned ? m.height : m.width) ?? 0, H: (turned ? m.width : m.height) ?? 0 };
+}
+
+export interface CropOptions {
+  box: CropBox;
+  /** A PDF's page, from 1. */
+  page?: number;
+  name?: string; tags?: string[];
+  /** Where the new picture goes: Yarn unless it says the reference, and the folder it was in when that is the same shelf. */
+  shelf?: Shelf; folder?: string;
+  actor?: ImportOptions["actor"];
+}
+
+/**
+ * A new picture cut from a picture, or from a page of a PDF: the part `box` frames, with every
+ * pixel the original has there (a PDF's page is drawn PDF_MAX_SIDE pixels on its longest side
+ * to cut from). The original is not changed, and the new one says where it came from.
+ */
+export async function cropToYarn(store: Store, sourceId: string, o: CropOptions): Promise<ImportResult> {
+  const src = getYarn(store, sourceId);
+  if (src.deletedAt) throw new NotFoundError(`${src.name} is not in ${SHELF_NAME[src.shelf]} any more.`);
+  if (src.kind !== "image" && src.kind !== "pdf") throw new ValidationError(`Only a picture or a PDF can be cropped, and ${src.name} is ${KIND_WORD[src.kind]}.`);
+  const box = cleanBox(o.box);
+  const shelf = cleanShelf(o.shelf);
+  cleanFolder(o.folder);
+  const { img, W, H, page } = await pixelsOf(store, src, o.page);
+  const left = Math.min(W - 1, Math.round(box.x * W)), top = Math.min(H - 1, Math.round(box.y * H));
+  const width = Math.max(1, Math.min(W - left, Math.round(box.w * W))), height = Math.max(1, Math.min(H - top, Math.round(box.h * H)));
+  if (width < 8 || height < 8) throw new ValidationError(`That part would be ${width} by ${height} pixels, too small to use. Frame more of it.`);
+  const jpeg = src.mime === "image/jpeg";
+  const cut = img.extract({ left, top, width, height });
+  const tmp = await writeTemp(store, src.projectId, await (jpeg ? cut.jpeg({ quality: 92 }) : cut.png()).toBuffer());
+  const name = o.name?.trim() || (page ? `${src.name}, page ${page}` : `${src.name}, cropped`);
+  const folder = o.folder ?? (shelf === src.shelf ? src.folder || undefined : undefined);
+  return importYarn(store, src.projectId, tmp, `${name}${jpeg ? ".jpg" : ".png"}`, { name, tags: o.tags ?? src.tags, folder, shelf, actor: o.actor, from: { id: src.id, name: src.name, ...(page ? { page } : {}), box } });
+}
+
+// The most a model is sent of a picture on its longest side, and how tall a part of a long one
+// is, for its width: a page pictured the whole way down is shown a screen or two at a time.
+const VIEW_SIDE = 1568;
+const VIEW_TALL = 2;
+
+export interface YarnView { data: Buffer; mime: "image/jpeg"; width: number; height: number; box: CropBox; page?: number; pages?: number; more: boolean }
+
+/**
+ * A picture, or a page of a PDF, for a model to look at: the part `box` frames, or the whole of
+ * it, or the top of one much taller than it is wide (`more` says there is more below, and the
+ * box to ask for the next part is the one after this). Never kept: it is made each time.
+ */
+export async function viewYarn(store: Store, id: string, o: { page?: number; box?: CropBox } = {}): Promise<YarnView> {
+  const src = getYarn(store, id);
+  if (src.kind !== "image" && src.kind !== "pdf") throw new ValidationError(`${src.name} is ${KIND_WORD[src.kind]}, not a picture or a PDF.`);
+  const { img, W, H, page } = await pixelsOf(store, src, o.page);
+  const box = o.box ? cleanBox(o.box) : H / W > VIEW_TALL * 1.25 ? { x: 0, y: 0, w: 1, h: (W * VIEW_TALL) / H } : { x: 0, y: 0, w: 1, h: 1 };
+  const left = Math.min(W - 1, Math.round(box.x * W)), top = Math.min(H - 1, Math.round(box.y * H));
+  const width = Math.max(1, Math.min(W - left, Math.round(box.w * W))), height = Math.max(1, Math.min(H - top, Math.round(box.h * H)));
+  const { data, info } = await img.extract({ left, top, width, height }).resize(VIEW_SIDE, VIEW_SIDE, { fit: "inside", withoutEnlargement: true })
+    .flatten({ background: "#ffffff" }).jpeg({ quality: 85 }).toBuffer({ resolveWithObject: true });
+  return { data, mime: "image/jpeg", width: info.width, height: info.height, box, ...(page ? { page, pages: src.meta.pages ?? 1 } : {}), more: box.y + box.h < 0.999 };
 }
 
 // ── from a URL ───────────────────────────────────────────────────────────────

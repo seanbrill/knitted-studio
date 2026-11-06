@@ -208,6 +208,83 @@ test("reload keeps everything: the editor autosaves, nothing is lost", async () 
   assert.ok((await getPattern()).stitches.length >= 4);
 });
 
+/** The canvas and the frame on it, on screen. */
+const boxes = async () => ({ view: await page.getByTestId("canvas-view").boundingBox(), frame: await page.getByTestId("canvas-frame").boundingBox() });
+
+test("scrolling moves the canvas but never loses the frame, and a pinch zooms gently about the pointer", async () => {
+  await openEditor();
+  for (let i = 0; i < 6; i++) await page.keyboard.press("Control+=");
+  let { view, frame } = await boxes();
+  assert.ok(frame.height > view.height, "zoomed in, the frame is bigger than the canvas");
+  const mid = { x: view.x + view.width / 2, y: view.y + view.height / 2 };
+  await page.mouse.move(mid.x, mid.y);
+  // However far it is scrolled, an edge of the frame comes no more than 48px in from the canvas's edge.
+  await page.mouse.wheel(0, 100000);
+  ({ view, frame } = await boxes());
+  assert.ok(frame.y + frame.height >= view.y + view.height - 49 && frame.y + frame.height <= view.y + view.height, "the bottom of the frame stays in reach");
+  await page.mouse.wheel(0, -100000);
+  ({ view, frame } = await boxes());
+  assert.ok(frame.y <= view.y + 49 && frame.y >= view.y, "and so does the top");
+  // Dragging with the middle button moves it by as much as the pointer moved.
+  const before = frame.y;
+  await page.mouse.down({ button: "middle" }); await page.mouse.move(mid.x, mid.y - 120, { steps: 6 }); await page.mouse.up({ button: "middle" });
+  ({ view, frame } = await boxes());
+  assert.ok(Math.abs(frame.y - (before - 120)) < 3, `dragged up 120px, moved ${before - frame.y}px`);
+  // One step of a pinch zooms a little, and the point under the pointer stays where it is.
+  // The drag left the pointer 120px up: back to the middle, where the point is measured.
+  await page.mouse.move(mid.x, mid.y);
+  const g1 = await geo();
+  const u1 = { x: (mid.x - g1.x) / g1.scale, y: (mid.y - g1.y) / g1.scale };
+  await page.keyboard.down("Control"); await page.mouse.wheel(0, -100); await page.keyboard.up("Control");
+  await page.waitForFunction((w) => document.querySelector('[data-testid="canvas-overlay"]').getBoundingClientRect().width !== w, g1.width);
+  const g2 = await geo();
+  assert.ok(g2.scale / g1.scale > 1 && g2.scale / g1.scale <= 1.081, `zoomed by ${g2.scale / g1.scale}`);
+  assert.ok(Math.abs((mid.x - g2.x) / g2.scale - u1.x) * g2.scale < 2 && Math.abs((mid.y - g2.y) / g2.scale - u1.y) * g2.scale < 2, "the point under the pointer stayed put");
+  // Fit puts the whole frame back in view, in the middle.
+  await page.keyboard.press("Control+0");
+  await page.getByRole("button", { name: "Fit to screen" }).filter({ hasText: "Fit" }).waitFor();
+  ({ view, frame } = await boxes());
+  assert.ok(frame.y >= view.y && frame.y + frame.height <= view.y + view.height && Math.abs(frame.x - view.x - (view.x + view.width - frame.x - frame.width)) < 2);
+});
+
+test("both side bars fold away, stay folded after a reload, and come back with Ctrl+\\", async () => {
+  await openEditor();
+  const wide = (await page.getByTestId("canvas-view").boundingBox()).width;
+  await page.getByRole("button", { name: "Hide the panel" }).click();
+  await page.getByRole("button", { name: "Hide the Inspector" }).click();
+  assert.equal(await page.getByRole("complementary", { name: "patterns panel" }).count(), 0);
+  assert.equal(await page.getByRole("complementary", { name: "Inspector" }).count(), 0);
+  assert.ok((await page.getByTestId("canvas-view").boundingBox()).width > wide + 400, "the canvas has the room");
+  await openEditor();
+  await page.getByRole("button", { name: "Show the panel" }).waitFor();
+  await page.getByRole("button", { name: "Show the Inspector" }).waitFor();
+  assert.equal(await page.getByRole("complementary", { name: "Inspector" }).count(), 0, "remembered");
+  await page.keyboard.press("Control+\\");
+  await page.getByRole("complementary", { name: "patterns panel" }).waitFor();
+  await page.getByRole("complementary", { name: "Inspector" }).waitFor();
+  await openEditor();
+  await page.getByRole("complementary", { name: "Inspector" }).waitFor();
+  // A tool pressed again folds its panel; pressed once more, it opens it.
+  await page.getByRole("button", { name: "Patterns", exact: true }).click();
+  assert.equal(await page.getByRole("complementary", { name: "patterns panel" }).count(), 0);
+  await page.getByRole("button", { name: "Patterns", exact: true }).click();
+  await page.getByRole("complementary", { name: "patterns panel" }).waitFor();
+});
+
+test("the trail says where the pattern is, renames it in place, and goes back up", async () => {
+  await openEditor();
+  const trail = page.getByRole("navigation", { name: "Breadcrumbs" });
+  await trail.getByRole("link", { name: "Editor e2e" }).waitFor();
+  assert.deepEqual(await trail.getByRole("link").allInnerTexts(), ["Projects", "Editor e2e", "Patterns"]);
+  const name = trail.getByLabel("Pattern name");
+  await name.fill("Renamed in the trail");
+  await name.press("Enter");
+  await serverHas(studio, `/api/patterns/${patternId}`, (p) => p.name === "Renamed in the trail");
+  await trail.getByRole("link", { name: "Editor e2e" }).click();
+  await page.waitForURL(`**/projects/${projectId}`);
+  await openEditor();
+});
+
 for (const theme of ["day", "night"]) {
   test(`no serious accessibility violations in the editor in ${theme}`, async () => {
     await openEditor();

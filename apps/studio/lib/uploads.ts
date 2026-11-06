@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { uploadYarn, type UploadHandle } from "@knitted/core/client";
+import type { Shelf } from "@knitted/core";
 
 export type UploadStatus = "queued" | "uploading" | "done" | "existing" | "error" | "cancelled";
 /** `into`: the Yarn folder it was added in. `folder`, once it is up: the one it is in, which for a file already there is where it was. */
@@ -13,9 +14,9 @@ const CONCURRENCY = 2;
  * An upload queue: a few at a time, each with its own progress and cancel, and
  * an honest end state for every file (added, already there, or why it failed).
  * Each file goes into the Yarn folder it was added in, wherever the person is by
- * the time it uploads.
+ * the time it uploads, on the shelf it was added to: Yarn, or the Brief's reference.
  */
-export function useUploads(projectId: string, onSettled: () => void) {
+export function useUploads(projectId: string, onSettled: () => void, shelf: Shelf = "yarn") {
   const [items, setItems] = useState<UploadItem[]>([]);
   const queue = useRef<{ id: number; file: File; folder: string }[]>([]);
   const handles = useRef(new Map<number, UploadHandle>());
@@ -30,14 +31,14 @@ export function useUploads(projectId: string, onSettled: () => void) {
       const { id, file, folder } = queue.current.shift()!;
       running.current++;
       patch(id, { status: "uploading" });
-      const h = uploadYarn(projectId, file, (f) => patch(id, { progress: f }), { folder });
+      const h = uploadYarn(projectId, file, (f) => patch(id, { progress: f }), { folder, shelf });
       handles.current.set(id, h);
       h.promise
         .then((r) => patch(id, { status: r.existing ? "existing" : "done", progress: 1, yarnId: r.yarn.id, folder: r.yarn.folder }))
         .catch((e: Error & { kind?: string }) => patch(id, e.kind === "cancelled" ? { status: "cancelled" } : { status: "error", error: e.message }))
         .finally(() => { handles.current.delete(id); running.current--; onSettled(); pumpRef.current(); });
     }
-  }, [projectId, patch, onSettled]);
+  }, [projectId, patch, onSettled, shelf]);
   useEffect(() => { pumpRef.current = pump; });
 
   const add = useCallback((files: File[], folder = "") => {

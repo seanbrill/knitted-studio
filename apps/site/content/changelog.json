@@ -1,5 +1,22 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
+  "next": {
+    "title": "A brief for every project",
+    "items": [
+      "A Brief for every project: what your model knows about the business. Sync it with the business's website and knitted reads the public pages, has your model write a profile from them (who they are, what they offer and to whom, how they sound, the facts to get right), and pictures every page on a desktop and a phone. Or write the profile yourself. Your model reads it before it writes, and a change your model makes to it can be undone in the Brief tab.",
+      "Give a website when you make a project, and the project starts from it: its swatch read from the site, a profile, and pictures of every page. Sync again at any time to bring all of it up to date: a page pictured before is replaced where it is.",
+      "The Brief's reference is a shelf of files to look at and read, like menus, brochures and pictures of the website, kept apart from the Yarn you put in patterns. Move a file between the two with Move to the Brief and Move to Yarn.",
+      "PDFs can go in Yarn and the reference. Turn their pages, read their words, and cut a page, or a part of a picture, out as a new picture in Yarn.",
+      "Every section can be shown as a grid or a list, sorted and searched: Patterns, Yarn, the reference, Swatch, Parts and Knits. Each remembers its choice on this computer.",
+      "One trail at the top of every project page says where you are, from Projects to the folder you are in. Each tab says what it is for, and more buttons say what they do when you point at them.",
+      "Your model's replies are formatted, with headings, lists and code, and yours and its are easy to tell apart.",
+      "In the editor, the canvas cannot be scrolled or panned out of reach, panning and zooming are gentler, and both side bars fold away (Ctrl or Cmd and \\ folds both).",
+      "While your model works on a pattern, the stitches it is changing are outlined with its name, and a small bubble over the canvas shows what it is thinking and doing as it happens, even with the chat closed.",
+      "New tools for your model: get_brief, set_profile, read_website, capture_website, view_yarn and crop_to_yarn. list_yarn, import_yarn and import_yarn_file take reference: true for the Brief's shelf, and move_to_folder takes referenceIds.",
+      "The bundled fonts load in the desktop app on every computer. Before, they failed on any computer but the one the app was built on.",
+      "This version adds to your library, and keeps a copy of it from before. An older knitted cannot open the library after that: it says to update."
+    ]
+  },
   "entries": [
     {
       "version": "0.1.6",

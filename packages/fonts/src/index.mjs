@@ -3,12 +3,18 @@
 // Node-only (it knows where the files are). The browser asks the studio's
 // /api/fonts routes instead of importing this.
 
+import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import manifest from "./manifest.json" with { type: "json" };
 
 export { manifest };
-export const fontsDir = join(dirname(fileURLToPath(import.meta.url)), "..", "files");
+// In the studio's server, the bundler writes in the path this file had on the computer that
+// BUILT it, and on anyone else's that path is not there: every font failed in the desktop app.
+// So the folder is looked for from where the server runs as well, apps/studio, which in the
+// app and from source has packages/fonts two folders up.
+const built = join(dirname(fileURLToPath(import.meta.url)), "..", "files");
+export const fontsDir = existsSync(built) ? built : join(process.cwd(), "..", "..", "packages", "fonts", "files");
 
 export const fontPath = (file) => join(fontsDir, file);
 export const bundledFont = (family) => manifest.find((f) => f.family === family);

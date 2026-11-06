@@ -4,3 +4,4 @@ export * from "./jobs.mjs";
 export * from "./renderer.mjs";
 export * from "./audio.mjs";
 export * from "./voiceover.mjs";
+export * from "./capture.mjs";

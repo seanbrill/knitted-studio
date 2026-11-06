@@ -15,6 +15,7 @@ const { AlignHorizontalJustifyStart, Trash2, Lock, Unlock } = icons as unknown a
 void AlignHorizontalJustifyStart; void Lock; void Unlock;
 
 const WEIGHTS = [300, 400, 500, 600, 700, 800, 900].map((w) => ({ value: String(w), label: String(w) }));
+const ALIGN_TIP = { left: "Against the left edge of the frame.", center: "In the middle, from left to right.", right: "Against the right edge of the frame.", top: "Against the top edge of the frame.", middle: "In the middle, from top to bottom.", bottom: "Against the bottom edge of the frame." } as const;
 
 export function Inspector({ fonts, onSavePart }: { fonts: string[]; onSavePart?: () => void }) {
   const st = useEditor();
@@ -29,7 +30,7 @@ export function Inspector({ fonts, onSavePart }: { fonts: string[]; onSavePart?:
       <aside aria-label="Inspector" className="inspector">
         <p className="eyebrow">Nothing selected</p>
         <p className="body-sm" style={{ color: "var(--ink-muted)", marginTop: 12 }}>Pick a stitch on the canvas. Dashed outlines are locked by the pattern; solid ones are yours to change.</p>
-        <Section title="Pattern">
+        <Section title="Pattern" hint="Its name, and the size it is knitted at.">
           <Field label="Name" htmlFor="pat-name"><Input id="pat-name" defaultValue={pattern.name} key={pattern.name} onBlur={(e) => e.target.value.trim() && e.target.value !== pattern.name && st.dispatch({ type: "setMeta", name: e.target.value }, { label: "Rename" })} /></Field>
           <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>{pattern.size.name}, {W} x {H}. {pattern.stitches.length} stitches.</p>
         </Section>
@@ -84,7 +85,7 @@ export function Inspector({ fonts, onSavePart }: { fonts: string[]; onSavePart?:
       <h2 className="h3" style={{ margin: "4px 0 var(--space-3)" }}>{one ? (one.kind === "text" ? "Text" : one.kind[0].toUpperCase() + one.kind.slice(1)) : "Selection"}</h2>
 
       {one && box && (
-        <Section title="Position and size">
+        <Section title="Position and size" hint="Where it sits and how big it is, in the pattern's pixels. R turns it.">
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             <NumberField label="X" value={box.x} onCommit={(v) => setBox({ x: v })} suffix="px" />
             <NumberField label="Y" value={box.y} onCommit={(v) => setBox({ y: v })} suffix="px" />
@@ -94,14 +95,14 @@ export function Inspector({ fonts, onSavePart }: { fonts: string[]; onSavePart?:
           </div>
         </Section>
       )}
-      <Section title="Align to frame" defaultOpen={false}>
+      <Section title="Align to frame" hint="Lines what is selected up with an edge or the middle of the pattern." defaultOpen={false}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
-          {(["left", "center", "right", "top", "middle", "bottom"] as const).map((a) => <Button key={a} size="sm" onClick={() => align(a)}>{a[0].toUpperCase() + a.slice(1)}</Button>)}
+          {(["left", "center", "right", "top", "middle", "bottom"] as const).map((a) => <Button key={a} size="sm" tip={ALIGN_TIP[a]} onClick={() => align(a)}>{a[0].toUpperCase() + a.slice(1)}</Button>)}
         </div>
       </Section>
 
       {one && (
-        <Section title="Slot">
+        <Section title="Slot" hint="A named place that Fill mode, a batch or your model writes into.">
           <Field label="Slot name" hint="What a model or a batch fills. Lowercase, like headline." htmlFor="slot-name">
             <Input id="slot-name" mono defaultValue={one.slot ?? ""} key={`${one.id}-${one.slot}`} placeholder="no slot"
               onBlur={(e) => { const v = e.target.value.trim(); if (v !== (one.slot ?? "")) st.dispatch({ type: "updateStitch", id: one.id, patch: { slot: v || undefined } as never }, { label: "Slot name" }); }} />
@@ -112,12 +113,12 @@ export function Inspector({ fonts, onSavePart }: { fonts: string[]; onSavePart?:
           </label>
         </Section>
       )}
-      {!one && <Section title="Slot"><label style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span className="body-sm">Locked to the pattern</span><Switch label="Locked to the pattern" checked={sel.every((s) => s.locked)} onCheckedChange={(locked) => st.dispatch({ type: "batch", commands: sel.map((s) => ({ type: "setLocked" as const, id: s.id, locked })) }, { label: locked ? "Lock" : "Unlock" })} /></label></Section>}
+      {!one && <Section title="Slot" hint="Locked stitches stay as the pattern has them when it is filled."><label style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span className="body-sm">Locked to the pattern</span><Switch label="Locked to the pattern" checked={sel.every((s) => s.locked)} onCheckedChange={(locked) => st.dispatch({ type: "batch", commands: sel.map((s) => ({ type: "setLocked" as const, id: s.id, locked })) }, { label: locked ? "Lock" : "Unlock" })} /></label></Section>}
 
-      {one?.kind === "part" && <Section title="Part"><PartInstanceInspector stitch={one} /></Section>}
+      {one?.kind === "part" && <Section title="Part" hint="A reusable piece. Fill its slots here, or detach it to change it freely."><PartInstanceInspector stitch={one} /></Section>}
 
       {isText && (
-        <Section title="Text">
+        <Section title="Text" hint="The words, their font, and how they sit in their box.">
           {one && <Field label="Content" htmlFor="txt-content"><Textarea id="txt-content" rows={3} defaultValue={one.content} key={`${one.id}-${one.content}`} onBlur={(e) => e.target.value !== one.content && st.dispatch({ type: "updateStitch", id: one.id, patch: { content: e.target.value } }, { label: "Edit text" })} /></Field>}
           <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>Wrap one word in *stars* for the serif accent.</p>
           <Field label="Font"><Select aria-label="Font" value={String(first.style?.fontFamily ?? "$font.display")} onValueChange={(v) => setStyle({ fontFamily: v })} options={fontOptions} /></Field>
@@ -134,7 +135,7 @@ export function Inspector({ fonts, onSavePart }: { fonts: string[]; onSavePart?:
       )}
 
       {isMedia && (
-        <Section title={same((s) => s.kind) === "video" ? "Video" : "Image"}>
+        <Section title={same((s) => s.kind) === "video" ? "Video" : "Image"} hint="Which file from Yarn, how it fills its box, and how it is graded.">
           <Field label="Yarn">
             <Select aria-label="Yarn" value={first.yarnId ?? ""} onValueChange={(v) => patchEach(() => ({ yarnId: v }), "Set image")} options={byFolder(images, (y) => ({ value: y.id, label: y.name }))} placeholder="Choose from Yarn" />
           </Field>
@@ -156,13 +157,13 @@ export function Inspector({ fonts, onSavePart }: { fonts: string[]; onSavePart?:
       )}
 
       {(isShape || isMedia) && (
-        <Section title="Fill" defaultOpen={isShape}>
+        <Section title="Fill" hint="The colour inside it, from the swatch." defaultOpen={isShape}>
           <TokenColor label="Fill colour" value={first.style?.background as string | undefined} swatch={swatch} allowNone onChange={(v) => setStyle({ background: v })} />
         </Section>
       )}
 
       {one && (
-        <Section title="Animate" defaultOpen={false}>
+        <Section title="Animate" hint="How it comes in and goes, when the pattern plays as a video." defaultOpen={false}>
           <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>Adds an animation at the playhead, then drag it on the timeline.</p>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
             {PRESETS.filter((p) => (!p.text || one.kind === "text") && (!p.image || one.kind === "image" || one.kind === "video")).map((p) => (
@@ -172,7 +173,7 @@ export function Inspector({ fonts, onSavePart }: { fonts: string[]; onSavePart?:
         </Section>
       )}
 
-      <Section title="Style" defaultOpen={false}>
+      <Section title="Style" hint="How see-through it is, its corners, border and shadow." defaultOpen={false}>
         {sl("Opacity", "opacity", 1, 0, 1, 0.01, "%", 100)}
         {sl("Corner radius", "radius", 0, 0, 0.2, 0.002, "%", 100)}
         {sl("Border", "borderWidth", 0, 0, 0.03, 0.001, "%", 100)}
@@ -181,8 +182,8 @@ export function Inspector({ fonts, onSavePart }: { fonts: string[]; onSavePart?:
       </Section>
 
       <div style={{ marginTop: "var(--space-4)", display: "grid", gap: 8 }}>
-        {onSavePart && <Button block onClick={onSavePart}>Save as part</Button>}
-        <Button variant="danger" block onClick={() => st.dispatch({ type: "batch", commands: sel.map((s) => ({ type: "removeStitch" as const, id: s.id })) }, { label: "Delete" })}><Trash2 size={14} /> Delete</Button>
+        {onSavePart && <Button block tip="Keeps what is selected as a part, to add to any pattern." onClick={onSavePart}>Save as part</Button>}
+        <Button variant="danger" block tip="Takes what is selected off the canvas. Undo brings it back." onClick={() => st.dispatch({ type: "batch", commands: sel.map((s) => ({ type: "removeStitch" as const, id: s.id })) }, { label: "Delete" })}><Trash2 size={14} /> Delete</Button>
       </div>
     </aside>
   );

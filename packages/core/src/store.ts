@@ -85,7 +85,8 @@ export class Store {
 
   private count(table: string, projectId: string): number {
     if (!this.has(table)) return 0;
-    const live = table === "yarn" ? " and deleted_at is null" : "";
+    // A project's Yarn is what is on its Yarn shelf: the Brief's reference is counted apart.
+    const live = table === "yarn" ? " and deleted_at is null and shelf = 'yarn'" : "";
     return Number((this.db.prepare(`select count(*) as n from ${table} where project_id = ?${live}`).get(projectId) as { n: number }).n);
   }
 
@@ -171,6 +172,8 @@ export class Store {
       this.db.prepare("update projects set swatch_id = ? where id = ?").run(first, copyId);
       // And so do their folders, empty ones too. Yarn and knits stay with the first project.
       this.db.prepare("insert into folders (project_id, section, path, created_at) select ?, section, path, created_at from folders where project_id = ? and section in ('patterns', 'swatches')").run(copyId, id);
+      // The brief is about the same business, so it comes too; its reference files are Yarn, and stay.
+      this.db.prepare("insert into briefs (project_id, profile, notes, source, by, built_at, site, updated_at) select ?, profile, notes, source, by, built_at, json_remove(site, '$.swatchId', '$.pictures'), ? from briefs where project_id = ?").run(copyId, t, id);
       this.logRow(copyId, opts.actor ?? "human", "project.duplicated", src.name, { from: id });
     });
     return this.getProject(copyId);

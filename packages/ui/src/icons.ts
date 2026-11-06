@@ -5,3 +5,7 @@ export {
   Shapes, Sparkles, Sun, Trash2, Type, Unlock, Upload, UploadCloud, X, Film, Music, FileText, Wand2,
   Link2, Clock, RotateCcw, RotateCw, ZoomIn, ZoomOut, Play, Pause, Mic, Package, Scissors, Undo2, Redo2, Command,
 } from "lucide-react";
+// The editor's side panels, hidden and shown again, and the way to where a model is working.
+export { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, LocateFixed, Minimize2 } from "lucide-react";
+// The Brief and its website, PDFs and cutting from them, and how a section is laid out and sorted.
+export { BookOpen, Globe, Crop, RefreshCw, ArrowUpDown, Monitor, Smartphone, ChevronLeft, File as FilePdf } from "lucide-react";

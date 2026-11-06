@@ -12,7 +12,8 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { api, type AgentEvent, type AgentJob, type ChatDetail, type ChatItem } from "@knitted/core/client";
-import { Button, ConfirmDialog, IconButton, Textarea, icons, useToast } from "@knitted/ui";
+import { Button, ConfirmDialog, IconButton, Markdown, Textarea, icons, useToast } from "@knitted/ui";
+import { useAgent } from "@/lib/agent";
 import { setCurrentChat, useCurrentChat } from "@/lib/current-chat";
 import { timeAgo, useLive } from "@/lib/hooks";
 
@@ -188,7 +189,7 @@ export function Chat({ chatId, onStarted, projectId = null, patternId, compact =
             </div>
           </div>
         ) : (
-          <ol aria-label="Conversation" style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: compact ? "var(--space-4)" : "var(--space-6)", maxWidth: compact ? undefined : 760 }}>
+          <ol aria-label="Conversation" className="chat" data-compact={compact || undefined} style={{ maxWidth: compact ? undefined : 760 }}>
             {turns.map((t) => <Turn key={t.id} job={t} latest={t === last} compact={compact} projectId={chat?.projectId ?? null} patternId={patternId} onChanged={onChanged} />)}
           </ol>
         )}
@@ -216,6 +217,16 @@ export function Chat({ chatId, onStarted, projectId = null, patternId, compact =
   );
 }
 
+/** What the model is writing as it writes it: its notes as it thinks, then its answer, until the answer is in. */
+function LiveWords({ jobId }: { jobId: string }) {
+  const live = useAgent()?.live?.find((l) => l.jobId === jobId);
+  if (!live?.text) return null;
+  // Long, it starts at a word: what came before went by already.
+  const cut = live.text.length >= 600;
+  const text = cut ? live.text.slice(live.text.search(/\s/) + 1) : live.text;
+  return <div className="chat-live" data-kind={live.kind} data-cut={cut || undefined}><Markdown text={text} className={live.kind === "note" ? "chat-note" : "chat-answer"} /></div>;
+}
+
 /** One message and its answer: what was asked, the steps taken, what changed, and, on the newest, Keep or Undo all. */
 function Turn({ job, latest, compact, projectId, patternId, onChanged }: { job: AgentJob; latest: boolean; compact: boolean; projectId: string | null; patternId?: string; onChanged?: () => void }) {
   const toast = useToast();
@@ -238,28 +249,33 @@ function Turn({ job, latest, compact, projectId, patternId, onChanged }: { job: 
     } catch (e) { setError((e as Error).message); }
   };
 
+  // The person's words on the right, in a box; the model's on the left, under its name, formatted.
   return (
-    <li style={{ display: "grid", gap: "var(--space-3)" }}>
-      <div style={{ justifySelf: compact ? "stretch" : "end", maxWidth: compact ? undefined : "80%", background: "var(--surface-sunken)", borderRadius: "var(--radius-md)", padding: "8px 12px" }}>
-        <p className={compact ? "body-sm" : "body"} style={{ margin: 0, whiteSpace: "pre-wrap" }}>{job.input?.prompt}</p>
+    <li className="chat-turn">
+      <div className="chat-you">
+        <p className="chat-you-text"><span className="sr-only">You: </span>{job.input?.prompt}</p>
       </div>
-      <div style={{ display: "grid", gap: 8 }} aria-busy={running}>
-        <p className="eyebrow" style={{ margin: 0, display: "flex", gap: 6, alignItems: "center" }}><Sparkles size={12} aria-hidden /> Your model</p>
-        {r?.text && <p className={compact ? "body-sm" : "body"} style={{ margin: 0, whiteSpace: "pre-wrap" }}>{r.text}</p>}
+      <div className="chat-model" aria-busy={running}>
+        <p className="eyebrow chat-model-name"><Sparkles size={12} aria-hidden /> Your model</p>
+        {r?.text && <Markdown text={r.text} className="chat-answer" />}
+        {running && <LiveWords jobId={job.id} />}
         {running && (
-          <p className="body-sm" style={{ margin: 0, display: "flex", gap: 8, alignItems: "center", color: "var(--ink-muted)" }}>
+          <p className="chat-working">
             <span aria-hidden className="working" style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0 }} />
             {now ? `Working: ${now.text}` : "Thinking..."}
           </p>
         )}
         {steps.length > 0 && (
-          <details open={running || undefined}>
-            <summary className="body-sm" style={{ cursor: "pointer", color: "var(--ink-muted)" }}>What it did{tools ? ` (${tools} step${tools === 1 ? "" : "s"})` : ""}</summary>
-            <ol style={{ margin: "6px 0 0", paddingLeft: 18, display: "grid", gap: 4 }} className="body-sm">
+          <details open={running || undefined} className="chat-steps">
+            <summary>What it did{tools ? ` (${tools} step${tools === 1 ? "" : "s"})` : ""}</summary>
+            <ol>
               {steps.map((s, i) => (
-                <li key={i} style={{ color: s.kind === "refused" || s.state === "failed" ? "var(--danger)" : s.kind === "say" ? "var(--ink-muted)" : undefined, whiteSpace: s.kind === "say" ? "pre-wrap" : undefined }}>
-                  {s.kind === "tool" && s.state === "done" && <><Check size={12} aria-hidden style={{ marginRight: 4, verticalAlign: "-1px", color: "var(--success)" }} /><span className="sr-only">Done: </span></>}
-                  {s.text}
+                <li key={i} data-kind={s.kind} data-state={s.state}>
+                  <span className="chat-step-mark" aria-hidden>
+                    {s.kind === "tool" ? (s.state === "done" ? <Check size={12} /> : s.state === "failed" ? <AlertTriangle size={12} /> : <span className="working" />) : s.kind === "refused" ? <X size={12} /> : null}
+                  </span>
+                  {s.kind === "tool" && <span className="sr-only">{s.state === "done" ? "Done: " : s.state === "failed" ? "Failed: " : "Working: "}</span>}
+                  {s.kind === "say" ? <Markdown text={s.text} className="chat-note" /> : <span>{s.text}</span>}
                 </li>
               ))}
             </ol>

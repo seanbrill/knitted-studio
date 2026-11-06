@@ -35,6 +35,18 @@ An older copy of knitted may still be running: the app keeps the one it started 
 
 That slot is locked by the Pattern. This is the brand lock working. Unlock it in the studio if you really mean to change it.
 
+## A sync did not write the profile
+
+Your model writes it, so it needs your Anthropic key: add it in Settings, under Model, and press **Sync again** in the Brief. The other steps run without it.
+
+## A sync took no pictures
+
+Pictures are taken in knitted's own browser, the same one knitting uses. If it is still downloading, wait for it and sync again. A page that answers with an error, or needs you to sign in, is left out, and the sync says which.
+
+## A sync read only a few pages
+
+It reads the pages that say most about the business first, up to the number you chose, and leaves alone the pages the site's robots.txt asks it not to read. A site that draws its words with scripts may show little to a reader: the sync says so, and a write-up of your own fills the gap.
+
 ## The desktop installer shows a warning
 
 Early installers have no developer certificate yet, so macOS says it could not verify knitted and Windows says it protected your PC. See the [install guide](/download/install/) for the one extra click.

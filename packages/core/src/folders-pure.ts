@@ -3,10 +3,10 @@
 //
 // A folder is a path of names, "Royalty free music/Lo-fi", and "" is the top of a
 // section. Each section has folders of its own: a Yarn folder holds Yarn, a Pattern
-// folder holds patterns.
+// folder holds patterns, and the Brief's reference has its own.
 
-export type FolderSection = "patterns" | "yarn" | "parts" | "swatches" | "knits";
-export const FOLDER_SECTIONS: FolderSection[] = ["patterns", "yarn", "parts", "swatches", "knits"];
+export type FolderSection = "patterns" | "yarn" | "parts" | "swatches" | "knits" | "reference";
+export const FOLDER_SECTIONS: FolderSection[] = ["patterns", "yarn", "parts", "swatches", "knits", "reference"];
 
 /** How deep folders go, and how long one's name may be. */
 export const FOLDER_DEPTH = 6;

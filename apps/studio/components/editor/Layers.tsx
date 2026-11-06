@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { resolveStyle, type Stitch } from "@knitted/core";
-import { icons } from "@knitted/ui";
+import { IconButton, icons } from "@knitted/ui";
 import { useEditor } from "@/lib/editor/store";
 
 const { Type, Image: ImageIcon, Shapes, Film, Music, Eye, EyeOff, Lock, Unlock, Package } = icons;
@@ -33,8 +33,11 @@ export function Layers() {
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label(s)}</span>
               {s.slot && <span className="code" style={{ color: "var(--ink-muted)" }}>{s.kind}</span>}
             </button>
-            <button className="icon-btn" style={{ width: 24, height: 24 }} aria-label={hidden ? `Show ${label(s)}` : `Hide ${label(s)}`} onClick={() => dispatch({ type: "updateStitch", id: s.id, patch: { style: { ...(s.style ?? {}), hidden: hidden ? 0 : 1 } } }, { label: "Visibility" })}>{hidden ? <EyeOff size={13} /> : <Eye size={13} />}</button>
-            <button className="icon-btn" style={{ width: 24, height: 24, color: s.locked ? "var(--ember-ink)" : undefined }} aria-label={s.locked ? `Unlock ${label(s)}` : `Lock ${label(s)} to the pattern`} aria-pressed={s.locked} disabled={mode === "fill"} onClick={() => dispatch({ type: "setLocked", id: s.id, locked: !s.locked }, { label: s.locked ? "Unlock" : "Lock" })}>{s.locked ? <Lock size={13} /> : <Unlock size={13} />}</button>
+            <IconButton style={{ width: 24, height: 24 }} label={hidden ? `Show ${label(s)}` : `Hide ${label(s)}`} hint={hidden ? "Draws it again, and knits it." : "Still in the pattern, but not drawn or knitted."}
+              onClick={() => dispatch({ type: "updateStitch", id: s.id, patch: { style: { ...(s.style ?? {}), hidden: hidden ? 0 : 1 } } }, { label: "Visibility" })}>{hidden ? <EyeOff size={13} /> : <Eye size={13} />}</IconButton>
+            <IconButton style={{ width: 24, height: 24, color: s.locked ? "var(--ember-ink)" : undefined }} label={s.locked ? `Unlock ${label(s)}` : `Lock ${label(s)} to the pattern`} pressed={s.locked} disabled={mode === "fill"}
+              hint={s.locked ? "Lets Fill mode and models change it." : "Fill mode and models leave it as it is."}
+              onClick={() => dispatch({ type: "setLocked", id: s.id, locked: !s.locked }, { label: s.locked ? "Unlock" : "Lock" })}>{s.locked ? <Lock size={13} /> : <Unlock size={13} />}</IconButton>
           </li>
         );
       })}

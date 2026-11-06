@@ -70,7 +70,7 @@ export function isActive(s: AgentState | null, now: number): boolean {
 }
 
 // Each section's page, for a call that sorts its folders.
-const SECTION_PATH: Record<FolderSection, string> = { patterns: "", yarn: "/yarn", parts: "/parts", swatches: "/swatch", knits: "/knits" };
+const SECTION_PATH: Record<FolderSection, string> = { patterns: "", yarn: "/yarn", parts: "/parts", swatches: "/swatch", knits: "/knits", reference: "/brief" };
 
 /** The page where a call works: what Follow goes to. */
 export function pathFor(c: AgentCall): string | null {
@@ -78,6 +78,7 @@ export function pathFor(c: AgentCall): string | null {
   if (!w.projectId) return null;
   const pj = `/projects/${w.projectId}`;
   if (c.tool === "knit_pattern") return `${pj}/knits`;
+  if (c.tool === "get_brief" || c.tool === "set_profile" || c.tool === "capture_website") return `${pj}/brief`;
   if (w.section) return pj + SECTION_PATH[w.section];
   if (w.patternId) return `${pj}/patterns/${w.patternId}`;
   if (w.yarnId || c.tool === "import_yarn") return `${pj}/yarn`;

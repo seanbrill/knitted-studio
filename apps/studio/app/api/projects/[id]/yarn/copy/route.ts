@@ -5,6 +5,6 @@ import { body, ok, route, store } from "@/lib/server";
 export const dynamic = "force-dynamic";
 
 export const POST = route(async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
-  const b = await body(req, z.object({ name: z.string().max(120), text: z.string().max(1_000_000), folder: z.string().max(400).optional() }));
+  const b = await body(req, z.object({ name: z.string().max(120), text: z.string().max(1_000_000), folder: z.string().max(400).optional(), shelf: z.enum(["yarn", "reference"]).optional() }));
   return ok(await createCopy(store(), (await params).id, b), 201);
 });

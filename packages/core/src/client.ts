@@ -3,7 +3,7 @@
 // The editor, the dashboard and the settings page all go through this, so a
 // route's shape lives in one place and a change to it is a type error here.
 
-import type { Actor, AgentState, ColorRole, Part, Pattern, Project, Refusal, Size, Swatch, Yarn } from "./types.ts";
+import type { Actor, AgentState, Brief, ColorRole, CropBox, Part, Pattern, Project, Refusal, Shelf, Size, Swatch, Yarn } from "./types.ts";
 import type { FolderSection } from "./folders-pure.ts";
 import type { SiteProposal } from "./site.ts";
 import type { KnitIssue, KnitRecord } from "./knits.ts";
@@ -60,14 +60,32 @@ export const api = {
     restore: (id: string, revisionId: string) => call<Pattern>("POST", `/api/patterns/${id}/revisions`, { revisionId }),
   },
   yarn: {
-    list: (projectId: string, q: { kind?: string; q?: string; tag?: string } = {}) =>
+    /** `shelf`: Yarn, unless it says the reference (the Brief's files). */
+    list: (projectId: string, q: { kind?: string; q?: string; tag?: string; shelf?: Shelf } = {}) =>
       call<Yarn[]>("GET", `/api/projects/${projectId}/yarn?${new URLSearchParams(Object.entries(q).filter(([, v]) => v) as [string, string][])}`),
     get: (id: string) => call<{ yarn: Yarn; usage: { patternId: string; patternName: string; projectId: string }[] }>("GET", `/api/yarn/${id}`),
     update: (id: string, b: { name?: string; tags?: string[] }) => call<Yarn>("PATCH", `/api/yarn/${id}`, b),
     remove: (id: string) => call<{ ok: true }>("DELETE", `/api/yarn/${id}`),
     undelete: (id: string) => call<Yarn>("POST", `/api/yarn/${id}`, { action: "undelete" }),
-    copy: (projectId: string, b: { name: string; text: string; folder?: string }) => call<{ yarn: Yarn; existing: boolean }>("POST", `/api/projects/${projectId}/yarn/copy`, b),
-    fromUrl: (projectId: string, url: string, folder?: string) => call<{ yarn: Yarn; existing: boolean }>("POST", `/api/projects/${projectId}/yarn/url`, { url, folder }),
+    copy: (projectId: string, b: { name: string; text: string; folder?: string; shelf?: Shelf }) => call<{ yarn: Yarn; existing: boolean }>("POST", `/api/projects/${projectId}/yarn/copy`, b),
+    fromUrl: (projectId: string, url: string, folder?: string, shelf?: Shelf) => call<{ yarn: Yarn; existing: boolean }>("POST", `/api/projects/${projectId}/yarn/url`, { url, folder, shelf }),
+    /** A part of a picture or a PDF's page, as a new picture: in Yarn unless `shelf` says the reference. */
+    crop: (id: string, b: { box: CropBox; page?: number; name?: string; shelf?: Shelf; folder?: string }) => call<{ yarn: Yarn; existing: boolean }>("POST", `/api/yarn/${id}/crop`, b),
+    /** A PDF's text, a page at a time, the first page first. */
+    text: (id: string) => call<{ pages: string[] }>("GET", `/api/yarn/${id}/text`),
+  },
+  /** What a model knows about the business: its profile, and the notes for whoever builds it. */
+  brief: {
+    get: (projectId: string) => call<Brief>("GET", `/api/projects/${projectId}/brief`),
+    save: (projectId: string, b: { profile?: string; notes?: string }) => call<Brief>("PUT", `/api/projects/${projectId}/brief`, b),
+    /**
+     * Sync with the website: read it, read a swatch from it, have the person's model write the
+     * profile (from the site, the reference and a write-up), and picture its pages for the reference.
+     */
+    sync: (projectId: string, b: SyncOptions) => call<SyncJob>("POST", `/api/projects/${projectId}/brief/sync`, b),
+    undo: (projectId: string) => call<Brief>("POST", `/api/projects/${projectId}/brief/undo`, {}),
+    job: (id: string) => call<SyncJob>("GET", `/api/jobs/${id}`),
+    cancel: (id: string) => call<SyncJob>("DELETE", `/api/jobs/${id}`),
   },
   swatches: {
     list: (projectId: string) => call<Swatch[]>("GET", `/api/projects/${projectId}/swatches`),
@@ -195,6 +213,8 @@ export const yarnFileUrl = (y: Pick<Yarn, "id" | "hash">) => `/api/yarn/${y.id}/
 export const yarnThumbUrl = (y: Pick<Yarn, "id" | "hash">) => `/api/yarn/${y.id}/thumb?v=${y.hash.slice(0, 10)}`;
 /** A bigger preview, 960 pixels on its longest side, for one picture shown large: a project's card. */
 export const yarnPictureUrl = (y: Pick<Yarn, "id" | "hash">) => `/api/yarn/${y.id}/thumb?size=large&v=${y.hash.slice(0, 10)}`;
+/** One page of a PDF, drawn about `px` pixels on its longest side. Pages count from 1. */
+export const pdfPageUrl = (y: Pick<Yarn, "id" | "hash">, page: number, px = 1600) => `/api/yarn/${y.id}/page?n=${page}&px=${px}&v=${y.hash.slice(0, 10)}`;
 
 export interface UploadHandle { promise: Promise<{ yarn: Yarn; existing: boolean }>; cancel: () => void; }
 
@@ -204,9 +224,9 @@ export interface UploadHandle { promise: Promise<{ yarn: Yarn; existing: boolean
  * the server can stream it to disk, and cancelling aborts the request, which the
  * server turns into a cleaned-up temp file.
  */
-export function uploadYarn(projectId: string, file: File, onProgress: (fraction: number) => void, opts: { replaceId?: string; folder?: string } = {}): UploadHandle {
+export function uploadYarn(projectId: string, file: File, onProgress: (fraction: number) => void, opts: { replaceId?: string; folder?: string; shelf?: Shelf } = {}): UploadHandle {
   const xhr = new XMLHttpRequest();
-  const into = opts.folder ? `&folder=${encodeURIComponent(opts.folder)}` : "";
+  const into = (opts.folder ? `&folder=${encodeURIComponent(opts.folder)}` : "") + (opts.shelf && opts.shelf !== "yarn" ? `&shelf=${opts.shelf}` : "");
   const url = opts.replaceId ? `/api/yarn/${opts.replaceId}/file?filename=${encodeURIComponent(file.name)}` : `/api/projects/${projectId}/yarn?filename=${encodeURIComponent(file.name)}${into}`;
   const promise = new Promise<{ yarn: Yarn; existing: boolean }>((resolve, reject) => {
     xhr.open(opts.replaceId ? "PUT" : "POST", url);
@@ -226,6 +246,18 @@ export function uploadYarn(projectId: string, file: File, onProgress: (fraction:
   return { promise, cancel: () => xhr.abort() };
 }
 
+export interface SyncOptions {
+  url?: string; writeUp?: string; reference?: boolean; mode?: "merge" | "replace";
+  profile?: boolean; pictures?: boolean; swatch?: boolean; activateSwatch?: boolean; devices?: ("desktop" | "mobile")[]; maxPages?: number;
+}
+export type SyncStep = "read" | "swatch" | "profile" | "pictures";
+export interface SyncStepState { status: "waiting" | "running" | "done" | "skipped" | "failed"; note?: string }
+/** A sync with the website, step by step: the pages read so far, the pictures taken, and the newest of the profile as it is written. */
+export interface SyncJob {
+  id: string; kind: "sync"; status: JobItem["status"]; projectId: string | null; error: string | null;
+  progress: { current: SyncStep | "done"; steps: Record<SyncStep, SyncStepState>; pages: { url: string; title: string }[]; shots: { done: number; total: number }; live: string; chars: number } | null;
+  result: { brief: Brief; swatchId: string | null; pictures: number; skipped: number; notes: string[] } | null; createdAt: string; finishedAt: string | null;
+}
 export interface KnitParams { sizes?: Size[]; format?: "png" | "jpeg" | "webp" | "mp4"; scale?: 1 | 2; rows?: Record<string, string>[]; reuse?: boolean; }
 export interface JobItem {
   id: string; kind: string; status: "queued" | "running" | "done" | "failed" | "cancelled" | "interrupted"; projectId: string | null; error: string | null;

@@ -385,7 +385,7 @@ test("a model files things into folders, and filing one changes nothing else abo
   assert.equal((await tools.list_patterns(at)).find((p) => p.id === photos.id).folder, "Royalty free music/Lo-fi");
   assert.equal((await tools.list_patterns(at)).find((p) => p.id === pattern.id).folder, undefined, "at the top, nothing is said");
   assert.deepEqual(await tools.list_folders({ ...at, section: "yarn" }), { section: "yarn", top: listYarn(store, project.id).length - 1, folders: [{ path: "Royalty free music", items: 0 }, { path: "Royalty free music/Lo-fi", items: 1 }] });
-  assert.deepEqual(Object.keys(await tools.list_folders(at)), ["patterns", "yarn", "parts", "swatches", "knits"]);
+  assert.deepEqual(Object.keys(await tools.list_folders(at)), ["patterns", "yarn", "parts", "swatches", "knits", "reference"]);
 
   // Renamed in place, or moved by its whole path, a folder takes what is in it along. Each section is its own.
   assert.deepEqual(await tools.rename({ ...at, section: "yarn", folder: "Royalty free music/Lo-fi", name: "Chill" }), { folder: "Royalty free music/Chill", section: "yarn" });
@@ -502,4 +502,94 @@ test("import_yarn_file copies a file on this computer in by its path, and leaves
   await assert.rejects(tools.import_yarn_file({ ...at, path: join(dir, "fake.png") }), /not a real PNG image/);
   assert.equal(await readFile(join(dir, "fake.png"), "utf8"), "not a picture", "a file refused is left as it was too");
   assert.ok(!listYarn(store, project.id).some((y) => /secret/.test(y.meta.text ?? "")), "nothing hidden came in");
+});
+
+// ── The Brief, and looking at files ──
+
+// A tool's own handler, for what tools() turns into protocol content (a picture) or needs an engine for.
+const { toolByName: byName } = await import("@knitted/mcp/tools");
+const toolByName = () => byName;
+
+test("a model reads the brief, writes the profile the person can undo, and is told of it with the brand", async () => {
+  const at = { projectId: project.id };
+  const empty = await tools.get_brief(at);
+  assert.equal(empty.profile, null);
+  assert.match(empty.next, /website/);
+  const r = await tools.set_profile({ ...at, profile: "# Name\nHollow Oak Bakery\n\n# What they offer\nSourdough, baked daily." });
+  assert.deepEqual([r.changed, r.canUndo], [true, true]);
+  assert.equal(lastCall().summary, "Writing Test's profile");
+  const b = await tools.get_brief(at);
+  assert.match(b.profile, /^<untrusted_data source="brief:profile">\n# Name\nHollow Oak/, "what it says about the business is data");
+  assert.equal(b.by, "model");
+  assert.ok((await tools.get_brand_guidelines(at)).some((l) => /The Brief has a profile of the business, 10 words: read it with get_brief/.test(l)));
+  await assert.rejects(tools.set_profile({ ...at, profile: "  " }), /needs something in it/);
+});
+
+test("a reference file is listed, looked at, cut from and filed apart from Yarn", async () => {
+  const at = { projectId: project.id };
+  // A whole web page: far taller than it is wide, red at the top and blue at the bottom.
+  const tall = await sharp({ create: { width: 400, height: 3000, channels: 3, background: { r: 220, g: 30, b: 30 } } })
+    .composite([{ input: await sharp({ create: { width: 400, height: 1500, channels: 3, background: { r: 30, g: 30, b: 220 } } }).png().toBuffer(), top: 1500, left: 0 }]).png().toBuffer();
+  const tmp = uploadTempPath(store, project.id); mkdirSync(join(tmp, ".."), { recursive: true }); writeFileSync(tmp, tall);
+  const page = (await importYarn(store, project.id, tmp, "Home.png", { name: "Home, desktop", shelf: "reference", folder: "Website/Desktop" })).yarn;
+  const note = await tools.import_yarn({ ...at, text: "Closed on Mondays.", reference: true });
+  assert.equal(note.name, "Note");
+  assert.equal(lastCall().where.section, "reference");
+
+  const ref = await tools.list_yarn({ ...at, reference: true });
+  assert.deepEqual(ref.map((y) => y.name).sort(), ["Home, desktop", "Note"]);
+  assert.ok(!(await tools.list_yarn(at)).some((y) => y.id === page.id), "Yarn's own list leaves the reference out");
+  assert.deepEqual((await tools.get_brief(at)).reference.map((y) => y.name).sort(), ["Home, desktop", "Note"]);
+
+  // Looking: the top of a long page first, and the box for the part below it.
+  const top = await toolByName().view_yarn.handler({ yarnId: page.id }, { store });
+  assert.equal(top.mime, "image/jpeg");
+  assert.match(top.caption, /There is more below: for the next part, give box \{"x": 0, "y": 0\.2667, "w": 1, "h": 0\.2667\}/);
+  const px = async (b64) => (await sharp(Buffer.from(b64, "base64")).raw().toBuffer({ resolveWithObject: true }));
+  const first = await px(top.__image);
+  assert.deepEqual([first.info.width, first.info.height], [400, 800]);
+  assert.ok(first.data[0] > 180 && first.data[2] < 80, "the top is red");
+  const low = await toolByName().view_yarn.handler({ yarnId: page.id, box: { x: 0, y: 0.75, w: 1, h: 0.25 } }, { store });
+  assert.ok((await px(low.__image)).data[2] > 180, "asked for, the bottom is blue");
+  assert.doesNotMatch(low.caption, /more below/);
+  assert.match((await tools.view_yarn({ yarnId: note.id })).text, /Closed on Mondays/);
+
+  // Cut from it into Yarn, where a pattern can use it; the page itself stays.
+  const cut = await tools.crop_to_yarn({ yarnId: page.id, box: { x: 0, y: 0.5, w: 1, h: 0.5 }, name: "Blue band" });
+  assert.deepEqual([cut.in, cut.size], ["yarn", "400x1500"]);
+  assert.match(lastCall().summary, /Cutting "Blue band" out of "Home, desktop"/);
+  assert.ok((await tools.list_yarn(at)).some((y) => y.id === cut.id));
+
+  // Filed into the reference, a file leaves Yarn; and back.
+  await tools.move_to_folder({ ...at, folder: "Cut outs", referenceIds: [cut.id] });
+  assert.equal(getYarn(store, cut.id).shelf, "reference");
+  await tools.move_to_folder({ ...at, folder: "", yarnIds: [cut.id] });
+  assert.equal(getYarn(store, cut.id).shelf, "yarn");
+});
+
+test("a PDF is read a page at a time, looked at, and cut from", async () => {
+  const { makePdf } = await import("../packages/core/test/fixtures/pdf.mjs");
+  const tmp = uploadTempPath(store, project.id); mkdirSync(join(tmp, ".."), { recursive: true }); writeFileSync(tmp, makePdf(["Our menu", "Cakes to order"]));
+  const pdf = (await importYarn(store, project.id, tmp, "Menu.pdf", { name: "Menu" })).yarn;
+  assert.equal((await tools.list_yarn({ projectId: project.id, kind: "pdf" }))[0].pages, 2);
+  const words = await tools.view_yarn({ yarnId: pdf.id, text: true });
+  assert.match(words.text, /\[page 1\]\nOur menu[\s\S]*\[page 2\]\nCakes to order/);
+  const seen = await toolByName().view_yarn.handler({ yarnId: pdf.id, page: 2 }, { store });
+  assert.match(seen.caption, /Page 2 of 2\./);
+  await assert.rejects(tools.view_yarn({ yarnId: pdf.id, page: 3 }), /has 2 pages/);
+  const cut = await tools.crop_to_yarn({ yarnId: pdf.id, page: 1, box: { x: 0.12, y: 0.25, w: 0.48, h: 0.25 } });
+  assert.equal(cut.name, "Menu, page 1");
+});
+
+test("capture_website starts a job with the Brief's own website, and says where to look", async () => {
+  const { setBriefSite } = await import("@knitted/core/node");
+  const asked = [];
+  const engine = { startCaptureJob: (_, o) => { asked.push(o); return { id: "jb_test", status: "running" }; } };
+  const tool = toolByName().capture_website;
+  await assert.rejects(tool.handler({ projectId: project.id }, { store, engine }), /Give the website's url/);
+  setBriefSite(store, project.id, { url: "https://hollowoak.example" });
+  const r = await tool.handler({ projectId: project.id, devices: ["mobile"], maxPages: 400 }, { store, engine });
+  assert.equal(r.jobId, "jb_test");
+  assert.deepEqual(asked[0], { projectId: project.id, url: "https://hollowoak.example", devices: ["mobile"], maxPages: 40 });
+  await assert.rejects(tool.handler({ projectId: project.id, devices: ["tablet"] }, { store, engine }), /desktop and mobile/);
 });

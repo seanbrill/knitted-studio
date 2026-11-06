@@ -8,12 +8,13 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@knitted/core/client";
 import { folderNames, folderProblem, foldersIn, isInside, joinFolder, nameOf, parentOf, type FolderSection } from "@knitted/core";
-import { Button, ConfirmDialog, ContextMenu, Dialog, Field, IconButton, Input, Menu, icons, useToast, type MenuItems } from "@knitted/ui";
+import { Button, ConfirmDialog, ContextMenu, Dialog, Field, IconButton, Input, Menu, icons, useToast, type Crumb, type MenuItems } from "@knitted/ui";
 import { useLive } from "@/lib/hooks";
 import { RenameDialog } from "./ProjectsView";
+import { useTrail } from "./Trail";
 
 const { Folder, FolderInput, FolderOpen, FolderPlus, ChevronRight, MoreHorizontal, Pencil, Trash2 } = icons;
 
@@ -24,6 +25,7 @@ export const SECTION: Record<FolderSection, { top: string; one: string; many: st
   parts: { top: "Parts", one: "part", many: "parts" },
   swatches: { top: "Swatches", one: "swatch", many: "swatches" },
   knits: { top: "Knits", one: "knit", many: "knits" },
+  reference: { top: "Reference", one: "file", many: "files" },
 };
 export const counted = (n: number, section: FolderSection) => `${n} ${n === 1 ? SECTION[section].one : SECTION[section].many}`;
 const nameIn = (path: string, section: FolderSection) => (path ? nameOf(path) : SECTION[section].top);
@@ -125,9 +127,35 @@ export function useFolders(projectId: string, section: FolderSection, things: Fi
   };
 }
 
-/** The trail from the top of the section to the folder the person is in. Each step up takes things dropped on it. */
+/**
+ * The trail from the top of the section to the folder the person is in. Each step up takes
+ * things dropped on it. On a project's page the steps join the project's own trail at the
+ * top, so there is one; in the editor's side panels they are drawn here.
+ */
 export function FolderCrumbs({ kit }: { kit: FolderKit }) {
-  if (!kit.here) return null;
+  const trail = useTrail();
+  const latest = useRef(kit);
+  useEffect(() => { latest.current = kit; });
+  const joins = !!trail && kit.inAddress;
+  const lit = kit.here ? kit.here.split("/").map((_, i, all) => (kit.dropInto(all.slice(0, i + 1).join("/"))["data-drop"] ? 1 : 0)).join("") + (kit.dropInto("")["data-drop"] ? 1 : 0) : "";
+  const key = `${kit.section}|${kit.here}|${kit.hrefFor("")}|${lit}`;
+  useEffect(() => {
+    if (!joins) return;
+    const k = latest.current;
+    if (!k.here) { trail!(null); return; }
+    const names = k.here.split("/");
+    // Handlers that read the kit as it is when something is dropped, not as it was when the trail was made.
+    const drop = (path: string): Crumb["props"] => ({
+      ...({ "data-drop": k.dropInto(path)["data-drop"] } as object),
+      onDragOver: (e) => latest.current.dropInto(path).onDragOver(e), onDragLeave: (e) => latest.current.dropInto(path).onDragLeave(e), onDrop: (e) => latest.current.dropInto(path).onDrop(e),
+    });
+    trail!([
+      { label: SECTION[k.section].top, href: k.hrefFor(""), props: drop(""), title: `The top of ${SECTION[k.section].top}` },
+      ...names.map((n, i) => { const path = names.slice(0, i + 1).join("/"); return i === names.length - 1 ? { label: n } : { label: n, href: k.hrefFor(path), props: drop(path) }; }),
+    ]);
+  }, [joins, key, trail]);
+  useEffect(() => (joins ? () => trail!(null) : undefined), [joins, trail]);
+  if (joins || !kit.here) return null;
   const names = kit.here.split("/");
   const paths = names.map((_, i) => names.slice(0, i + 1).join("/"));
   const step = (path: string, label: string) => kit.inAddress

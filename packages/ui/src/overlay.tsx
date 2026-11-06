@@ -14,16 +14,36 @@ import { cx } from "./cx.ts";
 export function TooltipProvider({ children }: { children: React.ReactNode }) {
   return <T.Provider delayDuration={350}>{children}</T.Provider>;
 }
-export function Tooltip({ label, shortcut, children, side = "bottom" }: {
-  label: string; shortcut?: string; children: React.ReactElement; side?: "top" | "bottom" | "left" | "right";
+/**
+ * A name, and `hint`: one line on what it is for, for a person who has not met it yet. A
+ * tooltip is never the only place something is said: whatever it names has a name of its own.
+ */
+export function Tooltip({ label, hint, shortcut, children, side = "bottom" }: {
+  label: string; hint?: string; shortcut?: string; children: React.ReactElement; side?: "top" | "bottom" | "left" | "right";
 }) {
   return (
     <T.Root>
       <T.Trigger asChild>{children}</T.Trigger>
       <T.Portal>
-        <T.Content className="tooltip" side={side} sideOffset={6}>
-          {label}
-          {shortcut && <span style={{ marginLeft: 8, opacity: 0.7, fontFamily: "var(--font-mono)" }}>{shortcut}</span>}
+        <T.Content className={cx("tooltip", hint && "tooltip-hint")} side={side} sideOffset={6} collisionPadding={8}>
+          <span className="tooltip-label">{label}</span>
+          {shortcut && <span className="tooltip-kbd">{shortcut}</span>}
+          {hint && <span className="tooltip-more">{hint}</span>}
+        </T.Content>
+      </T.Portal>
+    </T.Root>
+  );
+}
+
+/** A tooltip that only says what something is for, around something that names itself (a button with words). */
+export function Tip({ text, children, side }: { text?: string; children: React.ReactElement; side?: "top" | "bottom" | "left" | "right" }) {
+  if (!text) return children;
+  return (
+    <T.Root>
+      <T.Trigger asChild>{children}</T.Trigger>
+      <T.Portal>
+        <T.Content className="tooltip tooltip-hint" side={side ?? "bottom"} sideOffset={6} collisionPadding={8}>
+          <span className="tooltip-more" style={{ marginTop: 0 }}>{text}</span>
         </T.Content>
       </T.Portal>
     </T.Root>

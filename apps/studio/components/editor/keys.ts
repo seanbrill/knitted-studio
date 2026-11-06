@@ -12,7 +12,7 @@ export function duplicateStitches(src: Stitch[], offset = 0.02): Command {
   return { type: "batch", commands: src.map((s) => ({ type: "addStitch" as const, stitch: { ...s, id: rid(), slot: undefined, locked: false, x: Math.min(0.95, s.x + offset), y: Math.min(0.95, s.y + offset) } })) };
 }
 
-export function useEditorKeys({ onShortcuts, onFit }: { onShortcuts: () => void; onFit: () => void }) {
+export function useEditorKeys({ onShortcuts, onFit, onPanels }: { onShortcuts: () => void; onFit: () => void; onPanels?: () => void }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
@@ -30,9 +30,10 @@ export function useEditorKeys({ onShortcuts, onFit }: { onShortcuts: () => void;
       if (mod && key === "c" && sel.length) { clipboard = sel.map((s) => ({ ...s })); return; }
       if (mod && key === "v" && clipboard.length) { e.preventDefault(); st.dispatch(duplicateStitches(clipboard, 0.03), { label: "Paste" }); return; }
       if (mod && key === "0") { e.preventDefault(); onFit(); return; }
-      if (mod && (key === "=" || key === "+")) { e.preventDefault(); st.setZoom(Math.min(4, (st.zoom === "fit" ? 0.4 : st.zoom) * 1.25)); return; }
-      if (mod && key === "-") { e.preventDefault(); st.setZoom(Math.max(0.1, (st.zoom === "fit" ? 0.4 : st.zoom) / 1.25)); return; }
+      if (mod && (key === "=" || key === "+")) { e.preventDefault(); st.zoomStep(1); return; }
+      if (mod && key === "-") { e.preventDefault(); st.zoomStep(-1); return; }
       if (mod && key === "/") { e.preventDefault(); onShortcuts(); return; }
+      if (mod && key === "\\" && onPanels) { e.preventDefault(); onPanels(); return; }
       if (mod && (key === "]" || key === "[") && sel.length === 1) {
         e.preventDefault();
         const i = st.pattern.stitches.findIndex((s) => s.id === sel[0].id);
@@ -54,11 +55,13 @@ export function useEditorKeys({ onShortcuts, onFit }: { onShortcuts: () => void;
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onShortcuts, onFit]);
+  }, [onShortcuts, onFit, onPanels]);
 }
 
 export const SHORTCUTS: [string, string][] = [
   ["Undo / redo", "Ctrl or Cmd + Z / Shift + Z"], ["Select all", "Ctrl or Cmd + A"], ["Duplicate", "Ctrl or Cmd + D"], ["Copy / paste", "Ctrl or Cmd + C / V"],
   ["Delete", "Delete or Backspace"], ["Nudge 1px / 10px", "Arrow keys / Shift + arrows"], ["Bring forward / back", "Ctrl or Cmd + ] / ["], ["To front / back", "Ctrl or Cmd + Shift + ] / ["],
-  ["Edit text", "Double-click"], ["Add to selection", "Shift + click"], ["Keep proportions", "Shift while resizing"], ["Resize from centre", "Alt while resizing"], ["Zoom", "Ctrl or Cmd + plus / minus, 0 to fit"], ["This list", "Ctrl or Cmd + /"],
+  ["Edit text", "Double-click"], ["Add to selection", "Shift + click"], ["Keep proportions", "Shift while resizing"], ["Resize from centre", "Alt while resizing"], ["Zoom", "Ctrl or Cmd + plus / minus, 0 to fit"],
+  ["Zoom where the pointer is", "Pinch, or Ctrl or Cmd + scroll"], ["Move around the canvas", "Scroll, or drag the space around it"],
+  ["Hide or show the side panels", "Ctrl or Cmd + \\"], ["This list", "Ctrl or Cmd + /"],
 ];

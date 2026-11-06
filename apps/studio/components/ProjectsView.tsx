@@ -9,6 +9,8 @@ import {
   Select, Skeleton, Textarea, icons, useToast, type MenuItems,
 } from "@knitted/ui";
 import { PageHeader } from "./AppShell";
+import { SyncChoices } from "./SyncChoices";
+import type { SyncOptions } from "@knitted/core/client";
 import { timeAgo, useLive } from "@/lib/hooks";
 
 const { Plus, Search, MoreHorizontal, Pencil, Copy, Archive, Trash2, FolderOpen, Image: ImageIcon, Upload } = icons;
@@ -137,7 +139,7 @@ function ProjectsInner() {
         </div>
       )}
 
-      <NewProjectDialog open={creating} onOpenChange={(o) => { setCreating(o); if (!o && params.get("new")) router.replace("/projects"); }} onCreated={(p) => router.push(`/projects/${p.id}`)} />
+      <NewProjectDialog open={creating} onOpenChange={(o) => { setCreating(o); if (!o && params.get("new")) router.replace("/projects"); }} onCreated={(p, next) => router.push(next ?? `/projects/${p.id}`)} />
 
       <RenameDialog
         open={!!renaming}
@@ -175,24 +177,47 @@ export function ProjectsView() {
 
 // ── dialogs ─────────────────────────────────────────────────────────────────
 
-export function NewProjectDialog({ open, onOpenChange, onCreated }: { open: boolean; onOpenChange: (o: boolean) => void; onCreated: (p: { id: string }) => void }) {
+/**
+ * A new project, and, given the business's website, everything a sync does to start it off:
+ * its swatch from the site, a profile written by the person's model, and pictures of every
+ * page. Then the Brief, where the sync shows how it goes.
+ */
+export function NewProjectDialog({ open, onOpenChange, onCreated }: { open: boolean; onOpenChange: (o: boolean) => void; onCreated: (p: { id: string }, next?: string) => void }) {
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
   const [starter, setStarter] = useState<"social" | "blank">("social");
+  const [site, setSite] = useState<SyncOptions>({});
   const [err, setErr] = useState<string | undefined>();
+  const [siteErr, setSiteErr] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
+  const { data: model } = useLive(() => (open ? api.agent.config() : Promise.resolve(null)), [open]);
+  const hasKey = model ? model.key.present : null;
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (open) { setName(""); setDesc(""); setErr(undefined); setBusy(false); }
+    if (open) { setName(""); setDesc(""); setErr(undefined); setSiteErr(undefined); setBusy(false); setSite({ url: "", profile: true, pictures: true, swatch: true, activateSwatch: true, maxPages: 40 }); }
   }, [open]);
+  const url = site.url?.trim() ?? "";
   const submit = async () => {
     setBusy(true);
-    try { const p = await api.projects.create({ name, description: desc, starter }); onOpenChange(false); onCreated(p); }
-    catch (e) { setErr((e as Error).message); setBusy(false); }
+    let p: { id: string };
+    try { p = await api.projects.create({ name, description: desc, starter }); }
+    catch (e) { setErr((e as Error).message); setBusy(false); return; }
+    if (!url) { onOpenChange(false); onCreated(p); return; }
+    try {
+      const { writeUp, ...rest } = site;
+      const job = await api.brief.sync(p.id, { ...rest, url, ...(writeUp?.trim() ? { writeUp } : {}), profile: (rest.profile ?? true) && hasKey !== false, mode: "replace" });
+      try { localStorage.setItem(`knitted.sync.${p.id}`, job.id); } catch { /* the address carries it too */ }
+      onOpenChange(false); onCreated(p, `/projects/${p.id}/brief?sync=${job.id}`);
+    } catch (e) {
+      // The project is made: say why the sync did not start, and open it where it can be tried again.
+      setSiteErr(`The project is made, but the sync did not start: ${(e as Error).message}`);
+      setBusy(false);
+      setTimeout(() => { onOpenChange(false); onCreated(p, `/projects/${p.id}/brief`); }, 2500);
+    }
   };
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} title="New project" description="One project per brand: it holds that brand's Yarn, Swatch and Patterns."
-      actions={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" disabled={busy} onClick={submit}>Create project</Button></>}>
+    <Dialog open={open} onOpenChange={onOpenChange} title="New project" description="One project per brand: it holds that brand's Yarn, Swatch, Brief and Patterns."
+      actions={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" disabled={busy} onClick={submit}>{url ? "Create and sync" : "Create project"}</Button></>}>
       <form onSubmit={(e) => { e.preventDefault(); void submit(); }} style={{ display: "grid", gap: "var(--space-4)" }}>
         <Field label="Name" error={err} htmlFor="np-name"><Input id="np-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Launch week" /></Field>
         <Field label="Description (optional)" htmlFor="np-desc"><Textarea id="np-desc" value={desc} onChange={(e) => setDesc(e.target.value)} rows={2} /></Field>
@@ -200,6 +225,10 @@ export function NewProjectDialog({ open, onOpenChange, onCreated }: { open: bool
           <SegmentedControl<"social" | "blank"> label="Start with" value={starter} onChange={setStarter} options={[{ value: "social", label: "Social starter pack" }, { value: "blank", label: "Blank" }]} />
           <span className="field-hint">{starter === "social" ? "Five patterns: Story, Post, Square, Landscape and Banner, each with a headline to fill." : "One empty pattern."}</span>
         </Field>
+        <Field label="The business's website (optional)" htmlFor="np-site" error={siteErr} hint="Give it, and knitted reads it to set the project up: its swatch, a profile of the business for your model, and pictures of every page. Run it again from the Brief whenever the site changes.">
+          <Input id="np-site" value={site.url ?? ""} onChange={(e) => setSite({ ...site, url: e.target.value })} placeholder="https://example.com" inputMode="url" autoComplete="url" />
+        </Field>
+        {url && <SyncChoices value={site} onChange={setSite} hasKey={hasKey} hasProfile={false} showUrl={false} />}
         <button type="submit" hidden />
       </form>
     </Dialog>

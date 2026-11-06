@@ -23,7 +23,7 @@ const DETERMINISTIC_ARGS = [
 ];
 
 /** The browser, started; or a RendererUnavailable saying why not, `missing` when it is only not downloaded yet. */
-async function launch() {
+async function launch(args = DETERMINISTIC_ARGS) {
   let chromium;
   try {
     ({ chromium } = await import(/* webpackIgnore: true */ "playwright"));
@@ -31,7 +31,7 @@ async function launch() {
     throw new RendererUnavailable(process.env.KNITTED_DESKTOP ? "This copy of knitted is missing the part that starts its browser. Reinstall it from the Download page." : "Knitting needs a browser to draw with. Run `npm i playwright && npx playwright install chromium`, or use the desktop app, which downloads one for you.");
   }
   try {
-    return await chromium.launch({ args: DETERMINISTIC_ARGS });
+    return await chromium.launch({ args });
   } catch (e) {
     if (/Executable doesn't exist/i.test(String(e?.message))) {
       throw Object.assign(new RendererUnavailable(process.env.KNITTED_DESKTOP ? "knitted needs to download its browser before it can knit." : "knitted could not find its browser. Run `npx playwright install chromium`, then try again."), { missing: true });
@@ -68,6 +68,20 @@ export async function openRenderer({ backend = "playwright" } = {}) {
     },
     async close() { await browser.close(); },
   };
+}
+
+// A website is pictured in the same browser, without the flags that are for drawing a pattern
+// from files on this computer.
+const SITE_ARGS = ["--force-color-profile=srgb", "--disable-gpu", "--hide-scrollbars"];
+
+/** The browser itself, for a job that sets up its own pages (capture.mjs). In the desktop app it is downloaded first when it is not there. */
+export async function openBrowser() {
+  try { return await launch(SITE_ARGS); }
+  catch (e) {
+    if (!(e?.missing && process.env.KNITTED_DESKTOP)) throw e;
+    await ensureBrowser();
+    return launch(SITE_ARGS);
+  }
 }
 
 /** Why the browser knitting draws with does not start, or null when it does. Never downloads it. */

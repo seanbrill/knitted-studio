@@ -55,22 +55,47 @@ test("a model's edit lands on the open canvas marked with its name, and the top 
   const mark = page.getByTestId(`model-${(await headline(story.id)).id}`);
   await mark.waitFor();
   assert.equal(await mark.innerText(), "Claude Code");
+  await page.locator(".model-frame").waitFor();
   assert.deepEqual(await axeProblems(page), []);
   // A moment later the canvas is the person's again.
   await mark.waitFor({ state: "detached", timeout: 15_000 });
 });
 
+test("a model working out of sight is a button away: it moves the canvas to what it is changing", async () => {
+  const head = await headline(story.id);
+  // Zoomed all the way in, and moved to the far side of the frame from the headline.
+  for (let i = 0; i < 30; i++) await page.keyboard.press("Control+=");
+  const view = await page.getByTestId("canvas-view").boundingBox();
+  await page.mouse.move(view.x + view.width / 2, view.y + view.height / 2);
+  await page.mouse.wheel(head.x + head.w / 2 < 0.5 ? 100000 : -100000, head.y + head.h / 2 < 0.5 ? 100000 : -100000);
+  await call("fill_slots", { patternId: story.id, slots: { headline: "Out of sight" } });
+  const mark = page.getByTestId(`model-${head.id}`);
+  await mark.waitFor({ state: "attached" });
+  const meets = (a, b) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+  assert.ok(!meets(await mark.boundingBox(), view), "what it changes is out of sight");
+  await page.getByRole("button", { name: "Show where Claude Code is working" }).click();
+  await page.waitForFunction((id) => {
+    const v = document.querySelector('[data-testid="canvas-view"]').getBoundingClientRect();
+    const m = document.querySelector(`[data-testid="model-${id}"]`)?.getBoundingClientRect();
+    return m && m.left < v.right && v.left < m.right && m.top < v.bottom && v.top < m.bottom;
+  }, head.id);
+  assert.equal(await page.getByRole("button", { name: "Show where Claude Code is working" }).count(), 0, "in sight, the way to it goes");
+  await page.keyboard.press("Control+0");
+  await mark.waitFor({ state: "detached", timeout: 15_000 });
+});
+
 test("the list says what it did, and Pause refuses its changes until Resume, telling the model why", async () => {
   await page.getByRole("button", { name: /^Claude Code:/ }).click();
-  await panel().getByRole("list", { name: "What it did" }).getByText("Filling headline on Launch story").waitFor();
+  await panel().getByRole("list", { name: "What it did" }).getByText("Filling headline on Launch story").first().waitFor();
   assert.deepEqual(await problems(), []);
+  const was = (await headline(story.id)).content;
   await panel().getByRole("button", { name: "Pause" }).click();
   await serverHas(studio, "/api/agent/activity", (s) => s.paused === true);
   await page.getByRole("button", { name: "Claude Code: Paused, its changes wait for you. Show what it is doing." }).waitFor();
   const refused = await call("fill_slots", { patternId: story.id, slots: { headline: "While paused" } });
   assert.equal(refused.isError, true);
   assert.match(refused.content[0].text, /paused you in the studio.*press Resume/);
-  assert.equal((await headline(story.id)).content, "Written while you watch", "nothing changed");
+  assert.equal((await headline(story.id)).content, was, "nothing changed");
   assert.equal((await call("describe_pattern", { patternId: story.id })).isError, undefined, "it can still look");
   await panel().getByText("Paused in the studio.").waitFor();
   await panel().getByRole("button", { name: "Resume" }).click();
@@ -105,7 +130,7 @@ test("Follow goes where the model works and keeps up as it moves, until the pers
   await call("fill_slots", { patternId: post.id, slots: { headline: "Over here now" } });
   await page.waitForURL(`**/projects/${projectId}/patterns/${post.id}`);
   await frame().getByText("Over here now").waitFor();
-  await page.getByRole("link", { name: "Back to project" }).click();
+  await page.getByRole("navigation", { name: "Breadcrumbs" }).getByRole("link", { name: "Presence e2e" }).click();
   await page.waitForURL(`**/projects/${projectId}`);
   await call("fill_slots", { patternId: story.id, slots: { headline: "Not followed" } });
   await page.getByRole("button", { name: /^Claude Code: Filling headline on Launch story/ }).waitFor();

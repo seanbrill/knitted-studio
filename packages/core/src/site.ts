@@ -186,7 +186,7 @@ export function cssRules(css: string): { rules: Rule[]; imports: string[]; faces
 const unquote = (s: string) => s.trim().replace(/^["']|["']$/g, "").trim();
 
 // ── HTML, read as text ──────────────────────────────────────────────────────
-type Tag = { name: string; attrs: Record<string, string> };
+export type Tag = { name: string; attrs: Record<string, string> };
 export function tagsIn(html: string, names: string[]): Tag[] {
   const out: Tag[] = [];
   for (const m of html.matchAll(new RegExp(`<(${names.join("|")})\\b([^>]*)>`, "gi"))) {
@@ -196,7 +196,7 @@ export function tagsIn(html: string, names: string[]): Tag[] {
   }
   return out;
 }
-const decodeEntities = (s: string) => s.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16))).replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)));
+export const decodeEntities = (s: string) => s.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16))).replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)));
 const relTokens = (t: Tag) => (t.attrs.rel ?? "").toLowerCase().split(/\s+/);
 
 /** The stylesheets a page links to, in order, as absolute addresses. */

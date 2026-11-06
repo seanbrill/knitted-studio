@@ -39,10 +39,14 @@ Then restart your model's app so it picks up the new tools.
 - "Show me the launch story Pattern. Which Stitches are locked?"
 - "Fill the headline with something short about our spring sale."
 - "Knit six of those."
+- "Read our brief and write three posts about what is new on the menu."
+- "Take new pictures of our website, then design a fresh version of the home page's top section."
 
 ## Watch it work
 
 While your model works, the studio shows it: its name and what it is doing, in the side bar on every page and in the editor's top bar. In the editor, each Stitch it changes is outlined in red with its name for a moment, so you can see where it is working and keep out of its way. Open it to see a list of what it did, with anything that was refused and why.
+
+In the editor, a small bubble over the canvas shows what your model is thinking and doing as it happens, even with the chat closed. Shrink it to a dot, or close it for the rest of that run.
 
 - **Follow** takes you where it is working, and keeps up as it moves from one Pattern to the next. It stops when you go somewhere yourself or make a change of your own.
 - **Pause** holds it. Until you press **Resume**, every change it tries is refused and it is told to wait for you. It can still read, check and preview.

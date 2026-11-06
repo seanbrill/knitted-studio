@@ -9,7 +9,8 @@ import { FALLBACK_SWATCH } from "./tokens.ts";
 import { isHex } from "./contrast.ts";
 import { newId } from "./ids.ts";
 import { NotFoundError, ValidationError, type Store } from "./store.ts";
-import { assertPublicUrl, dominantColors, getYarn, importYarn, importYarnFromUrl, listYarn, uploadTempPath, yarnPath } from "./yarn.ts";
+import { dominantColors, getYarn, importYarn, importYarnFromUrl, listYarn, uploadTempPath, yarnPath } from "./yarn.ts";
+import { fetchPublic, siteAddress } from "./web.ts";
 import { looksLikeSvg } from "./svg.ts";
 import { cleanFolder, fileInto } from "./folders.ts";
 import { baseOf, logosOf, readSite, sameFamily, stylesheetsOf, svgColors, type SiteLogo, type SiteProposal } from "./site.ts";
@@ -237,37 +238,6 @@ export async function importSwatch(store: Store, projectId: string, file: unknow
 // a public address, and read as text by site.ts: nothing on them ever runs.
 export type { SiteProposal } from "./site.ts";
 
-// Some sites turn away a bare name, so this reads like the browser it stands in for.
-const AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36 knitted.studio";
-
-function siteAnswer(status: number, what: string): ValidationError {
-  if (status === 401 || status === 403 || status === 429) return new ValidationError(`That site turned knitted away (it answered ${status}). Some sites only let a browser in. Upload its logo to Yarn and pick colours from that instead.`);
-  if (status === 404 || status === 410) return new ValidationError(`That ${what} is not there (it answered ${status}). Check the link opens in a browser.`);
-  if (status >= 500) return new ValidationError(`That site had a problem of its own (it answered ${status}). Try again in a minute.`);
-  return new ValidationError(`That site answered ${status}. Check the link opens in a browser.`);
-}
-
-/** Fetch a public address, following redirects one checked hop at a time, and keep the first `max` bytes. */
-async function fetchPublic(raw: string, { max, accept, timeoutMs = 15_000, what = "page" }: { max: number; accept: string; timeoutMs?: number; what?: string }) {
-  let url = await assertPublicUrl(raw);
-  for (let hop = 0; hop < 5; hop++) {
-    const res = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(timeoutMs), headers: { "user-agent": AGENT, accept, "accept-language": "en" } });
-    const to = res.headers.get("location");
-    if (res.status >= 300 && res.status < 400 && to) { await res.body?.cancel(); url = await assertPublicUrl(new URL(to, url).href); continue; }
-    if (!res.ok) { await res.body?.cancel(); throw siteAnswer(res.status, what); }
-    const chunks: Uint8Array[] = []; let got = 0; let truncated = false;
-    const reader = res.body?.getReader();
-    for (;;) {
-      const next = await reader?.read();
-      if (!next || next.done) break;
-      chunks.push(next.value); got += next.value.length;
-      if (got > max) { truncated = true; await reader!.cancel(); break; }
-    }
-    return { buf: Buffer.concat(chunks).subarray(0, max), url, type: (res.headers.get("content-type") ?? "").toLowerCase(), truncated };
-  }
-  throw new ValidationError("That site redirected too many times.");
-}
-
 /** A logo's colours: the fills an SVG declares, or the ones a picture is mostly made of. */
 async function logoColors(url: string): Promise<string[]> {
   const r = await fetchPublic(url, { max: 4_000_000, accept: "image/svg+xml,image/*;q=0.9", timeoutMs: 10_000, what: "logo" });
@@ -282,8 +252,7 @@ async function logoColors(url: string): Promise<string[]> {
  * makes the swatch once a person (or a model) has looked.
  */
 export async function proposeFromWebsite(rawUrl: string): Promise<SiteProposal> {
-  const typed = rawUrl.trim();
-  const page = await fetchPublic(/^[a-z][a-z0-9+.-]*:\/\//i.test(typed) ? typed : `https://${typed}`, { max: 3_000_000, accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5" });
+  const page = await fetchPublic(siteAddress(rawUrl), { max: 3_000_000, accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5" });
   const html = page.buf.toString("utf8");
   if (!/html|xml/.test(page.type) && !/<(html|head|body|meta|link)\b/i.test(html.slice(0, 4000))) throw new ValidationError("That link is not a web page. Paste the address of the site itself, like https://example.com.");
   const notes: string[] = [];
