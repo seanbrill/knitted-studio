@@ -264,7 +264,9 @@ export interface SyncJob {
 export interface KnitParams { sizes?: Size[]; format?: "png" | "jpeg" | "webp" | "mp4"; scale?: 1 | 2; rows?: Record<string, string>[]; reuse?: boolean; }
 export interface JobItem {
   id: string; kind: string; status: "queued" | "running" | "done" | "failed" | "cancelled" | "interrupted"; projectId: string | null; error: string | null;
-  progress: { total: number; done: number; current: string | null; units: { label: string; status: string; issues: KnitIssue[]; knitId?: string }[] } | null;
+  progress: { total: number; done: number; current: string | null; units: { label: string; status: string; issues: KnitIssue[]; knitId?: string }[]; step?: string; frames?: { done: number; total: number } | null } | null;
+  /** What it was asked to do: for a knit, which pattern. */
+  input?: { patternId?: string; patternName?: string } | null;
   result: { knitIds: string[]; failed: number } | null; createdAt: string; finishedAt: string | null;
 }
 export const knitFileUrl = (k: { id: string }, download = false) => `/api/knits/${k.id}/file${download ? "?download=1" : ""}`;

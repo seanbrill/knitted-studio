@@ -13,8 +13,9 @@ const g = globalThis;
 const state = (g.__knittedJobs ??= { queue: [], running: 0, controllers: new Map(), concurrency: 1 });
 
 export function startKnitJob(store, { projectId, patternId, params = {} }) {
-  store.getPattern(patternId);
-  const job = store.createJob("knit", projectId, { patternId, params });
+  const p = store.getPattern(patternId);
+  // Its name goes with it, so a knit waiting its turn can say what it is.
+  const job = store.createJob("knit", projectId, { patternId, patternName: p.name, params });
   state.queue.push({ store, jobId: job.id, projectId, patternId, params });
   queueMicrotask(pump);
   return job;

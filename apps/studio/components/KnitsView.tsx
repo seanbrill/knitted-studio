@@ -4,10 +4,11 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { api, knitFileUrl, type KnitRecord, type JobItem } from "@knitted/core/client";
 import { foldersIn, isInside, nameOf } from "@knitted/core";
-import { Button, Chip, ConfirmDialog, Dialog, EmptyState, Input, Select, Skeleton, StitchProgress, icons, useToast } from "@knitted/ui";
+import { Button, Chip, ConfirmDialog, Dialog, EmptyState, Input, Select, Skeleton, icons, useToast } from "@knitted/ui";
 import { formatBytes, timeAgo, useLive } from "@/lib/hooks";
 import { FolderCrumbs, FolderDialogs, FolderList, NewFolderButton, useFolders } from "./Folders";
 import { KnitPost } from "./KnitPost";
+import { KnitQueue } from "./KnitQueue";
 import { TagFilter, ViewBar, layout, useView, type SortBy } from "./Views";
 
 const KNIT_SORTS: SortBy<KnitRecord>[] = [
@@ -70,13 +71,7 @@ export function KnitsView({ projectId }: { projectId: string }) {
       </div>
       <FolderCrumbs kit={kit} />
 
-      {active.map((j) => (
-        <div key={j.id} className="panel" style={{ padding: "var(--space-4)", marginBottom: "var(--space-4)", display: "flex", gap: 16, alignItems: "center" }} role="status">
-          {j.progress ? <StitchProgress total={j.progress.total} done={j.progress.done} /> : <span className="body-sm">Waiting to start...</span>}
-          <span className="body-sm" style={{ flex: 1, color: "var(--ink-muted)" }}>{j.progress?.current ?? ""}</span>
-          <Button size="sm" variant="danger" onClick={() => api.knit.cancel(j.id)}>Cancel</Button>
-        </div>
-      ))}
+      <KnitQueue jobs={active} />
 
       {(knits?.length ?? 0) > 0 && (
         <div style={{ display: "flex", gap: "var(--space-3)", alignItems: "center", flexWrap: "wrap", marginBottom: "var(--space-4)" }}>

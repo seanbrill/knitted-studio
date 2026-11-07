@@ -93,7 +93,7 @@ export function frameTimes(durationMs, fps = FPS) {
  * an optional dependency: the UI runs without it and only knitting needs it,
  * so a contributor can work on the editor without a 300MB browser download.
  */
-export async function captureFrames(page, outDir, { durationMs, fps = FPS, signal } = {}) {
+export async function captureFrames(page, outDir, { durationMs, fps = FPS, signal, onFrame } = {}) {
   await mkdir(outDir, { recursive: true });
   await page.evaluate(() => window.__stage.ready());
 
@@ -106,6 +106,7 @@ export async function captureFrames(page, outDir, { durationMs, fps = FPS, signa
     const file = join(outDir, `${String(i).padStart(5, "0")}.png`);
     await page.screenshot({ path: file, omitBackground: true });
     files.push(file);
+    onFrame?.(i + 1, times.length);
   }
   return files;
 }
@@ -141,11 +142,11 @@ export async function encode(frameDir, outFile, { fps = FPS, audio } = {}) {
  * is 600 PNGs and they are pure intermediate. notch.fm's media-outputs grew to
  * 285MB partly on kept intermediates.
  */
-export async function knit(page, { outDir, name, durationMs, fps = FPS, audio, keepFrames = false, signal }) {
+export async function knit(page, { outDir, name, durationMs, fps = FPS, audio, keepFrames = false, signal, onFrame }) {
   await mkdir(outDir, { recursive: true });
   const frameDir = join(outDir, `.frames-${name}`);
   try {
-    const frames = await captureFrames(page, frameDir, { durationMs, fps, signal });
+    const frames = await captureFrames(page, frameDir, { durationMs, fps, signal, onFrame });
     if (!durationMs) {
       // A still: the single frame IS the output.
       const still = join(outDir, `${name}.png`);

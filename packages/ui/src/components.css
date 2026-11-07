@@ -299,3 +299,8 @@
 .play-badge { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 34%; max-width: 40px; min-width: 20px; aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center; background: rgba(20, 17, 15, 0.62); color: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); pointer-events: none; }
 .play-badge svg { margin-left: 2px; width: 55%; height: 55%; }
 
+/* A knit's progress (KnitQueue.tsx): a bar that fills as its frames are drawn. */
+.knit-bar { height: 6px; border-radius: 3px; background: var(--surface-sunken); overflow: hidden; }
+.knit-bar > span { display: block; height: 100%; background: var(--ember); border-radius: 3px; transition: width 0.4s ease; }
+@media (prefers-reduced-motion: reduce) { .knit-bar > span { transition: none; } }
+

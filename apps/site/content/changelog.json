@@ -1,5 +1,11 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
+  "next": {
+    "title": "Knits under way, in one place",
+    "items": [
+      "Knits under way are one panel instead of a row each: the one knitting, with a bar that fills as its frames are drawn and what it is doing now, and the ones waiting their turn listed under it by name. Cancel any of them, or all at once."
+    ]
+  },
   "entries": [
     {
       "version": "0.1.12",

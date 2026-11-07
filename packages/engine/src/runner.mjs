@@ -190,7 +190,7 @@ export async function runKnit(store, { jobId, projectId, patternId, params = {},
   try {
     for (const [n, unit] of units.entries()) {
       if (signal?.aborted) throw new Cancelled();
-      progress.current = unit.label; publish();
+      progress.current = unit.label; progress.step = "Getting ready"; progress.frames = null; publish();
       const entry = { label: unit.label, status: "pending", issues: [...unit.problems] };
       progress.units.push(entry);
       try {
@@ -217,7 +217,10 @@ export async function runKnit(store, { jobId, projectId, patternId, params = {},
           issues.push(...overflowIssues(await measureOverflow(page)));
           if (motion) {
             const { knit } = await import("./knit.mjs");
-            const r = await knit(page, { outDir: join(outRoot, day), name: `${base}.silent`, durationMs: unit.pattern.durationMs, fps: FPS, signal });
+            progress.step = "Drawing the frames";
+            // Every few frames, so the bar moves without a write for each one.
+            const r = await knit(page, { outDir: join(outRoot, day), name: `${base}.silent`, durationMs: unit.pattern.durationMs, fps: FPS, signal, onFrame: (done, total) => { progress.frames = { done, total }; if (done % 6 === 0 || done === total) publish(); } });
+            progress.step = "Adding the sound and checking it"; publish();
             outFile = r.files[0];
             const sounds = (unit.pattern.motion?.audio ?? []).filter((a) => yarnMap[a.yarnId] && !yarnMap[a.yarnId].deletedAt);
             if (sounds.length) {

@@ -129,3 +129,26 @@ test("each section can be a grid or a list, sorted, and remembers which", async 
   await page.getByRole("link", { name: "Yarn", exact: true }).hover();
   await page.getByRole("tooltip").filter({ hasText: /Your files to put in patterns/ }).waitFor();
 });
+
+test("knits under way are one panel: the one knitting with a bar that moves, the rest waiting under it", async () => {
+  const projectId = (await j("POST", "/api/projects", { name: "Queue", starter: "social" })).body.id;
+  const at = new Date().toISOString();
+  const knitJob = (id, status, progress, name) => ({ id, kind: "knit", status, projectId, error: null, createdAt: at, finishedAt: null, result: null, input: { patternName: name }, progress });
+  await page.route(`**/api/projects/${projectId}/jobs`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([
+    knitJob("jb_1", "running", { total: 2, done: 1, current: "Launch banner · Story", units: [], step: "Drawing the frames", frames: { done: 75, total: 150 } }, "Launch banner"),
+    knitJob("jb_2", "queued", null, "VO reel"),
+    knitJob("jb_3", "queued", null, "Weekend post"),
+  ]) }));
+  await page.goto(`${studio.url}/projects/${projectId}/knits`);
+  const panel = page.getByRole("region", { name: "Knitting" });
+  await panel.getByText("2 waiting").waitFor();
+  assert.equal(await page.getByRole("region", { name: "Knitting" }).count(), 1, "one panel, not a row each");
+  // One file done of two, and half the frames of the second: (1 + 0.5 x 0.9) / 2.
+  assert.equal(await panel.getByRole("progressbar").getAttribute("aria-valuenow"), "73");
+  await panel.getByText("File 2 of 2 · Drawing the frames · frame 75 of 150").waitFor();
+  assert.deepEqual(await panel.getByRole("list", { name: "Waiting to knit" }).getByRole("listitem").allInnerTexts().then((t) => t.map((x) => x.split("\n")[1])), ["VO reel", "Weekend post"]);
+  assert.equal(await panel.getByRole("button", { name: /^Cancel knitting/ }).count(), 3);
+  await panel.getByRole("button", { name: "Cancel all" }).waitFor();
+  assert.deepEqual(await axeProblems(page), []);
+  await page.unroute(`**/api/projects/${projectId}/jobs`);
+});
