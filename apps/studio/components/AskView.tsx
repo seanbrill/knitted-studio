@@ -8,12 +8,13 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { api } from "@knitted/core/client";
-import { Button, Select, Skeleton, icons } from "@knitted/ui";
+import { Button, IconButton, Select, Skeleton, icons } from "@knitted/ui";
 import { chatHere, setCurrentChat, useCurrentChat } from "@/lib/current-chat";
 import { useLive } from "@/lib/hooks";
 import { Chat, ChatList, useChats } from "./Chat";
 
-const { Plus } = icons;
+const { Plus, PanelLeftClose, PanelLeftOpen } = icons;
+const FOLDED = "knitted.ask.chatsFolded";
 // The choice "the whole studio": a Select item cannot have an empty value.
 const STUDIO = "studio";
 const ALL = "all";
@@ -33,6 +34,11 @@ function AskInner() {
   const [chosen, setChosen] = useState<string | null>(null);
   // Which project's chats the list shows: each project's apart, so they are not mixed up.
   const [from, setFrom] = useState<string | null>(null);
+  // The list of chats can be folded away for room to read; this computer remembers.
+  const [folded, setFolded] = useState(false);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setFolded(localStorage.getItem(FOLDED) === "1"); }, []);
+  const fold = (v: boolean) => { setFolded(v); localStorage.setItem(FOLDED, v ? "1" : "0"); };
 
   // The chat in the address, else the one being had. From a project's page, that one if it can go on
   // in the project, else a new one there. Whichever opens is the one being had from now on.
@@ -58,10 +64,19 @@ function AskInner() {
 
   return (
     <div style={{ display: "flex", height: "100%", minHeight: 0 }}>
+      {folded ? (
+        <aside aria-label="Chats" style={{ width: 52, flexShrink: 0, borderRight: "1px solid var(--line)", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, paddingTop: "var(--space-6)" }}>
+          <IconButton label="Show the chats" onClick={() => fold(false)}><PanelLeftOpen size={16} aria-hidden /></IconButton>
+          <IconButton label="New chat" disabled={!shown} onClick={() => { setCurrentChat(null); router.push(chat?.projectId ? `/ask?project=${chat.projectId}` : "/ask"); }}><Plus size={16} aria-hidden /></IconButton>
+        </aside>
+      ) : (
       <aside aria-label="Chats" style={{ width: 248, flexShrink: 0, borderRight: "1px solid var(--line)", display: "flex", flexDirection: "column", minHeight: 0 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "var(--space-6) var(--space-4) var(--space-3)" }}>
           <h2 className="label" style={{ margin: 0 }}>Chats</h2>
-          <Button size="sm" disabled={!shown} onClick={() => { setCurrentChat(null); router.push(chat?.projectId ? `/ask?project=${chat.projectId}` : "/ask"); }}><Plus size={14} aria-hidden /> New chat</Button>
+          <div style={{ display: "flex", gap: 4 }}>
+            <Button size="sm" disabled={!shown} onClick={() => { setCurrentChat(null); router.push(chat?.projectId ? `/ask?project=${chat.projectId}` : "/ask"); }}><Plus size={14} aria-hidden /> New chat</Button>
+            <IconButton label="Hide the chats" onClick={() => fold(true)}><PanelLeftClose size={16} aria-hidden /></IconButton>
+          </div>
         </div>
         <div style={{ padding: "0 var(--space-4) var(--space-3)" }}>
           <Select aria-label="Show the chats of" value={showing} onValueChange={setFrom}
@@ -71,6 +86,7 @@ function AskInner() {
           {listed && <ChatList chats={listed} shown={shown ?? null} href={(c) => `/ask?chat=${c.id}`} onDeleted={(c) => { if (c.id === shown) router.replace("/ask"); }} />}
         </div>
       </aside>
+      )}
       <section aria-label={chat ? chat.title : "New chat"} style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
         <header style={{ padding: "var(--space-6) var(--space-8) var(--space-4)", borderBottom: "1px solid var(--line)", display: "grid", gap: "var(--space-2)" }}>
           <p className="eyebrow" style={{ margin: 0 }}>Ask your model</p>

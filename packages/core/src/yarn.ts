@@ -8,12 +8,13 @@
 
 import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
-import { copyFile, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { basename, extname, isAbsolute, join, resolve } from "node:path";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
+import { tmpdir } from "node:os";
 import sharp, { type Sharp } from "sharp";
 import type { CropBox, Shelf, Yarn, YarnKind, YarnMeta } from "./types.ts";
 import { newId } from "./ids.ts";
@@ -557,6 +558,44 @@ export async function viewYarn(store: Store, id: string, o: { page?: number; box
   const { data, info } = await img.extract({ left, top, width, height }).resize(VIEW_SIDE, VIEW_SIDE, { fit: "inside", withoutEnlargement: true })
     .flatten({ background: "#ffffff" }).jpeg({ quality: 85 }).toBuffer({ resolveWithObject: true });
   return { data, mime: "image/jpeg", width: info.width, height: info.height, box, ...(page ? { page, pages: src.meta.pages ?? 1 } : {}), more: box.y + box.h < 0.999 };
+}
+
+/**
+ * A video for a model to look at: frames from across it (or from `fromMs` to `toMs`), in
+ * one picture, left to right then down, each marked with its time. A model cannot play a
+ * video; a sheet of its frames is how it sees what happens in it.
+ */
+export async function viewVideo(store: Store, id: string, o: { fromMs?: number; toMs?: number; frames?: number } = {}): Promise<{ data: Buffer; mime: "image/jpeg"; times: number[]; durationMs: number; hasAudio: boolean }> {
+  const y = getYarn(store, id);
+  if (y.kind !== "video") throw new ValidationError(`${y.name} is ${KIND_WORD[y.kind]}, not a video.`);
+  if (!(await hasTool("ffmpeg"))) throw new ValidationError("Looking inside a video needs ffmpeg, which is not installed. Its thumbnail is all there is to see.");
+  const D = y.durationMs ?? 0;
+  const from = Math.max(0, Math.min(D, o.fromMs ?? 0)), to = Math.max(from, Math.min(D || Infinity, o.toMs ?? D));
+  const n = Math.max(1, Math.min(16, Math.round(o.frames ?? 9)));
+  // Each frame from the middle of its stretch, so a sheet never shows only the black first frame.
+  const times = Array.from({ length: n }, (_, i) => Math.round(from + ((to - from) * (i + 0.5)) / n));
+  const dir = await mkdtemp(join(tmpdir(), "kn-frames-"));
+  try {
+    const cols = n <= 4 ? n : n <= 9 ? 3 : 4, rows = Math.ceil(n / cols), W = Math.round(1536 / cols);
+    const tiles: { input: Buffer; left: number; top: number }[] = [];
+    let H = 0;
+    for (const [i, t] of times.entries()) {
+      const f = join(dir, `${i}.jpg`);
+      await run("ffmpeg", ["-v", "error", "-y", "-ss", (t / 1000).toFixed(3), "-i", yarnPath(store, y), "-frames:v", "1", "-vf", `scale=${W}:-2`, f]).catch(() => null);
+      const img = await readFile(f).catch(() => null);
+      if (!img) continue;
+      const meta = await sharp(img).metadata();
+      H = Math.max(H, meta.height ?? 0);
+      const label = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="40"><rect x="6" y="6" rx="6" width="96" height="28" fill="rgba(0,0,0,0.7)"/><text x="54" y="26" font-family="Helvetica, Arial" font-size="17" fill="#fff" text-anchor="middle">${(t / 1000).toFixed(1)}s</text></svg>`);
+      tiles.push({ input: await sharp(img).composite([{ input: label, left: 0, top: 0 }]).jpeg().toBuffer(), left: (i % cols) * W, top: Math.floor(i / cols) * 0 });
+      (tiles.at(-1) as { row?: number }).row = Math.floor(i / cols);
+    }
+    if (!tiles.length) throw new ValidationError(`No frames could be read from ${y.name}. The file may be damaged.`);
+    for (const t of tiles) t.top = ((t as { row?: number }).row ?? 0) * H;
+    const data = await sharp({ create: { width: cols * W, height: rows * H, channels: 3, background: "#111111" } })
+      .composite(tiles.map(({ input, left, top }) => ({ input, left, top }))).jpeg({ quality: 82 }).toBuffer();
+    return { data, mime: "image/jpeg", times, durationMs: D, hasAudio: !!y.meta.hasAudio };
+  } finally { await rm(dir, { recursive: true, force: true }); }
 }
 
 // ── from a URL ───────────────────────────────────────────────────────────────

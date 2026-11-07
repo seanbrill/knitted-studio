@@ -215,7 +215,7 @@
   },
   {
     "name": "view_yarn",
-    "summary": "LOOK at a picture or a PDF in Yarn or the reference: returns the picture, or a page of the PDF. A picture much taller than it is wide, like a whole web page, comes a part at a time from the top: the caption gives the box for the next part. Give box to look closely at one part. For a PDF's words, or a piece of copy, text: true reads them instead.",
+    "summary": "LOOK at any file in Yarn or the reference, to know what it is when its name does not say: a picture, a page of a PDF, or a VIDEO as a sheet of frames from across it, each marked with its time (give from and to, in seconds, to look closer at a part); for audio, its length and how loud it is over time. A picture much taller than it is wide, like a whole web page, comes a part at a time from the top: the caption gives the box for the next part. Give box to look closely at one part. For a PDF's words, or a piece of copy, text: true reads them instead.",
     "params": [
       {
         "name": "yarnId",
@@ -240,6 +240,24 @@
         "type": "boolean",
         "required": false,
         "description": "Read the words of a PDF or a piece of copy, instead of looking"
+      },
+      {
+        "name": "from",
+        "type": "number",
+        "required": false,
+        "description": "A video: look from this second"
+      },
+      {
+        "name": "to",
+        "type": "number",
+        "required": false,
+        "description": "A video: look up to this second"
+      },
+      {
+        "name": "frames",
+        "type": "number",
+        "required": false,
+        "description": "A video: how many frames, 1 to 16 (9 if left out)"
       }
     ]
   },

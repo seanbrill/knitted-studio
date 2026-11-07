@@ -10,7 +10,7 @@ import { useFollow } from "@/lib/follow";
 const { Check, X, AlertTriangle } = icons;
 
 /** The newest call that is somewhere to go: an edit, or a model looking at a pattern. */
-const lead = (s: AgentState) => [...s.calls].reverse().find((x) => (x.edits || x.tool === "preview_pattern") && pathFor(x));
+export const lead = (s: AgentState) => [...s.calls].reverse().find((x) => (x.edits || x.tool === "preview_pattern") && pathFor(x));
 
 /** One model at work now: each run of the studio's own model, and each other model by name. */
 interface Worker { key: string; who: string; what: string; to: string | null; run?: string }
@@ -50,7 +50,9 @@ export function ModelPresence({ variant, patternId }: { variant: "rail" | "rail-
   useEffect(() => {
     const f = useFollow.getState();
     if (!f.on || !s) return;
-    if (pathname === f.from) return; // on the way: the page it is leaving still shows
+    // On the way: the page it is leaving still shows. A move that has not landed in a few seconds is made again.
+    if (pathname === f.from && Date.now() - f.at < 4000) return;
+    if (pathname === f.from && f.target) { f.went(f.target, pathname); router.push(f.target); return; }
     if (pathname !== f.target) { f.stop(); return; } // somewhere else, by their own hand
     if (f.from) f.arrived();
     const c = f.run ? null : lead(s);

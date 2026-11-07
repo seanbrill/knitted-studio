@@ -1,5 +1,15 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
+  "next": {
+    "title": "See your model at work anywhere",
+    "items": [
+      "While a model works, a card in the corner of every page says what it is doing and what it last wrote, with Show me and Follow. Make it smaller to keep it out of the way.",
+      "Follow no longer gets stuck on the page it is leaving: a move that does not land is made again.",
+      "Your model can look inside videos now: a sheet of frames from across one, each marked with its time, and a closer look at any part. For audio it gets the length and how the loudness moves. So it can sort and name files whatever they are called.",
+      "The chat page no longer scrolls on past the conversation into blank space.",
+      "The list of chats can be folded away, for more room to read."
+    ]
+  },
   "entries": [
     {
       "version": "0.1.11",

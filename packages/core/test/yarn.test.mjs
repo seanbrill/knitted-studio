@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import sharp from "sharp";
-import { ValidationError, assertPublicUrl, createCopy, deleteYarn, importYarn, importYarnFromUrl, listYarn, openStore, purgeDeletedYarn, undeleteYarn, updateYarn, uploadTempPath, yarnPath, yarnPicturePath, yarnTilePath, yarnUsage } from "../src/node.ts";
+import { ValidationError, assertPublicUrl, createCopy, deleteYarn, importYarn, importYarnFromUrl, listYarn, openStore, purgeDeletedYarn, undeleteYarn, updateYarn, uploadTempPath, yarnPath, yarnPicturePath, yarnTilePath, yarnUsage, viewVideo } from "../src/node.ts";
 import { sanitiseSvg } from "../src/svg.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "knitted-yarn-"));
@@ -136,6 +136,22 @@ test("copy is stored as text and reusable", async () => {
   assert.equal(yarn.kind, "copy");
   assert.match(yarn.meta.text, /Pattern once/);
   await assert.rejects(createCopy(store, project.id, { name: "x", text: "   " }), /Write some copy/);
+});
+
+test("a model sees a video as a sheet of its frames, each from the middle of its stretch", { skip: !haveFfmpeg }, async () => {
+  const v = join(scratch, "frames.mp4");
+  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=30:duration=3", "-c:v", "libx264", "-pix_fmt", "yuv420p", v]);
+  const vid = (await imp("frames.mp4", readFileSync(v))).result.yarn;
+  const all = await viewVideo(store, vid.id);
+  assert.deepEqual(all.times.length, 9);
+  assert.ok(all.times[0] > 0 && all.times.at(-1) < vid.durationMs, "never only the first or last frame");
+  const m = await sharp(all.data).metadata();
+  assert.deepEqual([m.width, m.height], [1536, 3 * 384], "three by three, each frame 512 wide");
+  assert.equal(all.hasAudio, false);
+  const part = await viewVideo(store, vid.id, { fromMs: 1000, toMs: 2000, frames: 4 });
+  assert.deepEqual(part.times, [1125, 1375, 1625, 1875], "a closer look at one second");
+  const { result: pic } = await imp("Still.png", await png(40, 40));
+  await assert.rejects(viewVideo(store, pic.yarn.id), /not a video/);
 });
 
 test("video and audio are probed, with a poster frame and a waveform", { skip: !haveFfmpeg }, async () => {

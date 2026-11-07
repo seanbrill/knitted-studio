@@ -177,7 +177,8 @@ export function Chat({ chatId, onStarted, projectId = null, patternId, compact =
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
       <div ref={box} onScroll={() => { const b = box.current; if (b) stick.current = b.scrollHeight - b.scrollTop - b.clientHeight < 48; }}
-        style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: compact ? "var(--space-2) 0" : `var(--space-6) ${pad}` }}>
+        // Positioned, so the hidden words in it ("You:", "Done:") are held in its scroll, not stretching the page.
+        style={{ flex: 1, minHeight: 0, overflowY: "auto", position: "relative", padding: compact ? "var(--space-2) 0" : `var(--space-6) ${pad}` }}>
         {turns.length === 0 ? (
           <div style={{ display: "grid", gap: "var(--space-3)", maxWidth: 560 }}>
             {!compact && <Sparkles size={22} aria-hidden style={{ color: "var(--ember-ink)" }} />}

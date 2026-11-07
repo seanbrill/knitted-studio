@@ -18,7 +18,7 @@
 //    one, and never makes one the project's.
 
 import { applyCommand, instanceOf, joinFolder, motionLint, parentOf, partFromStitches, preflight, uniqueSlotName, COLOR_ROLES, FOLDER_SECTIONS, PRESETS, SIZES, CommandSchema } from "@knitted/core";
-import { activeSwatch, cleanFolder, cropToYarn, getBrief, pdfText, readWebsite, setProfile, viewYarn, createFolder, createPart, createSwatch, createSwatchFromProposal, folderCounts, getKnit, getPart, getYarn, importYarn, importYarnFromPath, importYarnFromUrl, createCopy, knitPath, listFolders, listKnits, listParts, listYarn, moveAllToFolder, proposeFromWebsite, renameFolder, setCopyText, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
+import { activeSwatch, cleanFolder, cropToYarn, getBrief, pdfText, readWebsite, setProfile, viewVideo, viewYarn, createFolder, createPart, createSwatch, createSwatchFromProposal, folderCounts, getKnit, getPart, getYarn, importYarn, importYarnFromPath, importYarnFromUrl, createCopy, knitPath, listFolders, listKnits, listParts, listYarn, moveAllToFolder, proposeFromWebsite, renameFolder, setCopyText, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
 
 const obj = (properties, required = []) => ({ type: "object", properties, required, additionalProperties: false });
 const str = (description) => ({ type: "string", description });
@@ -168,9 +168,19 @@ export const TOOLS = [
     } },
   { name: "tag_yarn", description: "Set the tags on a piece of Yarn. Tags let a batch pick from a group, like `tag:product`.", inputSchema: obj({ yarnId: str("The yarn id"), tags: { type: "array", items: { type: "string" } } }, ["yarnId", "tags"]),
     async handler({ yarnId, tags }, { store }) { return { id: yarnId, tags: updateYarn(store, yarnId, { tags }).tags }; } },
-  { name: "view_yarn", description: "LOOK at a picture or a PDF in Yarn or the reference: returns the picture, or a page of the PDF. A picture much taller than it is wide, like a whole web page, comes a part at a time from the top: the caption gives the box for the next part. Give box to look closely at one part. For a PDF's words, or a piece of copy, text: true reads them instead.", inputSchema: obj({ yarnId: str("From list_yarn"), page: { type: "number", description: "A PDF's page, from 1" }, box: BOX, text: { type: "boolean", description: "Read the words of a PDF or a piece of copy, instead of looking" } }, ["yarnId"]),
-    async handler({ yarnId, page, box, text }, { store }) {
+  { name: "view_yarn", description: "LOOK at any file in Yarn or the reference, to know what it is when its name does not say: a picture, a page of a PDF, or a VIDEO as a sheet of frames from across it, each marked with its time (give from and to, in seconds, to look closer at a part); for audio, its length and how loud it is over time. A picture much taller than it is wide, like a whole web page, comes a part at a time from the top: the caption gives the box for the next part. Give box to look closely at one part. For a PDF's words, or a piece of copy, text: true reads them instead.", inputSchema: obj({ yarnId: str("From list_yarn"), page: { type: "number", description: "A PDF's page, from 1" }, box: BOX, text: { type: "boolean", description: "Read the words of a PDF or a piece of copy, instead of looking" }, from: { type: "number", description: "A video: look from this second" }, to: { type: "number", description: "A video: look up to this second" }, frames: { type: "number", description: "A video: how many frames, 1 to 16 (9 if left out)" } }, ["yarnId"]),
+    async handler({ yarnId, page, box, text, from, to, frames }, { store }) {
       const y = getYarn(store, yarnId);
+      if (y.kind === "video" && !text) {
+        const v = await viewVideo(store, yarnId, { fromMs: from != null ? from * 1000 : undefined, toMs: to != null ? to * 1000 : undefined, frames });
+        const s = (ms) => `${(ms / 1000).toFixed(1)}s`;
+        return { __image: v.data.toString("base64"), mime: v.mime, caption: `${y.name}: a video, ${y.width ? `${y.width}x${y.height}, ` : ""}${s(v.durationMs)} long, ${v.hasAudio ? "with sound" : "silent"}. ${v.times.length} frames, left to right then down, at ${v.times.map(s).join(", ")}. To look closer at a part, give from and to in seconds.` };
+      }
+      if (y.kind === "audio") {
+        const peaks = y.meta.peaks ?? [];
+        const seg = peaks.length ? Array.from({ length: 8 }, (_, i) => { const part = peaks.slice(Math.floor((i * peaks.length) / 8), Math.floor(((i + 1) * peaks.length) / 8)); return Math.round((Math.max(0, ...part.map(Math.abs)) / (Math.max(...peaks.map(Math.abs)) || 1)) * 9); }) : [];
+        return { id: y.id, name: y.name, kind: "audio", seconds: y.durationMs ? +(y.durationMs / 1000).toFixed(1) : null, tags: y.tags, loudness: seg.length ? `How loud, in eighths from start to end (0 quiet, 9 loudest): ${seg.join(" ")}` : "Not measured", note: "Sound cannot be listened to here. Go by its length, how its loudness moves (steady music, speech with pauses, a short effect), its name and tags, and ask the person when it matters." };
+      }
       if (y.kind === "copy") return { id: y.id, name: y.name, text: untrusted(`yarn:${y.name}`, (y.meta.text ?? "").slice(0, 40_000)) };
       if (text) {
         if (y.kind !== "pdf") throw new Error(`${y.name} is a ${y.kind} with no words to read. Leave out text to look at it.`);

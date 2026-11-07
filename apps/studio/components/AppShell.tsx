@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { CommandPalette, IconButton, LogoMark, Wordmark, icons, useTheme, type CommandAction } from "@knitted/ui";
+import { ModelAtWork } from "./ModelAtWork";
 import { ModelPresence } from "./ModelPresence";
 
 const { Home, LayoutGrid, Settings, Moon, Sun, Plus, Command, Sparkles } = icons;
@@ -111,6 +112,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <main id="main" style={{ flex: 1, overflow: "auto", minWidth: 0, position: "relative" }}>
         {children}
       </main>
+      <ModelAtWork />
       <CommandPalette actions={actions} />
     </div>
   );

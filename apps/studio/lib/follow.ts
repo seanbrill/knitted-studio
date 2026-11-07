@@ -14,6 +14,8 @@ interface Follow {
   from: string | null;
   /** The one run followed, when more than one is at work: its job. Absent, the newest edit is followed. */
   run: string | null;
+  /** When Follow last set off for a page: a move that never lands is tried again, not waited on. */
+  at: number;
   start(to: string, from: string, run?: string): void;
   went(to: string, from: string): void;
   arrived(): void;
@@ -25,8 +27,9 @@ export const useFollow = create<Follow>((set) => ({
   target: null,
   from: null,
   run: null,
-  start: (to, from, run) => set({ on: true, target: to, from: to === from ? null : from, run: run ?? null }),
-  went: (to, from) => set({ target: to, from }),
+  at: 0,
+  start: (to, from, run) => set({ on: true, target: to, from: to === from ? null : from, run: run ?? null, at: Date.now() }),
+  went: (to, from) => set({ target: to, from, at: Date.now() }),
   arrived: () => set({ from: null }),
   stop: () => set({ on: false, target: null, from: null, run: null }),
 }));
