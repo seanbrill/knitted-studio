@@ -32,7 +32,18 @@ const StitchPatch = StitchSchema.omit({ id: true }).partial().strict();
 const EASES = ["linear", "ease-out", "ease-in", "ease-in-out", "back-out", "spring-soft"] as const;
 const PRESETS = ["fade-in", "fade-out", "slide-up", "slide-down", "slide-left", "slide-right", "pop", "scale-in", "stitch-in", "type-on", "wipe", "ken-burns", "pulse"] as const;
 export const ClipSchema = z.object({ id: z.string().max(40), startMs: z.number().min(0).max(600_000), endMs: z.number().min(0).max(600_000), preset: z.enum(PRESETS), ease: z.enum(EASES).optional(), params: z.record(z.string(), z.number()).optional() });
-export const AudioClipSchema = z.object({ id: z.string().max(40), yarnId: z.string().max(64), startMs: z.number().min(0).max(600_000), kind: z.enum(["voice", "music"]), gain: z.number().min(0).max(2).optional(), fadeInMs: z.number().min(0).optional(), fadeOutMs: z.number().min(0).optional(), loop: z.boolean().optional(), label: z.string().max(200).optional() });
+// A clip's loudness is `gain`, 1 as recorded. "volume" and "level" are the words a model reaches
+// for first, so they are taken too (a percent above 2 is read as one); anything else it does
+// not know is refused by name, never dropped without a word, so a change cannot quietly do nothing.
+const loudnessWords = (v: unknown) => {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return v;
+  const { volume, level, ...rest } = v as Record<string, unknown>;
+  const said = volume ?? level;
+  if (said === undefined || (rest as { gain?: unknown }).gain !== undefined) return volume === undefined && level === undefined ? v : rest;
+  const n = Number(said);
+  return { ...rest, gain: Number.isFinite(n) ? (n > 2 ? n / 100 : n) : said };
+};
+export const AudioClipSchema = z.preprocess(loudnessWords, z.object({ id: z.string().max(40), yarnId: z.string().max(64), startMs: z.number().min(0).max(600_000), kind: z.enum(["voice", "music"]), gain: z.number().min(0).max(2).optional(), fadeInMs: z.number().min(0).optional(), fadeOutMs: z.number().min(0).optional(), loop: z.boolean().optional(), label: z.string().max(200).optional() }).strict());
 
 export type CommandInput =
   | { type: "addStitch"; stitch: z.infer<typeof StitchSchema>; index?: number }

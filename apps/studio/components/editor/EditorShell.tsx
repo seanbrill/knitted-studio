@@ -24,7 +24,7 @@ const { LayoutGrid, Image: ImageIcon, Type, Shapes, Palette, Package, Mic, Spark
 type Tool = "patterns" | "yarn" | "text" | "shapes" | "parts" | "voice" | "swatch" | "ask";
 const TOOLS: { id: Tool; label: string; hint: string; Icon: React.ComponentType<{ size?: number }> }[] = [
   { id: "patterns", label: "Patterns", hint: "The patterns in this project, and the layers of this one.", Icon: LayoutGrid },
-  { id: "yarn", label: "Yarn", hint: "Your files: photos, logos, video, sound and copy. Drag one onto the canvas.", Icon: ImageIcon },
+  { id: "yarn", label: "Yarn", hint: "Your files: photos, logos, video, sound and saved text. Drag one onto the canvas.", Icon: ImageIcon },
   { id: "text", label: "Text", hint: "Add a headline, a line of body copy or a label.", Icon: Type },
   { id: "shapes", label: "Shapes", hint: "Add a box, a circle or a line in the brand's colours.", Icon: Shapes },
   { id: "parts", label: "Parts", hint: "Reusable pieces, like a logo lockup or a button. Add one, or save your own.", Icon: Package },

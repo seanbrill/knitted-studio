@@ -47,7 +47,7 @@ test("each page is pictured at a desktop's width and a phone's, the whole way do
   assert.equal(home.name, "Home, desktop");
   assert.equal(home.folder, "Website/Desktop");
   assert.deepEqual(home.tags, ["website", "desktop"]);
-  assert.deepEqual([home.width, home.height], [1440, 2400], "the whole page, not the window");
+  assert.deepEqual([home.width, home.height], [2880, 4800], "the whole page, not the window, at twice its pixels so a crop of it stays sharp");
   assert.equal(phone.width, 780, "a phone's width, drawn at twice its pixels");
   assert.equal(phone.folder, "Website/Mobile");
   assert.equal(files.find((y) => y.meta.site?.url.endsWith("/about") && y.meta.site.device === "desktop").name, "About us (about), desktop");

@@ -1,5 +1,17 @@
 [
   {
+    "name": "get_guide",
+    "summary": "How to use knitted well, a topic at a time: the numbers and habits that make work look designed, not merely generated. Read start first, then the topic before your first task of that kind. Topics: start, patterns, motion, voice, yarn, knitting, brief, parts, posts, organizing.",
+    "params": [
+      {
+        "name": "topic",
+        "type": "string",
+        "required": false,
+        "description": "Leave out for start. One of start, patterns, motion, voice, yarn, knitting, brief, parts, posts, organizing."
+      }
+    ]
+  },
+  {
     "name": "get_studio_info",
     "summary": "Which knitted is answering you: its version, when the build that is running was made (builtAt, null when it runs from source) and when it started (startedAt), the folder its library is in (home), and how many tools it has. When the app on this computer was built after builtAt, an older copy is still running: ask the person to quit knitted and open it again.",
     "params": []
@@ -737,7 +749,7 @@
   },
   {
     "name": "apply_batch",
-    "summary": "Apply several edit commands as ONE step, so a person can undo it as one. `atomic: true` applies all or nothing. Each command is {type, ...}: addStitch {stitch}, updateStitch {id, patch}, removeStitch {id}, reorder {id, toIndex}, setSize {size}, fillSlot {slot, content} (text slots only; set an image with updateStitch and a yarnId), setMeta {name, durationMs}, setMotion {stitchId, clips}, setAudio {audio}. setLocked is refused: only a person locks or unlocks.",
+    "summary": "Apply several edit commands as ONE step, so a person can undo it as one. `atomic: true` applies all or nothing. Each command is {type, ...}: addStitch {stitch}, updateStitch {id, patch}, removeStitch {id}, reorder {id, toIndex}, setSize {size}, fillSlot {slot, content} (text slots only; set an image with updateStitch and a yarnId), setMeta {name, durationMs}, setMotion {stitchId, clips}, setAudio {audio}: the WHOLE list of sound clips, replacing what is there, so send every clip to keep (read them with get_pattern, motion.audio). A clip is {id, yarnId, startMs, kind: voice or music, gain (loudness: 1 as recorded, 0 silent, up to 2; music under a voice sits well at 0.15 to 0.3, and the knit also lowers music while a voice speaks), fadeInMs, fadeOutMs, loop, label}; any other field is refused. To change one clip's loudness, send the list with that clip's gain changed. setLocked is refused: only a person locks or unlocks.",
     "params": [
       {
         "name": "patternId",
@@ -993,7 +1005,7 @@
   },
   {
     "name": "knit_pattern",
-    "summary": "Make real files (PNG, JPEG, WebP or MP4) from a pattern, through the same job the studio's Knit button uses, with the same checks. `params`: sizes (array of {name,w,h}), format, scale (1 or 2), rows (an array of objects of slot values, one per post, to make many). A row may only fill free slots. Returns file paths and any issues, or a jobId when wait is false.",
+    "summary": "Make real files (PNG, JPEG, WebP or MP4) from a pattern, through the same job the studio's Knit button uses, with the same checks. `params`: sizes (array of {name,w,h}), format, scale (1 or 2), fps (30, or 60 for smoother fast motion, which takes about twice as long), rows (an array of objects of slot values, one per post, to make many). A row may only fill free slots. Returns file paths and any issues, or a jobId when wait is false.",
     "params": [
       {
         "name": "projectId",
@@ -1047,19 +1059,91 @@
   },
   {
     "name": "list_knits",
-    "summary": "What has been knitted in a project, newest first.",
+    "summary": "What has been knitted in a project, newest first, a page at a time: total says how many there are, so page on with offset. A knit with patternChangedSince was made before its pattern was last saved, so it may not show the pattern as it is now: knit it again before it is posted.",
     "params": [
       {
         "name": "projectId",
         "type": "string",
-        "required": true,
-        "description": "The project id, like pj_01..."
+        "required": false,
+        "description": "The project. Not needed with patternId"
       },
       {
         "name": "folder",
         "type": "string",
         "required": false,
         "description": "Only knits in this folder and the folders inside it"
+      },
+      {
+        "name": "patternId",
+        "type": "string",
+        "required": false,
+        "description": "Only knits of this pattern"
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false,
+        "description": "How many, 30 if left out"
+      },
+      {
+        "name": "offset",
+        "type": "integer",
+        "required": false,
+        "description": "How many of the newest to skip"
+      }
+    ]
+  },
+  {
+    "name": "tag_knit",
+    "summary": "Set the tags on a knit: words to find it by in Knits, like launch or winter. Replaces the tags it has, so send every tag to keep.",
+    "params": [
+      {
+        "name": "knitId",
+        "type": "string",
+        "required": true,
+        "description": "The knit, by its id from list_knits"
+      },
+      {
+        "name": "tags",
+        "type": "string[]",
+        "required": true,
+        "description": ""
+      }
+    ]
+  },
+  {
+    "name": "set_knit_post",
+    "summary": "Save what goes with a knit when it is posted: its caption, hashtags, and a track from the project's audio Yarn with a sentence on why it suits. What you leave out stays as it is. The person sees it in Knits, and can edit it. Read the guide topic posts first.",
+    "params": [
+      {
+        "name": "knitId",
+        "type": "string",
+        "required": true,
+        "description": "The knit, by its id from list_knits"
+      },
+      {
+        "name": "caption",
+        "type": "string",
+        "required": false,
+        "description": "The words, the hook first"
+      },
+      {
+        "name": "hashtags",
+        "type": "string[]",
+        "required": false,
+        "description": "Each with or without its #"
+      },
+      {
+        "name": "audioId",
+        "type": "string",
+        "required": false,
+        "description": "A Yarn id of kind audio from this project, or an empty string for no track"
+      },
+      {
+        "name": "audioWhy",
+        "type": "string",
+        "required": false,
+        "description": "Why that track suits it, in a sentence"
       }
     ]
   },

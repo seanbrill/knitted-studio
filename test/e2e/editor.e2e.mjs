@@ -275,8 +275,9 @@ test("the trail says where the pattern is, renames it in place, and goes back up
   await openEditor();
   const trail = page.getByRole("navigation", { name: "Breadcrumbs" });
   await trail.getByRole("link", { name: "Editor e2e" }).waitFor();
-  assert.deepEqual(await trail.getByRole("link").allInnerTexts(), ["Projects", "Editor e2e", "Patterns"]);
-  const name = trail.getByLabel("Pattern name");
+  assert.deepEqual(await trail.getByRole("link").allInnerTexts(), ["Projects", "Editor e2e"]);
+  await page.getByRole("link", { name: "Back to Editor e2e" }).waitFor();
+  const name = page.getByLabel("Pattern name");
   await name.fill("Renamed in the trail");
   await name.press("Enter");
   await serverHas(studio, `/api/patterns/${patternId}`, (p) => p.name === "Renamed in the trail");

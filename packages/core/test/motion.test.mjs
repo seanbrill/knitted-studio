@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyCommand, compileMotion, motionEnd, motionLint, preflight, PRESETS, FALLBACK_SWATCH, stillMs } from "../src/index.ts";
+import { applyCommand, compileMotion, motionEnd, motionLint, pieceTimes, preflight, PRESETS, FALLBACK_SWATCH, stillMs, wordMs } from "../src/index.ts";
 
 const base = (motion, durationMs = 6000, extra = {}) => ({
   id: "p", projectId: "pj", name: "M", size: { name: "S", w: 1080, h: 1920 }, durationMs, version: 1, updatedAt: "", motion,
@@ -33,14 +33,28 @@ test("fill-mode both: a stitch waits in its start state and holds its end state"
   assert.match(compileMotion(base({ tracks: { h: [clip("a", "fade-in", 1000, 1500)] } })), /1000ms 1 both/);
 });
 
-test("stitch-in reveals in rows and type-on in characters", () => {
-  assert.match(compileMotion(base({ tracks: { h: [clip("a", "stitch-in", 0, 640)] } })), /steps\(5, end\)/);
-  assert.match(compileMotion(base({ tracks: { h: [clip("a", "type-on", 0, 900)] } })), /steps\(21, end\)/, "one step per character of \"Make it knitted today\"");
+test("type-on and stitch-in on text are played by the characters and words, not by sweeping the box", () => {
+  const typed = compileMotion(base({ tracks: { h: [clip("a", "type-on", 0, 900)] } }));
+  assert.match(typed, /\[data-stitch-id="h"\] \.kc\{animation:kn-char/);
+  assert.doesNotMatch(typed, /\[data-stitch-id="h"\]\{animation/, "the box itself does not sweep");
+  const stitched = compileMotion(base({ tracks: { h: [clip("a", "stitch-in", 0, 800)] } }));
+  assert.match(stitched, /\[data-stitch-id="h"\] \.kw\{display:inline-block;animation:kn-word 450ms/);
+  assert.doesNotMatch(stitched, /steps\(/, "no hard steps");
+  // On a shape, stitch-in is a smooth reveal from the top.
+  assert.match(compileMotion(base({ tracks: { b: [clip("a", "stitch-in", 0, 800)] } })), /\[data-stitch-id="b"\]\{animation:kn-stitch-in 800ms cubic-bezier/);
+});
+
+test("each character's moment comes evenly through the clip, the last at its end; words land by the end", () => {
+  assert.deepEqual(pieceTimes(clip("a", "type-on", 1000, 1400), 4), [1099, 1199, 1299, 1399]);
+  const w = pieceTimes(clip("a", "stitch-in", 0, 1000), 3);
+  assert.deepEqual(w, [0, 275, 550]);
+  assert.equal(w.at(-1) + wordMs(clip("a", "stitch-in", 0, 1000)), 1000);
 });
 
 test("ken burns acts on the picture inside the box, not the box", () => {
   const css = compileMotion({ stitches: [{ id: "i", kind: "image", x: 0, y: 0, w: 1, h: 1, locked: false }], motion: { tracks: { i: [clip("k", "ken-burns", 0, 4000)] } } });
-  assert.match(css, /\[data-stitch-id="i"\] \.media img\{animation:/);
+  assert.match(css, /\[data-stitch-id="i"\] \.media img,/);
+  assert.doesNotMatch(css, /\[data-stitch-id="i"\]\{animation/, "the box itself does not move");
 });
 
 test("no motion means no CSS", () => assert.equal(compileMotion(base(undefined)), ""));
@@ -83,7 +97,7 @@ test("deleting an animated stitch and undoing brings the animation back too", ()
 
 // ── lint: each rule is shown failing, then passing ──────────────────────────
 const codes = (p) => motionLint(p).map((i) => i.code);
-const good = () => base({ tracks: { b: [clip("bg", "fade-in", 0, 500)], h: [clip("a", "slide-up", 400, 950)] } }, 4000);
+const good = () => base({ tracks: { b: [clip("bg", "fade-in", 0, 500)], h: [clip("a", "slide-up", 400, 950)] } }, 3500);
 
 test("lint: a well-made timeline is clean", () => assert.deepEqual(codes(good()), []));
 test("lint: text that is up too briefly to read is flagged", () => {
@@ -102,6 +116,26 @@ test("lint: more than three flashes in a second is flagged", () => {
 test("lint: a long stretch with nothing moving is flagged", () => {
   assert.ok(codes(base({ tracks: { b: [clip("a", "fade-in", 0, 500), clip("b", "fade-out", 5000, 5400)] } }, 6000)).includes("dead-air"));
 });
+test("lint: dead air is every gap, the end included, and a slow zoom through a gap fills it while a pulse does not", () => {
+  const gaps = (tracks, dur) => motionLint(base({ tracks }, dur)).filter((i) => i.code === "dead-air").map((i) => i.message);
+  // Two gaps: the old check stopped at the first.
+  assert.equal(gaps({ b: [clip("a", "fade-in", 0, 500), clip("b", "pulse", 600, 4000), clip("c", "fade-out", 3500, 3900), clip("d", "fade-in", 7000, 7500)] }, 8500).length, 2);
+  // Frozen for the last 3.5 s: never checked before.
+  assert.match(gaps({ h: [clip("a", "slide-up", 0, 550), clip("b", "fade-in", 2000, 2500)] }, 6000)[0], /Nothing moves for the last 3\.5s, from 2\.5s/);
+  assert.deepEqual(gaps({ h: [clip("a", "slide-up", 0, 550)], b: [clip("k", "ken-burns", 0, 6000)] }, 6000), [], "a slow zoom keeps it alive");
+});
+test("lint: an entrance too short to see, and type-on faster than a letter a frame, are flagged", () => {
+  const fast = (tracks, content) => motionLint({ ...base({ tracks }, 4000), stitches: base({}).stitches.map((s) => (s.id === "h" && content ? { ...s, content } : s)) }).filter((i) => i.code === "too-fast").map((i) => i.message);
+  assert.match(fast({ h: [clip("a", "slide-up", 400, 650)] })[0], /The headline takes 250 ms to come in: 8 frames, which reads as a jump/);
+  assert.deepEqual(fast({ h: [clip("a", "slide-up", 400, 700)] }), [], "300 ms is quick but fine, as the guide says");
+  // Many quick entrances are one warning, not one each.
+  const many = fast({ h: [clip("a", "slide-up", 400, 600)], b: [clip("b", "pop", 0, 250)], lock: [clip("c", "fade-in", 0, 280)] });
+  assert.equal(many.length, 1);
+  assert.match(many[0], /^3 things take as little as 200 ms to come in \(headline, shape, eyebrow\): 6 frames/);
+  assert.match(fast({ h: [clip("a", "type-on", 0, 1400)] }, "Fifty characters of a quote typed out far too fast!")[0], /types 51 characters in 1400 ms, 27 ms each.*2040 ms or more/);
+  assert.deepEqual(fast({ h: [clip("a", "type-on", 0, 1400)] }, "Short line"), []);
+  assert.deepEqual(fast({ h: [clip("a", "fade-out", 0, 200)] }), [], "exits may be quick");
+});
 test("lint: a clip running past the end of the video is flagged", () => {
   assert.ok(codes(base({ tracks: { b: [clip("a", "fade-in", 0, 5000)] } }, 3000)).includes("past-end"));
 });
@@ -113,3 +147,17 @@ test("lint runs inside preflight, so Knit shows it before anyone waits", () => {
   assert.ok(preflight(p, FALLBACK_SWATCH, { yarn: {} }).some((i) => i.code === "text-too-brief"));
 });
 test("a still has no motion lint at all", () => assert.deepEqual(codes(base({ tracks: { h: [clip("a", "fade-in", 0, 100)] } }, 0)), []));
+
+test("only a stitch's first clip waits in its start state, so a later clip cannot override it from frame 0", () => {
+  const css = compileMotion(base({ tracks: { h: [clip("b", "fade-out", 3000, 3400), clip("a", "fade-in", 0, 500)] } }));
+  assert.match(css, /kn-fade-in 500ms cubic-bezier\([^)]*\) 0ms 1 both,kn-fade-out 400ms cubic-bezier\([^)]*\) 3000ms 1 forwards/, "in time order, the later one forwards only");
+});
+
+test("ken burns zooms footage as well as pictures", () => {
+  const css = compileMotion({ stitches: [{ id: "v", kind: "video", x: 0, y: 0, w: 1, h: 1, locked: false }], motion: { tracks: { v: [clip("k", "ken-burns", 0, 4000)] } } });
+  assert.match(css, /\[data-stitch-id="v"\] \.media video/);
+});
+
+test("a pulse beats inside its clip, not for the clip's length again per beat", () => {
+  assert.match(compileMotion(base({ tracks: { h: [clip("p", "pulse", 1000, 2200)] } })), /kn-pulse 600ms cubic-bezier\([^)]*\) 1000ms 2 both/);
+});

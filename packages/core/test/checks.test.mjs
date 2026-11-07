@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { FALLBACK_SWATCH, STYLE_KEYS, preflight } from "../src/index.ts";
+import { FALLBACK_SWATCH, STYLE_KEYS, preflight, safeZoneIssues } from "../src/index.ts";
 import { socialStarterPack } from "../src/starters.ts";
 import { BUILTIN_PARTS } from "../src/builtin-parts.ts";
 
@@ -64,4 +64,79 @@ test("softness is measured on the side that is stretched, so a wide picture in a
   assert.match(tall.find((i) => i.code === "cropped").message, /times taller, in proportion/);
   // A vector never looks soft, but it is cut off like anything else.
   assert.deepEqual(codes(shot(0.5, 0.8, {}, { width: 200, height: 50, mime: "image/svg+xml" })), ["cropped"]);
+});
+
+// Contrast is judged against what is really behind the text. Against the page alone, every
+// dark label on a bright button read 1.0:1: 189 warnings in a real library, every one wrong.
+const square = (stitches) => ({ id: "pt", projectId: "pj", name: "P", size: { name: "Square", w: 1080, h: 1080 }, version: 1, stitches });
+const page = { id: "bg", kind: "shape", x: 0, y: 0, w: 1, h: 1, locked: false, style: { background: "#140c24" } };
+const label = (style, box = { x: 0.1, y: 0.8, w: 0.4, h: 0.08 }) => ({ id: "cta", kind: "text", slot: "cta", ...box, locked: false, content: "Create account", style: { fontSize: 0.04, color: "#140c24", ...style } });
+const contrast = (stitches) => preflight(square(stitches), FALLBACK_SWATCH, { yarn: {} }).filter((i) => i.code === "low-contrast");
+
+test("dark text on a bright button is judged against the button, not the dark page", () => {
+  const pill = { id: "pill", kind: "shape", x: 0.08, y: 0.79, w: 0.44, h: 0.1, locked: false, style: { background: "#e879f9" } };
+  assert.deepEqual(contrast([page, pill, label({})]), []);
+  // The same text with no button under it really is unreadable, and is still caught.
+  assert.match(contrast([page, label({})])[0].message, /1\.0:1/);
+});
+
+test("text the colour of the card it sits on is caught, measured against the card", () => {
+  const card = { id: "card", kind: "shape", x: 0.05, y: 0.7, w: 0.9, h: 0.25, locked: false, style: { background: "#1a1030" } };
+  assert.match(contrast([{ ...page, style: { background: "#ffffff" } }, card, label({})])[0].message, /1\.\d:1/);
+});
+
+test("a text box's own background is what it is read against", () => {
+  assert.deepEqual(contrast([page, label({ background: "#ffffff" })]), []);
+});
+
+test("text over a picture or a gradient is not given a made-up number", () => {
+  const photo = { id: "ph", kind: "image", x: 0, y: 0.5, w: 1, h: 0.5, locked: false, yarnId: "yn_1", style: { fit: "cover" } };
+  const yarn = { yn_1: { id: "yn_1", kind: "image", mime: "image/jpeg", width: 2000, height: 1000 } };
+  assert.deepEqual(preflight(square([page, photo, label({})]), FALLBACK_SWATCH, { yarn }).filter((i) => i.code === "low-contrast"), []);
+  const fade = { id: "g", kind: "shape", x: 0, y: 0.6, w: 1, h: 0.4, locked: false, style: { background: "linear-gradient(#000, #fff)" } };
+  assert.deepEqual(contrast([page, fade, label({})]), []);
+});
+
+test("a small shape beside the text, not under most of it, is not what it is read against", () => {
+  const dot = { id: "dot", kind: "shape", x: 0.1, y: 0.8, w: 0.05, h: 0.08, locked: false, style: { background: "#ffffff" } };
+  assert.equal(contrast([page, dot, label({})]).length, 1);
+});
+
+// ── Story safe zones ──────────────────────────────────────────────────────────
+const story = (stitches, size = { name: "Story", w: 1080, h: 1920 }) => ({ id: "pt", projectId: "pj", name: "S", size, version: 1, stitches });
+const zoned = (p, measured) => (measured ? safeZoneIssues(p, FALLBACK_SWATCH, measured) : preflight(p, FALLBACK_SWATCH, { yarn: { yn_logo: { id: "yn_logo", width: 800, height: 800 } } })).filter((i) => i.code === "safe-zone");
+const logo = { id: "lg", kind: "image", slot: "logo", yarnId: "yn_logo", x: 0.06, y: 0.04, w: 0.2, h: 0.1, locked: false, style: {} };
+const cta = { id: "ct", kind: "text", slot: "cta", x: 0.1, y: 0.86, w: 0.8, h: 0.06, locked: false, content: "Create account", style: { fontSize: 0.05 } };
+
+test("a story's logo under the top bar and its call to action under the reply bar are both flagged, in pixels", () => {
+  const [a, b] = zoned(story([logo, cta]));
+  assert.equal(a.stitchId, "lg"); assert.match(a.message, /top 13% of a 9:16 frame.*Keep it below 250px/);
+  assert.equal(b.stitchId, "ct"); assert.match(b.message, /bottom 18%.*Keep it above 1574px/);
+});
+
+test("the same layout in a post, a full-bleed photo, a backdrop and a hidden stitch are not", () => {
+  assert.deepEqual(zoned(story([logo, cta], { name: "Post", w: 1080, h: 1350 })), []);
+  const photo = { ...logo, id: "ph", slot: "photo", x: 0, y: 0, w: 1, h: 1 };
+  const back = { ...logo, id: "bd", slot: "backdrop", w: 0.1 };
+  const hid = { ...cta, id: "hd", style: { hidden: true } };
+  assert.deepEqual(zoned(story([photo, back, hid])), []);
+});
+
+test("without a browser only the line a text box is anchored by counts; measured lines say where it really is", () => {
+  // A tall box from 5% down, its text sitting at the bottom: the words are clear of the top bar.
+  const tall = { id: "tx", kind: "text", slot: "headline", x: 0.1, y: 0.05, w: 0.8, h: 0.55, locked: false, content: "Rate it once", style: { fontSize: 0.09, verticalAlign: "bottom" } };
+  assert.deepEqual(zoned(story([tall])), [], "no false alarm from the box's empty top");
+  assert.deepEqual(zoned(story([{ ...tall, style: { fontSize: 0.09 } }])).map((i) => i.stitchId), ["tx"], "anchored at the top, its first line is under the bar");
+  assert.deepEqual(zoned(story([tall]), [{ stitchId: "tx", top: 0.08, bottom: 0.6 }]).map((i) => i.stitchId), ["tx"], "measured: six lines reach up under the bar");
+  assert.deepEqual(zoned(story([tall]), [{ stitchId: "tx", top: 0.5, bottom: 0.6 }]), []);
+});
+
+test("music set far under the voice is flagged, with what suits", () => {
+  const withAudio = (audio) => ({ ...story([]), durationMs: 5000, motion: { tracks: {}, audio } });
+  const yarn = { yn_m: { id: "yn_m" }, yn_v: { id: "yn_v" } };
+  const quiet = (audio) => preflight(withAudio(audio), FALLBACK_SWATCH, { yarn }).filter((i) => i.code === "quiet-music").map((i) => i.message);
+  const voice = { id: "v", yarnId: "yn_v", kind: "voice", startMs: 0 };
+  assert.match(quiet([voice, { id: "m", yarnId: "yn_m", kind: "music", startMs: 0, gain: 0.08 }])[0], /gain 0\.08, 22 dB under the voice level, so it will barely be heard even when nobody speaks.*0\.4 to 0\.6/);
+  assert.deepEqual(quiet([voice, { id: "m", yarnId: "yn_m", kind: "music", startMs: 0, gain: 0.5 }]), []);
+  assert.deepEqual(quiet([voice, { id: "m", yarnId: "yn_m", kind: "music", startMs: 0 }]), [], "no gain is full level");
 });

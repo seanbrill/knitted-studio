@@ -7,11 +7,10 @@ import { CommandPalette, IconButton, LogoMark, Wordmark, icons, useTheme, type C
 import { ModelAtWork } from "./ModelAtWork";
 import { ModelPresence } from "./ModelPresence";
 
-const { Home, LayoutGrid, Settings, Moon, Sun, Plus, Command, Sparkles } = icons;
+const { LayoutGrid, Settings, Moon, Sun, Plus, Command, Sparkles } = icons;
 
 const NAV = [
-  { href: "/", label: "Home", Icon: Home, match: (p: string) => p === "/" },
-  { href: "/projects", label: "Projects", Icon: LayoutGrid, match: (p: string) => p.startsWith("/projects") },
+  { href: "/", label: "Projects", Icon: LayoutGrid, match: (p: string) => p === "/" || p.startsWith("/projects") },
   { href: "/ask", label: "Ask", Icon: Sparkles, match: (p: string) => p.startsWith("/ask") },
   { href: "/settings", label: "Settings", Icon: Settings, match: (p: string) => p.startsWith("/settings") },
 ];
@@ -37,11 +36,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const actions: CommandAction[] = useMemo(
     () => [
-      { id: "go-home", label: "Go to Home", group: "Pages", icon: <Home size={15} />, run: () => router.push("/") },
-      { id: "go-projects", label: "Go to Projects", group: "Pages", icon: <LayoutGrid size={15} />, run: () => router.push("/projects") },
+      { id: "go-projects", label: "Go to Projects", group: "Pages", icon: <LayoutGrid size={15} />, keywords: "home start", run: () => router.push("/") },
       { id: "go-ask", label: "Ask your model", group: "Pages", icon: <Sparkles size={15} />, keywords: "chat model claude", run: () => router.push("/ask") },
       { id: "go-settings", label: "Go to Settings", group: "Pages", icon: <Settings size={15} />, run: () => router.push("/settings") },
-      { id: "new-project", label: "New project", group: "Actions", icon: <Plus size={15} />, keywords: "create", run: () => router.push("/projects?new=1") },
+      { id: "new-project", label: "New project", group: "Actions", icon: <Plus size={15} />, keywords: "create", run: () => router.push("/?new=1") },
       { id: "theme", label: theme === "day" ? "Switch to Night" : "Switch to Day", group: "Actions", icon: theme === "day" ? <Moon size={15} /> : <Sun size={15} />, keywords: "theme dark light", run: () => setTheme(theme === "day" ? "night" : "day") },
     ],
     [router, theme, setTheme],

@@ -16,7 +16,7 @@
 import { createSwatchFromProposal, getBrief, getSecret, getYarn, listYarn, pdfText, proposeFromWebsite, readWebsite, setBriefSite, setProfile, ValidationError } from "@knitted/core/node";
 import { captureSite } from "@knitted/engine";
 import { untrusted } from "@knitted/mcp/tools";
-import { AgentError, API_VERSION, DEFAULT_MODEL } from "./index.mjs";
+import { AgentError, API_VERSION, DEFAULT_MODEL, mayAsk, spend } from "./index.mjs";
 import { readMessage, StreamError } from "./stream.mjs";
 
 const MAX_TOKENS = 16000;
@@ -150,7 +150,7 @@ export async function writeProfile({ prompt, apiKey, model = DEFAULT_MODEL, base
   const at = text.search(/^# /m);
   const profile = at > 0 ? text.slice(at) : text;
   if (!profile) throw new AgentError("The model wrote nothing. Try again, or write the profile yourself.", "empty");
-  return { profile, cutOff: msg.stop_reason === "max_tokens", usage: { inputTokens: msg.usage?.input_tokens ?? 0, outputTokens: msg.usage?.output_tokens ?? 0 } };
+  return { profile, cutOff: msg.stop_reason === "max_tokens", model: msg.model ?? model, raw: msg.usage ?? {}, usage: { inputTokens: msg.usage?.input_tokens ?? 0, outputTokens: msg.usage?.output_tokens ?? 0 } };
 }
 
 // ── a sync with the website, as a job ────────────────────────────────────────
@@ -239,7 +239,9 @@ export function startSync(store, o) {
             const ref = reference ? await referenceMaterial(store, projectId, referenceIds) : { text: "", used: [] };
             if (!site && !ref.text && !writeUp?.trim()) throw new ValidationError("There was nothing to build it from: the website could not be read, and the reference has no PDFs or copy with words in them.");
             const prompt = profilePrompt({ site, reference: ref.text, writeUp, notes: brief.notes, current: brief.profile, mode: how });
+            mayAsk(store);
             const out = await writeProfile({ prompt, apiKey: key, model, baseUrl, signal: ctl.signal, fetchImpl, onText: (t) => { text = t; report(); } });
+            spend(store, { kind: "profile", model: out.model, projectId, usage: out.raw });
             const said = [...(site?.notes ?? []), ...(out.cutOff ? ["It ran past the longest a reply may be, so the end of it may be missing."] : [])];
             setProfile(store, projectId, out.profile, {
               actor: "model", built: true,

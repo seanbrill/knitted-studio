@@ -72,6 +72,20 @@ test("Knit many: a pasted table of three rows makes three files in one batch", a
   assert.equal(all.length, 4);
 });
 
+test("a knit nobody has opened says New until it is opened, and Mark all seen does the rest", async () => {
+  const unseen = (k) => k.filter((x) => !x.seenAt).length;
+  await page.getByRole("link", { name: /^Knits.*4 new/ }).waitFor();
+  await page.getByRole("button", { name: /, new$/ }).first().click();
+  await page.getByRole("dialog").getByRole("link", { name: "Download" }).waitFor();
+  await serverHas(studio, `/api/projects/${projectId}/knits`, (k) => unseen(k) === 3);
+  await page.keyboard.press("Escape");
+  await page.getByRole("link", { name: /^Knits.*3 new/ }).waitFor();
+  await page.getByRole("button", { name: "Mark all seen" }).click();
+  await serverHas(studio, `/api/projects/${projectId}/knits`, (k) => unseen(k) === 0);
+  await page.getByRole("button", { name: "Mark all seen" }).waitFor({ state: "detached" });
+  assert.equal(await page.getByRole("button", { name: /, new$/ }).count(), 0);
+});
+
 test("the batch downloads as a valid zip: every entry's CRC matches its bytes", async () => {
   const all = (await j("GET", `/api/projects/${projectId}/knits`)).body;
   const batch = all.find((k) => k.batchId).batchId;
@@ -96,6 +110,28 @@ test("the batch downloads as a valid zip: every entry's CRC matches its bytes", 
   }
 });
 
+test("a modifier click picks knits without opening them, and the picked ones are tagged and downloaded together", async () => {
+  await page.goto(`${studio.url}/projects/${projectId}/knits`);
+  const open = page.getByRole("button", { name: /^Open / });
+  await open.nth(0).click({ modifiers: ["ControlOrMeta"] });
+  await open.nth(1).click({ modifiers: ["ControlOrMeta"] });
+  const bar = page.getByRole("toolbar", { name: "Selection" });
+  await bar.getByText("2 selected").waitFor();
+  assert.equal(await page.getByRole("dialog").count(), 0, "picking opens nothing");
+
+  await bar.getByRole("button", { name: "Add tag" }).click();
+  await page.getByRole("dialog").getByLabel("Tag").fill("launch");
+  await page.getByRole("dialog").getByRole("button", { name: "Add tag" }).click();
+  await serverHas(studio, `/api/projects/${projectId}/knits`, (k) => k.filter((x) => (x.tags ?? []).includes("launch")).length === 2);
+
+  const href = await bar.getByRole("link", { name: "Download" }).getAttribute("href");
+  const zip = Buffer.from(await (await fetch(studio.url + href)).arrayBuffer());
+  assert.equal(zip.readUInt16LE(zip.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06])) + 10), 2, "the zip has the two picked");
+
+  await page.keyboard.press("Escape");
+  await bar.waitFor({ state: "detached" });
+});
+
 test("the gallery opens a knit, offers download and delete, and delete removes the file", async () => {
   await page.goto(`${studio.url}/projects/${projectId}/knits`);
   await page.getByRole("button", { name: /^Open Launch story/ }).first().click();
@@ -104,6 +140,13 @@ test("the gallery opens a knit, offers download and delete, and delete removes t
   await dlg.getByRole("button", { name: "Delete" }).click();
   await page.getByRole("button", { name: "Delete file" }).click();
   await serverHas(studio, `/api/projects/${projectId}/knits`, (k) => k.length === 3);
+});
+
+test("a knit made before its pattern was last changed says so, so an out-of-date file is not posted by mistake", async () => {
+  await j("POST", `/api/patterns/${patternId}/commands`, { command: { type: "addStitch", stitch: { id: "late", kind: "shape", x: 0.9, y: 0.9, w: 0.05, h: 0.05, locked: false, style: { background: "#ff0000" } } } });
+  await page.goto(`${studio.url}/projects/${projectId}/knits`);
+  await page.getByRole("button", { name: /^Open Launch story.*its pattern changed since/ }).first().waitFor();
+  await page.getByText("· pattern changed").first().waitFor();
 });
 
 test("a pattern with missing Yarn cannot be knitted, and the dialog says what to fix", async () => {

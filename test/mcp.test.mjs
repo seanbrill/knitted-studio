@@ -420,7 +420,7 @@ test("a model brings a piece of copy up to date by its id, instead of saving ano
   assert.deepEqual([r.id, r.name, r.kind, r.tags, r.existing, r.changed], [note.id, "Status note", "copy", ["note", "done"], true, true]);
   assert.equal(getYarn(store, note.id).meta.text, "All 30 images are in.");
   assert.deepEqual(listYarn(store, project.id, { q: "Status note" }).map((y) => y.id), [note.id], "no second note beside it");
-  assert.equal(lastCall().summary, "Changing the copy \"Status note\"");
+  assert.equal(lastCall().summary, "Changing the saved text \"Status note\"");
   assert.ok(store.activity(project.id).some((a) => a.action === "yarn.changed" && a.subject === "Status note" && a.actor === "model"), "the person can see it changed");
   assert.equal((await tools.import_yarn({ ...at, yarnId: note.id, text: "All 30 images are in." })).changed, false, "the same text again changes nothing");
   const moved = await tools.import_yarn({ ...at, yarnId: note.id, text: "All 30 are in, and tagged.", name: "Status", folder: "Notes" });
@@ -592,4 +592,51 @@ test("capture_website starts a job with the Brief's own website, and says where 
   assert.equal(r.jobId, "jb_test");
   assert.deepEqual(asked[0], { projectId: project.id, url: "https://hollowoak.example", devices: ["mobile"], maxPages: 40 });
   await assert.rejects(tool.handler({ projectId: project.id, devices: ["tablet"] }, { store, engine }), /desktop and mobile/);
+});
+
+test("the guide has a topic for each kind of task, and the instructions send a model to it", async () => {
+  const { INSTRUCTIONS } = await import("../packages/mcp/src/protocol.mjs");
+  const { GUIDE_TOPICS } = await import("../packages/mcp/src/guide.mjs");
+  assert.match(INSTRUCTIONS, /get_guide/);
+  assert.match(await tools.get_guide({}), /^# Working in knitted/);
+  const motion = await tools.get_guide({ topic: "motion" });
+  assert.match(motion, /type-on types one character at a time/);
+  assert.match(motion, /Other topics: start, patterns/);
+  for (const t of GUIDE_TOPICS) assert.ok((await tools.get_guide({ topic: t })).length > 200, `${t} says something`);
+  // Every tool a topic names is a real tool, so the guide cannot send a model to one that is gone.
+  const names = new Set(Object.keys(tools));
+  for (const t of GUIDE_TOPICS) for (const m of (await tools.get_guide({ topic: t })).matchAll(/\b([a-z]+_[a-z_]+)\b/g)) {
+    if (/^(list|get|set|create|import|view|crop|tag|fill|add|update|remove|apply|insert|propose|read|capture|describe|duplicate|preview|check|knit|cancel|move|synthesize)_/.test(m[1])) assert.ok(names.has(m[1]), `${t} names ${m[1]}, which is a tool`);
+  }
+});
+
+test("list_knits pages through every knit, and marks the ones made before their pattern was last saved", async () => {
+  // It stopped at 30 with no way on, and 173 knits were on disk; a fixed pattern's old knit looked current.
+  const { insertKnit } = await import("@knitted/core/node");
+  const p = store.createPattern(project.id, { name: "Paged", size: { name: "Square", w: 1080, h: 1080 }, stitches: [] });
+  const made = Array.from({ length: 5 }, (_, i) => insertKnit(store, { projectId: project.id, patternId: p.id, patternName: "Paged", jobId: null, batchId: null, label: `Paged ${i}`, file: `x/paged-${i}.png`, kind: "image", format: "png", width: 10, height: 10, bytes: 1, durationMs: null, hash: `paged-${i}`, report: {} }));
+  const first = await tools.list_knits({ patternId: p.id, limit: 2 });
+  assert.equal(first.total, 5);
+  const pages = [first, await tools.list_knits({ projectId: project.id, patternId: p.id, limit: 2, offset: 2 }), await tools.list_knits({ projectId: project.id, patternId: p.id, limit: 2, offset: 4 })];
+  assert.deepEqual(pages.flatMap((x) => x.knits.map((k) => k.id)).sort(), made.map((k) => k.id).sort(), "every knit once across the pages");
+  assert.ok(first.knits.every((k) => !k.patternChangedSince && k.pattern === "Paged"));
+  await new Promise((r) => setTimeout(r, 5));
+  store.apply(p.id, { type: "setMeta", durationMs: 2000 }, "model");
+  assert.ok((await tools.list_knits({ projectId: project.id, patternId: p.id })).knits.every((k) => k.patternChangedSince), "the pattern was saved after them");
+});
+
+test("a model tags a knit and writes what goes with it, with a track from the project's own audio", async () => {
+  const { insertKnit, getKnit } = await import("@knitted/core/node");
+  const k = insertKnit(store, { projectId: project.id, patternId: pattern.id, patternName: "Story", jobId: null, batchId: null, label: "Story", file: "x/story.png", kind: "image", format: "png", width: 10, height: 10, bytes: 1, durationMs: null, hash: "mcp-post", report: {} });
+  assert.deepEqual((await tools.tag_knit({ knitId: k.id, tags: ["launch", " launch ", "spring"] })).tags, ["launch", "spring"]);
+  const r = await tools.set_knit_post({ knitId: k.id, caption: "Spring is here.", hashtags: ["spring", "#Bakery"] });
+  assert.deepEqual(r.post.hashtags, ["#spring", "#Bakery"]);
+  assert.equal(getKnit(store, k.id).post.by, "model");
+  const listed = (await tools.list_knits({ projectId: project.id })).knits.find((x) => x.id === k.id);
+  assert.equal(listed.caption, "Spring is here.");
+  assert.deepEqual(listed.tags, ["launch", "spring"]);
+  assert.equal(listed.seen, false);
+  // A picture is not a track.
+  await assert.rejects(tools.set_knit_post({ knitId: k.id, audioId: hero.id }), /not a sound in this knit's project/);
+  assert.equal((await tools.set_knit_post({ knitId: k.id, audioId: "" })).post.audioId, null);
 });

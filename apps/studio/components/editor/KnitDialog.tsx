@@ -34,6 +34,7 @@ export function KnitDialog({ open, onOpenChange, pattern, projectId }: { open: b
   const motion = pattern.durationMs > 0;
   const [format, setFormat] = useState<"png" | "jpeg" | "webp" | "mp4">(motion ? "mp4" : "png");
   const [scale, setScale] = useState<1 | 2>(1);
+  const [fps, setFps] = useState<30 | 60>(30);
   const [sizes, setSizes] = useState<string[]>([pattern.size.name]);
   const [reuse, setReuse] = useState(true);
   const [batch, setBatch] = useState(false);
@@ -48,7 +49,7 @@ export function KnitDialog({ open, onOpenChange, pattern, projectId }: { open: b
   const freeSlots = pattern.stitches.filter((s) => !s.locked && s.slot).map((s) => s.slot!);
   const parsed = useMemo(() => parseRows(text), [text]);
   const chosenSizes = useMemo(() => (sizes.length ? SIZES.filter((s) => sizes.includes(s.name)).concat(sizes.includes(pattern.size.name) && !SIZES.some((s) => s.name === pattern.size.name) ? [pattern.size] : []) : [pattern.size]), [sizes, pattern.size]);
-  const params: KnitParams = useMemo(() => ({ sizes: chosenSizes, format: motion ? "mp4" : format, scale, reuse, rows: batch && parsed.rows.length ? parsed.rows : undefined }), [chosenSizes, format, scale, reuse, batch, parsed, motion]);
+  const params: KnitParams = useMemo(() => ({ sizes: chosenSizes, format: motion ? "mp4" : format, scale, ...(motion && fps === 60 ? { fps } : {}), reuse, rows: batch && parsed.rows.length ? parsed.rows : undefined }), [chosenSizes, format, scale, fps, reuse, batch, parsed, motion]);
   const total = (batch && parsed.rows.length ? parsed.rows.length : 1) * chosenSizes.length;
 
   // Check before knitting: cheap, no browser, so problems show up before anyone waits.
@@ -97,6 +98,7 @@ export function KnitDialog({ open, onOpenChange, pattern, projectId }: { open: b
               <SegmentedControl label="Format" value={motion ? "mp4" : format} onChange={setFormat} options={motion ? [{ value: "mp4", label: "MP4 video" }] : [{ value: "png", label: "PNG" }, { value: "jpeg", label: "JPEG" }, { value: "webp", label: "WebP" }]} />
             </Field>
             <Field label="Quality"><SegmentedControl<"1" | "2"> label="Scale" value={String(scale) as "1" | "2"} onChange={(v) => setScale(Number(v) as 1 | 2)} options={[{ value: "1", label: "1x" }, { value: "2", label: "2x sharper" }]} /></Field>
+            {motion && <Field label="Smoothness" hint={fps === 60 ? "Fast motion looks smoother. Takes about twice as long." : "The standard for social video."}><SegmentedControl<"30" | "60"> label="Frames a second" value={String(fps) as "30" | "60"} onChange={(v) => setFps(Number(v) as 30 | 60)} options={[{ value: "30", label: "30 fps" }, { value: "60", label: "60 fps" }]} /></Field>}
           </div>
           <Field label="Sizes" hint="Knit the same pattern at several sizes in one go.">
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }} role="group" aria-label="Sizes">

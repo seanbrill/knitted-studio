@@ -19,9 +19,13 @@ import sharp from "sharp";
 import { assertPublicUrl, importYarn, listYarn, sameSite, uploadTempPath } from "@knitted/core/node";
 import { openBrowser } from "./renderer.mjs";
 
-/** The two sizes a page is pictured at. `longest`: the most of a long page kept, in CSS pixels. */
+/**
+ * The two sizes a page is pictured at, both at twice their pixels: a desktop picture at 1x
+ * looked soft once cropped into a 1080 px post. `longest`: the most of a long page kept, in
+ * CSS pixels; 8,000 at 2x is 16,000, inside WebP's limit of 16,383 a side.
+ */
 export const DEVICES = {
-  desktop: { label: "Desktop", viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, isMobile: false, hasTouch: false, longest: 12_000 },
+  desktop: { label: "Desktop", viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2, isMobile: false, hasTouch: false, longest: 8_000 },
   mobile: {
     label: "Mobile", viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, longest: 8_000,
     userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1 knitted.studio",

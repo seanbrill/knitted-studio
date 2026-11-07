@@ -6,6 +6,7 @@ import { api } from "@knitted/core/client";
 import { Breadcrumbs, SwatchChip, Skeleton, Tip, icons, useToast, type Crumb } from "@knitted/ui";
 import { useCallback, useState } from "react";
 import { useLive } from "@/lib/hooks";
+import { KnitQueue } from "./KnitQueue";
 import { RenameDialog } from "./ProjectsView";
 import { TrailContext } from "./Trail";
 
@@ -15,7 +16,7 @@ const { Pencil, Sparkles } = icons;
 const TABS = [
   { href: "", label: "Patterns", what: "Designs with slots to fill: a post, a story, a banner. Open one to edit it, or knit it into files." },
   { href: "/brief", label: "Brief", what: "What your model knows about the business: a profile from its website or from you, and reference files to look at." },
-  { href: "/yarn", label: "Yarn", what: "Your files to put in patterns: photos, logos, video, sound, fonts, PDFs and copy." },
+  { href: "/yarn", label: "Yarn", what: "Your files to put in patterns: photos, logos, video, sound, fonts, PDFs and saved text." },
   { href: "/swatch", label: "Swatch", what: "The brand: its colours, fonts, logo and voice. Every pattern draws with it." },
   { href: "/parts", label: "Parts", what: "Pieces to reuse in any pattern, like a lower third, a quote or a price tag." },
   { href: "/knits", label: "Knits", what: "The finished files: every picture and video knitted from your patterns." },
@@ -33,20 +34,22 @@ export function ProjectShell({ id, children }: { id: string; children: React.Rea
   const router = useRouter();
   const toast = useToast();
   const { data: project, error, refresh } = useLive(() => api.projects.get(id), [id]);
+  // What is knitting shows on every tab; the Knits tab has its own, with the waiting ones listed.
+  const { data: knitting } = useLive(() => api.knit.active(id), [id]);
   const [renaming, setRenaming] = useState(false);
   const [folders, setFolders] = useState<Crumb[] | null>(null);
   const setTrail = useCallback((steps: Crumb[] | null) => setFolders(steps), []);
   const base = `/projects/${id}`;
   const tab = TABS.find((t) => (t.href === "" ? pathname === base : pathname.startsWith(base + t.href))) ?? TABS[0];
 
-  if (error) return <div style={{ padding: "var(--space-8)" }}><Link href="/projects" className="link">Back to projects</Link><p role="alert" className="field-error" style={{ marginTop: 12 }}>{error}</p></div>;
+  if (error) return <div style={{ padding: "var(--space-8)" }}><Link href="/" className="link">Back to projects</Link><p role="alert" className="field-error" style={{ marginTop: 12 }}>{error}</p></div>;
 
   // Projects > the project > the section, and the folder the section is in, when it is in one.
   // A section's folders start at its own top, which is the section's step, unless it is a shelf
   // inside the section (the Brief's reference).
   const section: Crumb = { label: tab.label, href: base + tab.href, title: tab.what };
   const trail: Crumb[] = [
-    { label: "Projects", href: "/projects" },
+    { label: "Projects", href: "/" },
     { label: project?.name ?? "Project", href: base },
     ...(folders?.length ? (folders[0].label === tab.label ? folders : [section, ...folders]) : [section]),
   ];
@@ -69,10 +72,11 @@ export function ProjectShell({ id, children }: { id: string; children: React.Rea
           {TABS.map((t) => {
             const href = base + t.href;
             const on = t === tab;
-            return <Tip key={t.label} text={t.what}><Link href={href} className="tab" data-state={on ? "active" : "inactive"} aria-current={on ? "page" : undefined} aria-describedby={on ? "section-what" : undefined}>{t.label}</Link></Tip>;
+            return <Tip key={t.label} text={t.what}><Link href={href} className="tab" data-state={on ? "active" : "inactive"} aria-current={on ? "page" : undefined} aria-describedby={on ? "section-what" : undefined}>{t.label}{t.href === "/knits" && (project?.newKnits ?? 0) > 0 && <span className="tab-new" aria-label={`, ${project!.newKnits} new`}>{project!.newKnits}</span>}</Link></Tip>;
           })}
         </nav>
         <p id="section-what" className="body-sm" style={{ margin: "0 0 var(--space-6)", color: "var(--ink-muted)" }}>{tab.what}</p>
+        {tab.href !== "/knits" && <KnitQueue jobs={knitting ?? []} href={`${base}/knits`} compact />}
         {children}
         <RenameDialog open={renaming} onOpenChange={setRenaming} title="Rename project" initial={project?.name ?? ""}
           onSave={async (name) => { await api.projects.update(id, { name }); await refresh(); toast("Renamed"); }} />

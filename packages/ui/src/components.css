@@ -174,7 +174,7 @@
 @media (prefers-reduced-motion: reduce) { .drawer { animation: fade-in 0.01ms both !important; } }
 .yarn-card { position: relative; }
 .yarn-card .yarn-check { position: absolute; top: 10px; left: 10px; z-index: 3; opacity: 0; }
-.yarn-card:hover .yarn-check, .yarn-card:focus-within .yarn-check, .yarn-card[data-selected="true"] .yarn-check { opacity: 1; }
+.yarn-card:hover .yarn-check, .yarn-card:focus-within .yarn-check, .yarn-card[data-selected="true"] .yarn-check, body:has(.selection-bar) .yarn-check { opacity: 1; }
 /* A section as a list: a row each, the checkbox at its start. */
 .yarn-row { display: grid; grid-template-columns: 20px minmax(0, 1fr); align-items: center; gap: var(--space-2); }
 /* Cutting a part out of a picture: the part kept is clear, the rest dimmed. */
@@ -288,19 +288,63 @@
 .model-dot > span:not(.working) { background: var(--red); }
 
 /* ── The editor's top bar, when a lot is going on: the trail and the model's words shrink, nothing overlaps ── */
-.editor-trail { flex: 0 1 auto; min-width: 140px; overflow: hidden; }
-.editor-trail li:last-child { flex: 0 1 auto; min-width: 0; }
+.editor-title { display: grid; min-width: 0; flex: 0 1 auto; line-height: 1.2; }
+.editor-where { display: flex; align-items: center; gap: 2px; min-width: 0; color: var(--ink-muted); font-size: 11px; padding-left: 6px; }
+.editor-where svg { flex: none; }
+.editor-where-link { color: inherit; text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; max-width: 220px; }
+.editor-where-link:first-child { flex: none; }
+.editor-where-link:hover { color: var(--ink); text-decoration: underline; }
+.editor-name { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.editor-name-input { background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 1px 5px; color: var(--ink); font: inherit; font-weight: 600; min-width: 6ch; max-width: 320px; flex: 0 1 auto; text-overflow: ellipsis; }
+.editor-name-input:hover { border-color: var(--line); }
+.editor-name-input:focus { border-color: var(--ember); outline: none; background: var(--surface-raised); }
+.editor-saved { font-size: 11px; color: var(--ink-muted); white-space: nowrap; flex: none; }
+.editor-saved[data-state="error"] { color: var(--danger); }
+.editor-group { display: flex; align-items: center; gap: 2px; padding-left: var(--space-3); border-left: 1px solid var(--line); flex: none; }
+.editor-group.roomy { gap: var(--space-2); }
+.editor-size .select-trigger { white-space: nowrap; }
+.editor-size-shown { display: inline-flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+.editor-size-px { font-family: var(--font-mono); font-size: 11px; color: var(--ink-muted); }
+.editor-swatch { width: auto; padding: 0 6px; gap: 4px; display: inline-flex; align-items: center; }
+.editor-swatch-dots { display: inline-flex; }
+.editor-swatch-dots span { width: 12px; height: 12px; border-radius: 50%; margin-left: -4px; box-shadow: 0 0 0 1.5px var(--surface); }
+.editor-swatch-dots span:first-child { margin-left: 0; }
 .editor-presence { display: flex; flex: 0 1 auto; min-width: 0; max-width: 320px; }
 .editor-presence > * { max-width: 100%; min-width: 0; }
-.editor-bar > :not(.editor-trail):not(.editor-presence) { flex-shrink: 0; }
+.editor-bar > :not(.editor-title):not(.editor-presence) { flex-shrink: 0; }
+.editor-wide { display: contents; }
 @media (max-width: 1500px) { .editor-presence { max-width: 200px; } }
+@media (max-width: 1240px) { .editor-wide { display: none; } .editor-size-px { display: none; } }
 
 /* A video's thumbnail: a play mark in the middle, so it reads as a video at a glance. */
 .play-badge { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 34%; max-width: 40px; min-width: 20px; aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center; background: rgba(20, 17, 15, 0.62); color: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); pointer-events: none; }
+/* Picking several: a box on each card, seen on hover, on focus, when picked, and on every card once one is. */
+.pickable { position: relative; }
+.pick-box { position: absolute; top: 12px; left: 12px; z-index: 3; width: 16px; height: 16px; margin: 0; opacity: 0; cursor: pointer; accent-color: var(--ember); }
+.pickable:hover > .pick-box, .pickable:focus-within > .pick-box, .pickable[data-selected="true"] > .pick-box, body:has(.selection-bar) .pick-box { opacity: 1; }
+.pickable[data-selected="true"] > .card { outline: 2px solid var(--ember); outline-offset: 0; }
+.selection-bar { position: sticky; top: 0; z-index: 6; display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap; padding: var(--space-2) var(--space-3); background: var(--surface-raised); border: 1px solid var(--ember); box-shadow: var(--shadow-lift); border-radius: var(--radius-md); margin-bottom: var(--space-4); }
+.selection-hint { color: var(--ink-muted); margin-left: auto; }
+.spend-chart { display: flex; align-items: flex-end; gap: 2px; height: 96px; border-bottom: 1px solid var(--line); }
+.spend-day { flex: 1; height: 100%; display: flex; align-items: flex-end; min-width: 0; cursor: default; }
+.spend-day:hover { background: var(--tint); }
+.spend-bar { display: block; width: 100%; background: var(--ember); border-radius: 4px 4px 0 0; }
+.spend-axis { display: flex; justify-content: space-between; color: var(--ink-muted); margin-top: 4px; font-size: 11px; }
+.spend-table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+.spend-table th { text-align: left; font-weight: 600; color: var(--ink-muted); padding: 4px 8px 4px 0; border-bottom: 1px solid var(--line); }
+.spend-table td { padding: 4px 8px 4px 0; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.new-badge { position: absolute; z-index: 2; top: 14px; right: 14px; padding: 2px 7px; border-radius: 999px; background: var(--ember); color: var(--on-ember); font: 700 10px/1.4 var(--font-ui); letter-spacing: 0.06em; text-transform: uppercase; box-shadow: 0 1px 3px rgba(23, 17, 11, 0.25); pointer-events: none; }
+.new-badge.in-row { position: static; box-shadow: none; flex: none; }
+.tab-new { margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--ember); color: var(--on-ember); font: 700 10px/16px var(--font-ui); display: inline-block; vertical-align: 1px; }
 .play-badge svg { margin-left: 2px; width: 55%; height: 55%; }
 
 /* A knit's progress (KnitQueue.tsx): a bar that fills as its frames are drawn. */
 .knit-bar { height: 6px; border-radius: 3px; background: var(--surface-sunken); overflow: hidden; }
 .knit-bar > span { display: block; height: 100%; background: var(--ember); border-radius: 3px; transition: width 0.4s ease; }
 @media (prefers-reduced-motion: reduce) { .knit-bar > span { transition: none; } }
+
+/* Messages waiting their turn in a chat (Chat.tsx). */
+.chat-queue { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.chat-queue li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 4px 4px 4px 10px; border: 1px dashed var(--line-strong); border-radius: var(--radius-md); }
+.chat-queue-text { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 

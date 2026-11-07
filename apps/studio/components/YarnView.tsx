@@ -12,20 +12,22 @@ import { formatBytes, timeAgo, useLive } from "@/lib/hooks";
 import { useUploads, type UploadItem } from "@/lib/uploads";
 import { FolderCrumbs, FolderDialogs, FolderList, InFolder, NewFolderButton, counted, useFolders } from "./Folders";
 import { TagFilter, ViewBar, commonSorts, layout, useView, type SortBy } from "./Views";
+import { AskModelButton, aboutYarn } from "./AskModel";
+import { PickBox, SelectionBar, TagDialog, picking, useSelection } from "./Selection";
 
 const { Upload, Plus, Search, FileText, Music, Film, Type, Image: ImageIcon, X, AlertTriangle, Trash2, Download, Link2: LinkIcon, RotateCcw, FolderInput, FilePdf, Crop, BookOpen, Monitor, Smartphone, ChevronLeft, ChevronRight, Play } = icons;
 const spoken = (path: string) => path.split("/").join(" / ");
 
 const KINDS: { value: "all" | YarnKind; label: string }[] = [
   { value: "all", label: "All" }, { value: "image", label: "Images" }, { value: "video", label: "Video" },
-  { value: "audio", label: "Audio" }, { value: "font", label: "Fonts" }, { value: "pdf", label: "PDFs" }, { value: "copy", label: "Copy" },
+  { value: "audio", label: "Audio" }, { value: "font", label: "Fonts" }, { value: "pdf", label: "PDFs" }, { value: "copy", label: "Saved text" },
 ];
 const KIND_ICON = { image: ImageIcon, video: Film, audio: Music, font: Type, copy: FileText, pdf: FilePdf } as const;
-const KIND_WORD: Record<YarnKind, string> = { image: "picture", video: "video", audio: "sound", font: "font", copy: "copy", pdf: "PDF" };
+const KIND_WORD: Record<YarnKind, string> = { image: "picture", video: "video", audio: "sound", font: "font", copy: "saved text", pdf: "PDF" };
 
 /** What each shelf is called, and what it says about itself. */
 const SHELF = {
-  yarn: { title: "Yarn", what: "Yarn", copy: "New copy", copyName: "Copy", search: "Search yarn", first: "Add your first Yarn", drop: "Drop photos, logos, video, audio, fonts, PDFs or text here. You can also paste a screenshot." },
+  yarn: { title: "Yarn", what: "Yarn", copy: "Save text", copyName: "Saved text", search: "Search yarn", first: "Add your first Yarn", drop: "Drop photos, logos, video, audio, fonts, PDFs or text here. You can also paste a screenshot." },
   reference: { title: "Reference", what: "the reference", copy: "New note", copyName: "Note", search: "Search the reference", first: "Add reference", drop: "Drop menus, brochures, price lists, screenshots and photos of the business here: things for your model to look at and read. Cut a picture out of one into Yarn to use it in a pattern." },
 } as const;
 
@@ -121,12 +123,12 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
   const [kind, setKind] = useState<"all" | YarnKind>("all");
   const [q, setQ] = useState("");
   const [tag, setTag] = useState<string | undefined>();
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [detail, setDetail] = useState<string | null>(null);
   const [copyOpen, setCopyOpen] = useState(false);
   const [urlOpen, setUrlOpen] = useState(false);
   const [over, setOver] = useState(false);
   const [bulkDelete, setBulkDelete] = useState(false);
+  const [tagging, setTagging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const { data, refresh } = useLive(() => api.yarn.list(projectId, { kind: kind === "all" ? undefined : kind, q: q || undefined, tag, shelf: asked }), [projectId, kind, q, tag, shelf]);
@@ -140,7 +142,8 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
   const filtering = !!(q || tag || kind !== "all");
   const shown = useMemo(() => view.sorted((data ?? []).filter((y) => (filtering ? isInside(y.folder, kit.here) : y.folder === kit.here))), [data, filtering, kit.here, view]);
   // What is selected and still in sight: moving it away, or opening another folder, lets it go.
-  const picked = shown.filter((y) => selected.has(y.id));
+  const sel = useSelection(shown);
+  const picked = sel.picked;
 
   // Paste an image (a screenshot) straight in.
   useEffect(() => {
@@ -155,7 +158,6 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
   }, [uploads, kit.here]);
 
   const hasFiles = (e: React.DragEvent) => [...e.dataTransfer.types].includes("Files");
-  const toggle = (id: string) => setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
   const removeOne = async (y: Yarn) => {
     await api.yarn.remove(y.id); await refresh(); setDetail(null);
@@ -177,7 +179,7 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
         <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
           <NewFolderButton kit={kit} />
           <Button tip="Fetch one file from a public web address" onClick={() => setUrlOpen(true)}><LinkIcon size={14} aria-hidden /> From a link</Button>
-          <Button tip={shelf === "reference" ? "Write down something to know about the business" : "Save words to reuse: headlines, captions, hashtags"} onClick={() => setCopyOpen(true)}><FileText size={14} aria-hidden /> {words.copy}</Button>
+          <Button tip={shelf === "reference" ? "Write down something to know about the business" : "Save words to use again: headlines, captions, taglines, hashtags"} onClick={() => setCopyOpen(true)}><FileText size={14} aria-hidden /> {words.copy}</Button>
           <Button variant="primary" tip="Pictures, video, sound, fonts, PDFs or text, from this computer. You can also drop or paste them here." onClick={() => fileInput.current?.click()}><Upload size={14} aria-hidden /> Upload</Button>
           <input ref={fileInput} type="file" multiple hidden aria-label="Choose files to upload" onChange={(e) => { uploads.add([...(e.target.files ?? [])], kit.here); e.target.value = ""; }} />
         </div>
@@ -194,19 +196,14 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
         <ViewBar view={view} what={shelf === "reference" ? "the reference" : "Yarn"} />
       </div>
 
-      {picked.length > 0 && (
-        <div role="toolbar" aria-label="Selection" style={{ display: "flex", gap: "var(--space-3)", alignItems: "center", flexWrap: "wrap", padding: "var(--space-2) var(--space-3)", background: "var(--tint)", borderRadius: "var(--radius-md)", marginBottom: "var(--space-4)" }}>
-          <span className="label">{picked.length} selected</span>
-          <Button size="sm" onClick={() => kit.askMove(picked, counted(picked.length, section))}><FolderInput size={13} aria-hidden /> Move to folder</Button>
-          <Button size="sm" tip={shelf === "yarn" ? "To the Brief: for your model to look at, not to put in a pattern" : "To Yarn, to put in a pattern"} onClick={async () => { const ids = picked.map((y) => y.id); await kit.attempt(() => api.folders.move(projectId, shelf === "yarn" ? "reference" : "yarn", ids, "")); setSelected(new Set()); await reload(); toast(`Moved ${counted(ids.length, section)} to ${shelf === "yarn" ? "the reference, in the Brief" : "Yarn"}`); }}>
-            <BookOpen size={13} aria-hidden /> {shelf === "yarn" ? "Move to the Brief" : "Move to Yarn"}
-          </Button>
-          <Button size="sm" onClick={async () => { const t = window.prompt("Tag to add"); if (t) { for (const y of picked) await api.yarn.update(y.id, { tags: [...y.tags, t] }); await refresh(); } }}>Add tag</Button>
-          <Button size="sm" variant="danger" onClick={() => setBulkDelete(true)}><Trash2 size={13} aria-hidden /> Delete</Button>
-          {picked.length < shown.length && <Button size="sm" variant="ghost" onClick={() => setSelected(new Set(shown.map((y) => y.id)))}>Select all {shown.length}</Button>}
-          <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
-        </div>
-      )}
+      <SelectionBar sel={sel} total={shown.length}>
+        <Button size="sm" onClick={() => kit.askMove(picked, counted(picked.length, section))}><FolderInput size={13} aria-hidden /> Move to folder</Button>
+        <Button size="sm" tip={shelf === "yarn" ? "To the Brief: for your model to look at, not to put in a pattern" : "To Yarn, to put in a pattern"} onClick={async () => { const ids = picked.map((y) => y.id); await kit.attempt(() => api.folders.move(projectId, shelf === "yarn" ? "reference" : "yarn", ids, "")); sel.clear(); await reload(); toast(`Moved ${counted(ids.length, section)} to ${shelf === "yarn" ? "the reference, in the Brief" : "Yarn"}`); }}>
+          <BookOpen size={13} aria-hidden /> {shelf === "yarn" ? "Move to the Brief" : "Move to Yarn"}
+        </Button>
+        <Button size="sm" onClick={() => setTagging(true)}>Add tag</Button>
+        <Button size="sm" variant="danger" onClick={() => setBulkDelete(true)}><Trash2 size={13} aria-hidden /> Delete</Button>
+      </SelectionBar>
 
       {filtering ? (kit.here && <p className="body-sm" style={{ margin: "0 0 var(--space-3)", color: "var(--ink-muted)" }}>Looking in {nameOf(kit.here)} and the folders in it.</p>) : <FolderList kit={kit} />}
 
@@ -238,12 +235,12 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
             const from = y.folder !== kit.here ? y.folder : "";
             const site = y.meta.site;
             const Device = site?.device === "mobile" ? Smartphone : Monitor;
-            const cover = <button aria-label={`${y.name} ${facts}${from ? `, in ${spoken(from)}` : ""}`} onClick={() => setDetail(y.id)} style={{ position: "absolute", inset: 0, zIndex: 1, background: "transparent", border: 0, borderRadius: "var(--radius-md)", cursor: "pointer" }} />;
+            const cover = <button aria-label={`${y.name} ${facts}${from ? `, in ${spoken(from)}` : ""}`} onClick={(e) => (picking(e) ? sel.toggle(y.id, e.shiftKey) : setDetail(y.id))} style={{ position: "absolute", inset: 0, zIndex: 1, background: "transparent", border: 0, borderRadius: "var(--radius-md)", cursor: "pointer" }} />;
             const warn = y.meta.warnings?.length ? <span title={y.meta.warnings[0]} style={{ color: "var(--danger)" }}><AlertTriangle size={12} aria-hidden /></span> : null;
             return view.mode === "grid" ? (
-            <li key={y.id} className="yarn-card" data-selected={selected.has(y.id)} draggable onDragStart={kit.dragThings(selected.has(y.id) ? picked.map((x) => x.id) : [y.id])}>
-              <input type="checkbox" className="yarn-check" aria-label={`Select ${y.name}`} checked={selected.has(y.id)} onChange={() => toggle(y.id)} />
-              <div className="card card-link" style={{ position: "relative", padding: "var(--space-2)", outline: selected.has(y.id) ? "2px solid var(--ember)" : undefined }}>
+            <li key={y.id} className="yarn-card" data-selected={sel.has(y.id)} draggable onDragStart={kit.dragThings(sel.has(y.id) ? picked.map((x) => x.id) : [y.id])}>
+              <PickBox sel={sel} id={y.id} name={y.name} className="yarn-check" />
+              <div className="card card-link" style={{ position: "relative", padding: "var(--space-2)", outline: sel.has(y.id) ? "2px solid var(--ember)" : undefined }}>
                 {/* The whole card is one empty button that carries the name, so the
                     announced name and the visible text cannot disagree. */}
                 {cover}
@@ -257,9 +254,9 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
               </div>
             </li>
             ) : (
-            <li key={y.id} className="yarn-row" data-selected={selected.has(y.id)} draggable onDragStart={kit.dragThings(selected.has(y.id) ? picked.map((x) => x.id) : [y.id])}>
-              <input type="checkbox" aria-label={`Select ${y.name}`} checked={selected.has(y.id)} onChange={() => toggle(y.id)} style={{ position: "relative", zIndex: 2 }} />
-              <div className="card card-link" style={{ position: "relative", display: "grid", gridTemplateColumns: "48px minmax(0, 1fr) auto", gap: "var(--space-3)", alignItems: "center", padding: "6px var(--space-3) 6px 6px", outline: selected.has(y.id) ? "2px solid var(--ember)" : undefined }}>
+            <li key={y.id} className="yarn-row" data-selected={sel.has(y.id)} draggable onDragStart={kit.dragThings(sel.has(y.id) ? picked.map((x) => x.id) : [y.id])}>
+              <PickBox sel={sel} id={y.id} name={y.name} style={{ position: "relative", zIndex: 2 }} />
+              <div className="card card-link" style={{ position: "relative", display: "grid", gridTemplateColumns: "48px minmax(0, 1fr) auto", gap: "var(--space-3)", alignItems: "center", padding: "6px var(--space-3) 6px 6px", outline: sel.has(y.id) ? "2px solid var(--ember)" : undefined }}>
                 {cover}
                 <div aria-hidden style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", overflow: "hidden" }}><YarnThumb y={y} top={!!site} /></div>
                 <div aria-hidden style={{ minWidth: 0 }}>
@@ -289,7 +286,8 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
       <NewCopyDialog open={copyOpen} onOpenChange={setCopyOpen} projectId={projectId} folder={kit.here} shelf={shelf} onDone={reload} />
       <FromUrlDialog open={urlOpen} onOpenChange={setUrlOpen} projectId={projectId} folder={kit.here} shelf={shelf} onDone={reload} />
       <ConfirmDialog open={bulkDelete} onOpenChange={setBulkDelete} title={`Delete ${counted(picked.length, section)}?`} description="You can undo it for a while. Patterns that use them will show a missing-yarn marker." confirmLabel="Delete"
-        onConfirm={async () => { for (const y of picked) await api.yarn.remove(y.id); setSelected(new Set()); await reload(); toast("Deleted"); }} />
+        onConfirm={async () => { for (const y of picked) await api.yarn.remove(y.id); sel.clear(); await reload(); toast("Deleted"); }} />
+      <TagDialog open={tagging} onOpenChange={setTagging} what={counted(picked.length, section)} onTag={async (t) => { for (const y of picked) await api.yarn.update(y.id, { tags: [...y.tags, t] }); await reload(); toast(`Tagged ${t}`); }} />
       <FolderDialogs kit={kit} />
     </div>
   );
@@ -363,6 +361,7 @@ function YarnDrawer({ id, projectId, onClose, onChanged, onDelete, onMove, onCro
               try { await uploadYarn(projectId, f, () => {}, { replaceId: y.id }).promise; await refresh(); onChanged(); toast("Replaced. Every pattern using it now shows the new file."); } catch (err) { toast((err as Error).message); }
             }} />
             <a className="btn btn-secondary" href={yarnFileUrl(y)} download={y.originalName}><Download size={14} aria-hidden /> Download</a>
+            <AskModelButton about={aboutYarn(y)} />
             {(y.kind === "image" || y.kind === "video") && y.meta.thumb && (
               <Button onClick={async () => { try { await api.projects.update(projectId, { coverYarnId: y.id }); toast("It is now the project's picture, on its card in Projects."); } catch (err) { toast((err as Error).message); } }}>
                 <ImageIcon size={14} aria-hidden /> Use as project picture
@@ -384,8 +383,8 @@ function NewCopyDialog({ open, onOpenChange, projectId, folder, shelf, onDone }:
   const note = shelf === "reference";
   const save = async () => { try { await api.yarn.copy(projectId, { name: name || SHELF[shelf].copyName, text, folder, shelf }); onOpenChange(false); setName(""); setText(""); setErr(undefined); onDone(); } catch (e) { setErr((e as Error).message); } };
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} title={SHELF[shelf].copy} description={note ? "Something to know about the business: opening hours, a story, what is new. Your model reads it when it builds the profile." : "Headlines, captions, hashtags: words you want to reuse across posts."}
-      actions={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" onClick={save}>{note ? "Save note" : "Save copy"}</Button></>}>
+    <Dialog open={open} onOpenChange={onOpenChange} title={SHELF[shelf].copy} description={note ? "Something to know about the business: opening hours, a story, what is new. Your model reads it when it builds the profile." : "Words you want to use again: a headline, a caption, a tagline, hashtags. Drop it on a text stitch in any pattern, and your model can use it too."}
+      actions={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" onClick={save}>{note ? "Save note" : "Save text"}</Button></>}>
       <div style={{ display: "grid", gap: "var(--space-4)" }}>
         <Field label="Name" htmlFor="nc-name"><Input id="nc-name" value={name} onChange={(e) => setName(e.target.value)} placeholder={note ? "Opening hours" : "Launch headlines"} /></Field>
         <Field label="Text" htmlFor="nc-text" error={err} hint={`${text.length} characters`}><Textarea id="nc-text" rows={6} value={text} onChange={(e) => setText(e.target.value)} /></Field>

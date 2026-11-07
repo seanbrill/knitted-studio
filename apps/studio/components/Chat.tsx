@@ -19,6 +19,16 @@ import { timeAgo, useLive } from "@/lib/hooks";
 
 const { AlertTriangle, Check, Sparkles, Trash2, X } = icons;
 
+// Messages sent while the model is still answering wait their turn, each chat its own line,
+// kept on this computer so a reload or going to the editor does not lose them. Each goes when
+// the one before is answered; a run that was stopped or failed holds the rest for the person.
+const queues = new Map<string, string[]>();
+const QUEUE = (id: string) => `knitted.chat.queue.${id}`;
+function queueOf(id: string): string[] {
+  if (!queues.has(id)) { try { queues.set(id, JSON.parse(localStorage.getItem(QUEUE(id)) ?? "[]")); } catch { queues.set(id, []); } }
+  return queues.get(id)!;
+}
+
 const answering = (j?: AgentJob | null) => !!j && (j.status === "queued" || j.status === "running");
 const words = (tool: string) => tool.replace(/_/g, " ");
 
@@ -104,6 +114,9 @@ const EXAMPLES = {
   studio: ["List my projects", "Start a project for a coffee shop", "Which of my patterns are videos?"],
 };
 
+/** A limit said no: a way straight to where it is raised. */
+const spendingLink = (why: string | null | undefined) => why && /Settings, Spending/.test(why) ? <> <Link className="link" href="/settings?tab=spending">Open Spending</Link></> : null;
+
 export function Chat({ chatId, onStarted, projectId = null, patternId, compact = false, onChanged }: {
   /** The chat shown, or null for a new one. */
   chatId: string | null;
@@ -127,6 +140,10 @@ export function Chat({ chatId, onStarted, projectId = null, patternId, compact =
   const [suggest, setSuggest] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | undefined>();
+  const [queued, setQueued] = useState<string[]>([]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setQueued(chatId ? queueOf(chatId) : []); }, [chatId]);
+  const keep = (q: string[]) => { if (!chatId) return; queues.set(chatId, q); try { localStorage.setItem(QUEUE(chatId), JSON.stringify(q)); } catch { /* still kept for this visit */ } setQueued(q); };
 
   // Kept at the newest message while the person is reading there; left alone once they scroll up.
   const box = useRef<HTMLDivElement>(null);
@@ -141,8 +158,10 @@ export function Chat({ chatId, onStarted, projectId = null, patternId, compact =
 
   // The message shows the moment it is sent, before the change stream brings the chat back with it.
   // The chat written in is the one being had, here and on the other side.
-  const send = async (prompt = text.trim()) => {
-    if (!prompt || sending || running) return;
+  const send = async (prompt = text.trim(), next = false) => {
+    if (!prompt) return;
+    // Busy: it waits its turn (a new chat's first message is quick, and then there is a chat to queue in).
+    if ((sending || running) && !next) { if (chatId) { keep([...queued, prompt]); setText(""); stick.current = true; } return; }
     setError(undefined); setSending(true);
     const mode = patternId && suggest ? "suggest" : "edit";
     try {
@@ -158,9 +177,16 @@ export function Chat({ chatId, onStarted, projectId = null, patternId, compact =
         onStarted(r.chat);
         setCurrentChat(r.chat.id);
       }
-      setText(""); stick.current = true;
+      if (!next) setText(""); // what the person is typing now is theirs, not the queue's
+      stick.current = true;
     } catch (e) { setError((e as Error).message); } finally { setSending(false); }
   };
+  const sendNext = () => { const [n, ...rest] = queued; if (!n) return; keep(rest); void send(n, true); };
+  // The answer is in: the next message goes. Stopped or failed, the rest wait for the person.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!running && !sending && queued.length && last?.status === "done") sendNext();
+  }, [running, sending, last?.status, queued.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (cfg && !cfg.key.present) {
     return (
@@ -195,6 +221,25 @@ export function Chat({ chatId, onStarted, projectId = null, patternId, compact =
           </ol>
         )}
       </div>
+      {queued.length > 0 && (
+        <div style={{ display: "grid", gap: 6, padding: compact ? "var(--space-2) 0 0" : `var(--space-3) ${pad} 0`, maxWidth: compact ? undefined : 760 }}>
+          <ol aria-label="Waiting to send" className="chat-queue">
+            {queued.map((q, i) => (
+              <li key={`${i}-${q.slice(0, 20)}`}>
+                <span className="eyebrow">{i === 0 ? "Next" : `${i + 1}th`.replace(/^2th/, "2nd").replace(/^3th/, "3rd")}</span>
+                <span className="chat-queue-text">{q}</span>
+                <IconButton label={`Take "${q.slice(0, 40)}" out of the queue`} onClick={() => keep(queued.filter((_, k) => k !== i))}><X size={13} aria-hidden /></IconButton>
+              </li>
+            ))}
+          </ol>
+          {last && !running && !sending && last.status !== "done" && (
+            <p className="body-sm" style={{ margin: 0, display: "flex", gap: 8, alignItems: "center", color: "var(--ink-muted)" }}>
+              {last.status === "cancelled" ? "You stopped it, so these are waiting for you." : "The last one did not finish, so these are waiting for you."}
+              <Button size="sm" onClick={sendNext}>Send the next one</Button>
+            </p>
+          )}
+        </div>
+      )}
       <div role="status" className="sr-only">{last && !running && last.result?.text ? `Your model answered: ${last.result.text}` : running ? "Your model is working." : ""}</div>
       <form onSubmit={(e) => { e.preventDefault(); void send(); }}
         style={{ display: "grid", gap: 8, padding: compact ? "var(--space-3) 0 0" : `var(--space-4) ${pad} var(--space-6)`, borderTop: "1px solid var(--line)" }}>
@@ -205,10 +250,10 @@ export function Chat({ chatId, onStarted, projectId = null, patternId, compact =
           <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
             {patternId
               ? <label className="body-sm" style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={suggest} onChange={(e) => setSuggest(e.target.checked)} /> Suggest only (works on a copy)</label>
-              : <span className="body-sm" style={{ color: "var(--ink-muted)" }}>Enter sends. Shift+Enter starts a new line.</span>}
+              : <span className="body-sm" style={{ color: "var(--ink-muted)" }}>{running ? "Enter adds it to the queue: it goes when this answer is done." : "Enter sends. Shift+Enter starts a new line."}</span>}
             <div style={{ display: "flex", gap: 8 }}>
               {running && last && <Button onClick={() => void api.agent.cancel(last.id).catch((e) => setError((e as Error).message))}><X size={14} aria-hidden /> Stop</Button>}
-              <Button variant="primary" type="submit" disabled={running || sending || !text.trim()}><Sparkles size={14} aria-hidden /> {sending ? "Sending..." : "Send"}</Button>
+              <Button variant="primary" type="submit" disabled={!text.trim() || (sending && !chatId)}><Sparkles size={14} aria-hidden /> {running || sending ? "Queue it" : "Send"}</Button>
             </div>
           </div>
           {error && <p className="field-error" role="alert" style={{ margin: 0 }}><AlertTriangle size={13} aria-hidden /> {error}</p>}
@@ -282,7 +327,7 @@ function Turn({ job, latest, compact, projectId, patternId, onChanged }: { job: 
             </ol>
           </details>
         )}
-        {stops.map((s, i) => <p key={i} className="body-sm" style={{ margin: 0, color: "var(--ember-ink)" }}>{s.why}</p>)}
+        {stops.map((s, i) => <p key={i} className="body-sm" style={{ margin: 0, color: "var(--ember-ink)" }}>{s.why}{spendingLink(s.why)}</p>)}
         {r && r.refusals.length > 0 && <p className="body-sm" style={{ margin: 0 }}>{r.refusals.length} change{r.refusals.length === 1 ? " was" : "s were"} refused because of locks.</p>}
         {r && (changed.length > 0 || r.suggestion || (r.knitIn ?? []).length > 0) && (
           <div className="card" style={{ padding: "var(--space-3)", display: "grid", gap: 6 }}>
@@ -309,7 +354,7 @@ function Turn({ job, latest, compact, projectId, patternId, onChanged }: { job: 
           </div>
         )}
         {job.status === "done" && !r?.text && !changed.length && !stops.length && <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>Done.</p>}
-        {(job.status === "failed" || job.status === "interrupted") && <p className="field-error" role="alert" style={{ margin: 0 }}><AlertTriangle size={13} aria-hidden /> {job.error}</p>}
+        {(job.status === "failed" || job.status === "interrupted") && <p className="field-error" role="alert" style={{ margin: 0 }}><AlertTriangle size={13} aria-hidden /> {job.error}{spendingLink(job.error)}</p>}
         {job.status === "cancelled" && <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>Stopped.</p>}
         {error && <p className="field-error" role="alert" style={{ margin: 0 }}>{error}</p>}
       </div>

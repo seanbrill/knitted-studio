@@ -39,9 +39,10 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTML
  * A list to choose one from. Options with a `group` are listed under it, in the order the
  * groups first appear, after the ones with none: a Yarn file under the folder it is in.
  */
-export function Select({ value, onValueChange, options, placeholder, id, "aria-label": ariaLabel }: {
+/** `shown`: what the closed select shows for the value, when that should be shorter than its option. */
+export function Select({ value, onValueChange, options, placeholder, id, "aria-label": ariaLabel, shown }: {
   value: string; onValueChange: (v: string) => void; options: { value: string; label: string; group?: string }[];
-  placeholder?: string; id?: string; "aria-label"?: string;
+  placeholder?: string; id?: string; "aria-label"?: string; shown?: React.ReactNode;
 }) {
   const item = (o: { value: string; label: string }) => (
     <S.Item key={o.value} value={o.value} className="select-item">
@@ -53,7 +54,7 @@ export function Select({ value, onValueChange, options, placeholder, id, "aria-l
   return (
     <S.Root value={value} onValueChange={onValueChange}>
       <S.Trigger id={id} className="select-trigger" aria-label={ariaLabel}>
-        <S.Value placeholder={placeholder} />
+        <S.Value placeholder={placeholder}>{shown}</S.Value>
         <S.Icon><ChevronDown size={14} /></S.Icon>
       </S.Trigger>
       <S.Portal>

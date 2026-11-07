@@ -251,4 +251,36 @@ export const MIGRATIONS: Migration[] = [
     // project's audio, written by the person's model or by the person, as JSON.
     sql: `alter table knits add column post text not null default '{}';`,
   },
+  {
+    version: 11,
+    name: "knits seen",
+    // When the person first looked at a knit, so a new one can say so. What was knitted
+    // before this counts as seen: an update should not light up a whole library.
+    sql: `
+      alter table knits add column seen_at text;
+      update knits set seen_at = created_at;
+    `,
+  },
+  {
+    version: 12,
+    name: "usage",
+    // What the person's own API key spent: a row per answer from the model, its tokens and
+    // its cost in dollars at the prices of the day, so a limit can stop a run in time.
+    sql: `
+      create table usage (
+        id text primary key,
+        at text not null,
+        kind text not null,
+        model text not null,
+        project_id text,
+        chat_id text,
+        input integer not null default 0,
+        output integer not null default 0,
+        cache_write integer not null default 0,
+        cache_read integer not null default 0,
+        cost real not null default 0
+      );
+      create index usage_at on usage (at);
+    `,
+  },
 ];

@@ -140,12 +140,12 @@ test("deleting yarn that a pattern uses names the pattern and leaves the stitch 
   assert.equal(after.stitches.find((s) => s.slot === "backdrop").yarnId, yarn.id, "the stitch keeps its reference, so Undo restores everything");
 });
 
-test("new copy and a link import", async () => {
+test("saved text and a link import", async () => {
   await page.goto(`${studio.url}/projects/${projectId}/yarn`);
-  await page.getByRole("button", { name: "New copy" }).click();
+  await page.getByRole("button", { name: "Save text" }).click();
   await page.getByRole("dialog").getByLabel("Name").fill("Launch headlines");
   await page.getByRole("dialog").getByLabel("Text").fill("Make it knitted.\nPattern once.");
-  await page.getByRole("button", { name: "Save copy" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Save text" }).click();
   await page.getByRole("button", { name: /^Launch headlines/ }).waitFor();
 
   await page.getByRole("button", { name: "From a link" }).click();

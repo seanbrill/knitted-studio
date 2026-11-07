@@ -44,7 +44,8 @@ function cleanName(raw: unknown, what = "name"): string {
 }
 
 export interface ProjectSummary extends Project {
-  counts: { patterns: number; yarn: number; knits: number };
+  /** `newKnits`: knits nobody has opened yet. */
+  counts: { patterns: number; yarn: number; knits: number; newKnits: number };
   /** The project's picture, for its card: its Yarn's id and hash. Null when none is set or the file is gone. */
   cover: { id: string; hash: string } | null;
 }
@@ -83,10 +84,10 @@ export class Store {
     };
   }
 
-  private count(table: string, projectId: string): number {
+  private count(table: string, projectId: string, unseen = false): number {
     if (!this.has(table)) return 0;
     // A project's Yarn is what is on its Yarn shelf: the Brief's reference is counted apart.
-    const live = table === "yarn" ? " and deleted_at is null and shelf = 'yarn'" : "";
+    const live = table === "yarn" ? " and deleted_at is null and shelf = 'yarn'" : table === "knits" && unseen ? " and seen_at is null" : "";
     return Number((this.db.prepare(`select count(*) as n from ${table} where project_id = ?${live}`).get(projectId) as { n: number }).n);
   }
 
@@ -96,7 +97,7 @@ export class Store {
     return rows.map((r) => {
       const p = this.toProject(r);
       const cover = p.coverYarnId ? this.pictureYarn(p.id, p.coverYarnId) : undefined;
-      return { ...p, counts: { patterns: this.count("patterns", p.id), yarn: this.count("yarn", p.id), knits: this.count("knits", p.id) }, cover: cover?.thumb ? { id: cover.id, hash: cover.hash } : null };
+      return { ...p, counts: { patterns: this.count("patterns", p.id), yarn: this.count("yarn", p.id), knits: this.count("knits", p.id), newKnits: this.count("knits", p.id, true) }, cover: cover?.thumb ? { id: cover.id, hash: cover.hash } : null };
     });
   }
 
@@ -395,10 +396,13 @@ export class Store {
       patch.error !== undefined ? patch.error : cur.error, now(), done ? (cur.finishedAt ?? now()) : null, id));
     return this.getJob(id);
   }
-  listJobs(opts: { projectId?: string; status?: string; limit?: number } = {}): Job[] {
+  /** `active`: only what is running or waiting to start. */
+  listJobs(opts: { projectId?: string; status?: string; kind?: string; active?: boolean; limit?: number } = {}): Job[] {
     const where: string[] = []; const args: (string | number)[] = [];
     if (opts.projectId) { where.push("project_id = ?"); args.push(opts.projectId); }
     if (opts.status) { where.push("status = ?"); args.push(opts.status); }
+    if (opts.kind) { where.push("kind = ?"); args.push(opts.kind); }
+    if (opts.active) where.push("status in ('running', 'queued')");
     return (this.db.prepare(`select * from jobs ${where.length ? "where " + where.join(" and ") : ""} order by created_at desc limit ?`).all(...args, opts.limit ?? 50) as Row[]).map((r) => this.toJob(r));
   }
   /** Jobs still marked running when a process starts were killed with it. */

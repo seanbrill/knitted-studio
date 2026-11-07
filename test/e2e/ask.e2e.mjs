@@ -305,3 +305,78 @@ test("with the chat closed, the canvas shows what your model thinks as it thinks
   await page.getByTestId(`model-${head.id}`).waitFor({ timeout: 20000 });
   assert.equal(await bubble.count() + await page.getByTestId("model-bubble-dot").count(), 0, "it is still working, and still closed");
 });
+
+test("Ask your model on a pattern starts a chat about it, and the person keeps working", async () => {
+  const p = await pattern();
+  await page.goto(`${studio.url}/projects/${projectId}`);
+  await page.getByRole("button", { name: `Actions for ${p.name}` }).first().click();
+  await page.getByRole("menuitem", { name: "Ask your model..." }).click();
+  const dialog = page.getByRole("dialog", { name: "Ask your model to change this pattern" });
+  await dialog.getByLabel("What should change?").fill("make the headline shorter");
+  await dialog.getByRole("button", { name: "Ask", exact: true }).click();
+  await page.getByText(`Your model is on it: ${p.name}`).waitFor();
+  await dialog.waitFor({ state: "detached" });
+  await serverHas(studio, `/api/patterns/${patternId}`, () => !!carrying("make the headline shorter"));
+  const asked = carrying("make the headline shorter").messages.at(-1).content;
+  assert.match(asked, new RegExp(p.name), "the model is told which pattern");
+  assert.match(asked, /What I want: make the headline shorter/);
+  await page.getByRole("button", { name: "Open the chat" }).click();
+  await page.waitForURL(/\/ask\?chat=/);
+  await page.getByRole("list", { name: "Conversation" }).getByText("Headline written.").waitFor({ timeout: 30000 });
+});
+
+test("Spending shows what the answers cost, and a monthly limit stops the next one with a way to raise it", async () => {
+  const u = (await j("GET", "/api/agent/usage")).body;
+  assert.ok(u.month > 0 && u.models.length > 0, "the answers so far were priced and kept");
+  await page.goto(`${studio.url}/settings?tab=spending`);
+  await page.getByRole("heading", { name: "Spending" }).waitFor();
+  await page.getByText("No monthly limit", { exact: false }).waitFor();
+  await page.getByRole("table", { name: "This month, by model" }).waitFor();
+  assert.deepEqual(await axeProblems(page), []);
+
+  await page.getByLabel("Monthly limit, in dollars").fill("0");
+  await page.getByRole("button", { name: "Save limits" }).click();
+  await page.getByText("Limits saved.").waitFor();
+  await page.getByText("The limit is reached", { exact: false }).waitFor();
+  assert.equal((await j("GET", "/api/agent/usage")).body.limits.monthly, 0);
+
+  const before = sent.length;
+  await page.goto(`${studio.url}/ask?project=${projectId}`);
+  const box = page.getByLabel("Message your model");
+  await box.fill("one more headline, please");
+  await box.press("Enter");
+  await page.getByText(/Your key has spent \$[\d.]+ this month, and your limit is \$0\.00/).waitFor({ timeout: 30000 });
+  await page.getByRole("link", { name: "Open Spending" }).click();
+  await page.waitForURL(/tab=spending/);
+  assert.equal(sent.length, before, "nothing was sent to the model");
+  assert.equal((await j("PUT", "/api/agent/usage", { monthly: null })).status, 200);
+});
+
+test("a message sent while the model answers waits its turn, and goes when the answer is in", async () => {
+  // Last in the file: it adds answers to the chat, and the tests before count them.
+  const was = await headline();
+  await page.goto(`${studio.url}/ask?project=${projectId}`);
+  const box = page.getByLabel("Message your model");
+  await box.waitFor();
+  await box.fill("slowly, the first one");
+  await box.press("Enter");
+  await page.getByRole("button", { name: "Stop" }).waitFor();
+  await box.fill("then the second one");
+  await page.getByRole("button", { name: "Queue it" }).click();
+  await box.fill("and a third, taken out");
+  await box.press("Enter");
+  const waiting = page.getByRole("list", { name: "Waiting to send" });
+  assert.deepEqual(await waiting.locator(".chat-queue-text").allInnerTexts(), ["then the second one", "and a third, taken out"]);
+  assert.equal(await box.inputValue(), "", "queued, the box is free for the next thing");
+  await page.getByRole("button", { name: /^Take "and a third, taken out" out of the queue/ }).click();
+  assert.equal(carrying("then the second one"), undefined, "nothing goes before the answer is in");
+  await waiting.waitFor({ state: "detached", timeout: 30000 });
+  const convo = page.getByRole("list", { name: "Conversation" });
+  await convo.getByText("then the second one").waitFor({ timeout: 30000 });
+  await page.getByRole("button", { name: "Stop" }).waitFor({ state: "detached", timeout: 30000 });
+  assert.ok(carrying("then the second one"), "it went once the first was answered");
+  assert.equal(carrying("and a third, taken out"), undefined, "one taken out of the queue never goes");
+  // Both wrote the same headline, so the last changed nothing and has no Undo all: put it back as it was.
+  await j("POST", `/api/patterns/${patternId}/commands`, { command: { type: "fillSlot", slot: "headline", content: was } });
+  await serverHas(studio, `/api/patterns/${patternId}`, (p) => p.stitches.find((s) => s.slot === "headline").content === was);
+});

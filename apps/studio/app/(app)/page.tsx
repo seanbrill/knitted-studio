@@ -1,3 +1,5 @@
-import { HomeView } from "@/components/HomeView";
+import { ProjectsView } from "@/components/ProjectsView";
 
-export default function Home() { return <HomeView />; }
+export const metadata = { title: "Projects" };
+// The first screen is the projects: a welcome sits above them until there is one of the person's own.
+export default function Page() { return <ProjectsView />; }

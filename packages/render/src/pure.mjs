@@ -7,7 +7,7 @@
 // reason. Anything that is a token (`$color.primary`, `$font.display`) resolves
 // against the Swatch here, so changing the brand restyles every Pattern.
 
-import { FALLBACK_SWATCH, resolveStyle, colorFor, fontFor, fillTemplate, compileMotion } from "@knitted/core";
+import { FALLBACK_SWATCH, resolveStyle, colorFor, fontFor, fillTemplate, compileMotion, pieceTimes, textClip } from "@knitted/core";
 
 /**
  * @typedef {{ url: string, kind: string, mime?: string, width?: number, height?: number, meta?: Record<string, any> }} YarnRef
@@ -25,9 +25,46 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const num = (v, d) => (typeof v === "number" && Number.isFinite(v) ? v : d);
 const px = (n) => `${Math.round(n * 100) / 100}px`;
 
+/**
+ * A short word that starts a sentence, or the text, keeps to the word after it, with a no-break
+ * space: "5 GB. No card. It / never charges." left "It" alone at the end of a line in a real
+ * story, and "5 / GB" can come apart the same way.
+ */
+export function keepShortWords(text) {
+  return String(text ?? "").replace(/(^|[.!?:]\s+)([\p{L}\p{N}'\u2019]{1,3}) (?=\S)/gu, "$1$2\u00a0");
+}
+
 /** `*word*` is the one accent word in a headline (Instrument Serif italic). */
 export function richText(text) {
-  return esc(text).replace(/\*([^*\n]+)\*/g, '<em class="accent">$1</em>').replace(/\n/g, "<br>");
+  return esc(keepShortWords(text)).replace(/\*([^*\n]+)\*/g, '<em class="accent">$1</em>').replace(/\n/g, "<br>");
+}
+
+/**
+ * Text that plays its own type-on or stitch-in (core's textClip): every character, or every
+ * word, in a span of its own with its moment as its animation-delay. The same accents and
+ * line breaks as richText, and the same layout, since a piece not yet shown keeps its place.
+ */
+export function playedText(text, clip) {
+  const typeOn = clip.preset === "type-on";
+  const pieces = [];
+  keepShortWords(text).split(/(\*[^*\n]+\*)/).forEach((part, k) => {
+    const accent = k % 2 === 1, body = accent ? part.slice(1, -1) : part;
+    if (typeOn) for (const ch of Array.from(body)) pieces.push({ t: ch, accent, kind: ch === "\n" ? "br" : ch === " " ? "sp" : "piece" });
+    // Words joined by a no-break space (keepShortWords) rise in as one: the browser breaks
+    // between two inline-blocks even across one.
+    else for (const w of body.split(/([^\S\u00a0]+)/)) if (w) pieces.push({ t: w, accent, kind: /\S/.test(w) ? "piece" : w.includes("\n") ? "br" : "sp" });
+  });
+  // A character's moment counts the spaces before it, so typing keeps an even pace; a word's does not.
+  const timed = typeOn ? pieces : pieces.filter((p) => p.kind === "piece");
+  const at = pieceTimes(clip, timed.length);
+  timed.forEach((p, i) => { p.at = at[i]; });
+  let out = "", inAccent = false;
+  for (const p of pieces) {
+    if (p.accent !== inAccent) { out += p.accent ? '<em class="accent">' : "</em>"; inAccent = p.accent; }
+    // Spaces are kept as written (a code block's indentation is pre-wrap), line breaks as <br>.
+    out += p.kind !== "piece" ? p.t.replace(/\n/g, "<br>") : `<span class="${typeOn ? "kc" : "kw"}" style="animation-delay:${p.at}ms">${esc(p.t)}</span>`;
+  }
+  return inAccent ? `${out}</em>` : out;
 }
 
 function boxCss(s) {
@@ -58,7 +95,18 @@ export function stitchStyle(s, frame, ctx) {
     css.push(`font-weight:${num(st.fontWeight, 700)}`);
     css.push(`line-height:${num(st.lineHeight, 1.05)}`);
     css.push(`letter-spacing:${num(st.letterSpacing, -0.02)}em`);
-    css.push(`text-align:${["left", "center", "right"].includes(st.textAlign) ? st.textAlign : "left"}`);
+    const align = ["left", "center", "right"].includes(st.textAlign) ? st.textAlign : "left";
+    css.push(`text-align:${align}`);
+    // A pop or grow-in scales from where the words are, not from the middle of a wide box:
+    // left-aligned lines scaled from the centre slid sideways as they grew. A rotated box keeps
+    // its centre, since moving the pivot would move the box.
+    const va0 = { top: "0%", middle: "50%", bottom: "100%" }[st.verticalAlign] ?? "0%";
+    if (!num(st.rotate, 0)) css.push(`transform-origin:${{ left: "0%", center: "50%", right: "100%" }[align]} ${va0}`);
+    // No word left alone on a headline's last line: headline-sized text is balanced (even
+    // lines), smaller text gets the browser's pretty wrapping. Widows were in 15+ real knits.
+    css.push(`text-wrap:${num(st.fontSize, 0.05) >= 0.06 ? "balance" : "pretty"}`);
+    // Code keeps its indentation and its runs of spaces.
+    if (s.style?.fontFamily === "$font.mono" || fam === fontFor(sw, "mono")) css.push("white-space:pre-wrap");
     css.push(`color:${typeof st.color === "string" ? st.color : colorFor(sw, "text")}`);
     if (st.textTransform) css.push(`text-transform:${esc(st.textTransform)}`);
     const va = { top: "flex-start", middle: "center", bottom: "flex-end" }[st.verticalAlign] ?? "flex-start";
@@ -125,7 +173,8 @@ export function stitchHtml(s, frame, ctx) {
   if (s.kind === "text") {
     const clamp = num(st.maxLines, 0) > 0 ? ` data-max-lines="${Math.floor(st.maxLines)}"` : "";
     const fit = st.fit === "shrink" ? ' data-fit="shrink"' : "";
-    return `<div ${attrs}${clamp}${fit}><span class="t">${richText(s.content)}</span></div>`;
+    const played = textClip(s, ctx.motion);
+    return `<div ${attrs}${clamp}${fit}><span class="t">${played ? playedText(s.content, played) : richText(s.content)}</span></div>`;
   }
 
   if (s.kind === "image" || s.kind === "video") {
@@ -171,7 +220,8 @@ function chevronRows(sw, st) {
 
 export function bodyHtml(pattern, ctx) {
   const frame = pattern.size;
-  return (pattern.stitches ?? []).map((s) => stitchHtml(s, frame, ctx)).join("\n");
+  const withMotion = { ...ctx, motion: pattern.motion };
+  return (pattern.stitches ?? []).map((s) => stitchHtml(s, frame, withMotion)).join("\n");
 }
 
 /** Which bundled families a pattern uses, so a page only declares what it needs. */
@@ -215,6 +265,16 @@ const RENDER_CSS = `:root{--kn-ph:transparent}`;
 function stageScript(duration, mode) {
   return `
   function fitAll(){
+    // Fitted as it is once everything has landed: a word still waiting to rise in sits below its
+    // line, and shrinking the text to make room for it left it too small.
+    const still = document.createElement('style'); still.textContent = '.stitch,.stitch *{animation:none!important}';
+    document.head.append(still);
+    try { fitEach(); } finally { still.remove(); }
+    // Turned back on, the animations start again from 0: put them back where the clock is.
+    const at = window.__t || 0;
+    for (const a of document.getAnimations()) a.currentTime = at;
+  }
+  function fitEach(){
     for (const el of document.querySelectorAll('[data-fit="shrink"], [data-max-lines]')) {
       const t = el.querySelector('.t'); if (!t) continue;
       const base = parseFloat(el.style.fontSize);
@@ -233,15 +293,32 @@ function stageScript(duration, mode) {
     duration: ${Number(duration) || 0},
     seek(ms) {
       window.__t = ms;
-      for (const el of document.getAnimations()) el.currentTime = ms;
+      // A stitch sliding in gets its own layer WHILE it slides, and loses it once it stops.
+      // Drawn in place, it moves in whole pixels (2, 1, 2, 0 at the slow end of an ease),
+      // which reads as choppy; on a layer it moves by fractions, as the ease says. Left on
+      // a layer at rest, it stays resampled and softer than text that never moved, so the
+      // layer goes. Scale moves gain nothing from a layer and are drawn in place.
+      const sliding = new Set(), slides = new Set();
+      for (const a of document.getAnimations()) {
+        a.currentTime = ms;
+        if (!String(a.animationName || "").startsWith("kn-slide-")) continue;
+        const el = a.effect && a.effect.target; if (!el) continue;
+        slides.add(el);
+        const c = a.effect.getComputedTiming();
+        if (ms > c.delay && ms < c.delay + c.activeDuration) sliding.add(el);
+      }
+      for (const el of slides) el.style.willChange = sliding.has(el) ? "translate" : "";
       // A code Part lives in its own (script-free, same-origin) frame: reach in and set its clock too.
       for (const f of document.querySelectorAll("iframe.partframe")) { try { for (const a of f.contentDocument.getAnimations()) a.currentTime = ms; } catch {} }
       document.documentElement.style.setProperty("--t", ms + "ms");
       // Each video to the same moment, looping when the pattern runs longer: a frame is taken once they are there.
       const vids = [...document.querySelectorAll("video.kn-video")].filter(v => v.readyState >= 1 && v.duration > 0);
+      // A millisecond late. Frames are asked for at whole milliseconds (33, 67, 100, 133...), and
+      // footage frame 1 starts at 33.33: at 33 the browser showed frame 0 again, every third frame,
+      // so footage stuttered, a frame twice and then one skipped. Seen in real Story knits.
       return Promise.all(vids.map(v => new Promise(r => {
-        const at = (ms / 1000) % v.duration;
-        if (Math.abs(v.currentTime - at) < 0.001) return r();
+        const at = Math.min((ms / 1000) % v.duration + 0.001, v.duration - 0.001);
+        if (Math.abs(v.currentTime - at) < 0.0005) return r();
         const t = setTimeout(r, 1500);
         v.addEventListener("seeked", () => { clearTimeout(t); r(); }, { once: true });
         v.currentTime = at;

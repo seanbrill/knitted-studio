@@ -1,6 +1,6 @@
 import { createReadStream, statSync } from "node:fs";
 import { Readable } from "node:stream";
-import { getKnit, knitPath } from "@knitted/core/node";
+import { getKnit, knitPath, markKnitsSeen } from "@knitted/core/node";
 import { fail, route, store } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +13,8 @@ export const GET = route(async (req: Request, { params }: { params: Promise<{ ki
   let size: number;
   try { size = statSync(file).size; } catch { return fail(404, "not_found", "That file is no longer on disk. Knit it again."); }
   const headers: Record<string, string> = { "content-type": MIME[k.format] ?? "application/octet-stream", "accept-ranges": "bytes", "cache-control": "private, max-age=31536000, immutable", "x-content-type-options": "nosniff" };
-  if (new URL(req.url).searchParams.has("download")) headers["content-disposition"] = `attachment; filename="${k.file.split("/").pop()}"`;
+  // Downloading a knit is looking at it.
+  if (new URL(req.url).searchParams.has("download")) { headers["content-disposition"] = `attachment; filename="${k.file.split("/").pop()}"`; if (!k.seenAt) markKnitsSeen(s, [k.id]); }
   const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.get("range") ?? "");
   if (range && size > 0) {
     const start = range[1] === "" ? Math.max(0, size - Number(range[2])) : Number(range[1]);

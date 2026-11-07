@@ -9,6 +9,7 @@ const Params = z.object({
   sizes: z.array(SizeSchema).max(12).optional(),
   format: z.enum(["png", "jpeg", "webp", "mp4"]).optional(),
   scale: z.union([z.literal(1), z.literal(2)]).optional(),
+  fps: z.union([z.literal(30), z.literal(60)]).optional(),
   rows: z.array(z.record(z.string(), z.string().max(2000))).max(500).optional(),
   reuse: z.boolean().optional(),
 });

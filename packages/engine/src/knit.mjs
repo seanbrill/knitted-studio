@@ -97,6 +97,9 @@ export async function captureFrames(page, outDir, { durationMs, fps = FPS, signa
   await mkdir(outDir, { recursive: true });
   await page.evaluate(() => window.__stage.ready());
 
+  // One page, every frame in order. Several pages at once were tried: 27% faster, but a
+  // sliding stitch's layer is drawn from the first frame a page sees it in, so the same
+  // knit came out a little different on a machine with more cores.
   const times = frameTimes(durationMs, fps);
   const files = [];
   for (let i = 0; i < times.length; i++) {
@@ -124,11 +127,16 @@ export async function encode(frameDir, outFile, { fps = FPS, audio } = {}) {
     "-framerate", String(fps),
     "-i", join(frameDir, "%05d.png"),
     ...(audio ? ["-i", audio] : []),
+    // Frames are sRGB. Left to itself ffmpeg converts with the old BT.601 matrix and tags nothing,
+    // so players read it as BT.709 and a brand red comes out orange. Convert with 709 and say so.
+    "-vf", "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv",
     "-c:v", "libx264",
     "-preset", "slow",
     "-crf", "18",
-    "-pix_fmt", "yuv420p",
+    "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv",
     ...(audio ? ["-c:a", "aac", "-b:a", "192k", "-shortest"] : []),
+    // The index at the front, so a silent knit starts playing before it has all downloaded.
+    "-movflags", "+faststart",
     outFile,
   ];
   await run("ffmpeg", args);

@@ -1,6 +1,6 @@
 import { basename } from "node:path";
 import { isInside, nameOf } from "@knitted/core";
-import { folderNamed, getKnit, knitPath, listKnits, zipStream } from "@knitted/core/node";
+import { folderNamed, getKnit, knitPath, listKnits, markKnitsSeen, zipStream } from "@knitted/core/node";
 import { fail, route, store } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
@@ -32,5 +32,6 @@ export const GET = route(async (req: Request, { params }: { params: Promise<{ id
     return { name: dir ? `${dir}/${name}` : name, path: knitPath(s, k) };
   });
   const label = [s.getProject(id).name, folder && nameOf(folder)].filter(Boolean).join(" ").replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+  markKnitsSeen(s, knits.filter((k) => !k.seenAt).map((k) => k.id));
   return new Response(zipStream(entries) as unknown as BodyInit, { headers: { "content-type": "application/zip", "content-disposition": `attachment; filename="${label}-knits.zip"` } });
 });

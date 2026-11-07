@@ -7,9 +7,10 @@ import { PageHeader } from "./AppShell";
 import { StorageSettings } from "./StorageSettings";
 import { RendererCard } from "./RendererCard";
 import { ModelSettings } from "./ModelSettings";
+import { SpendSettings } from "./SpendSettings";
 import { VoiceSettings } from "./VoiceSettings";
 
-const TABS = ["appearance", "storage", "model", "voice", "about"];
+const TABS = ["appearance", "storage", "model", "spending", "voice", "about"];
 
 export function SettingsView() {
   return <Suspense><SettingsInner /></Suspense>;
@@ -32,6 +33,7 @@ function SettingsInner() {
           { value: "appearance", label: "Appearance" },
           { value: "storage", label: "Storage" },
           { value: "model", label: "Model" },
+          { value: "spending", label: "Spending" },
           { value: "voice", label: "Voice" },
           { value: "about", label: "About" },
         ]}
@@ -51,6 +53,7 @@ function SettingsInner() {
           </TabPanel>
           <TabPanel value="storage"><StorageSettings /></TabPanel>
           <TabPanel value="model"><ModelSettings /></TabPanel>
+          <TabPanel value="spending"><SpendSettings /></TabPanel>
           <TabPanel value="voice"><VoiceSettings /></TabPanel>
           <TabPanel value="about">
             <p className="body">knitted.studio is open source under the MIT licence.</p>

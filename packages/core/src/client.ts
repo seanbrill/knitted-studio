@@ -8,8 +8,9 @@ import type { FolderSection } from "./folders-pure.ts";
 import type { SiteProposal } from "./site.ts";
 import type { KnitIssue, KnitRecord } from "./knits.ts";
 import type { Command } from "./commands.ts";
+import type { SpendLimits, UsageSummary } from "./usage.ts";
 
-export interface ProjectSummary extends Project { counts: { patterns: number; yarn: number; knits: number }; cover: { id: string; hash: string } | null; }
+export interface ProjectSummary extends Project { counts: { patterns: number; yarn: number; knits: number; newKnits: number }; cover: { id: string; hash: string } | null; }
 export interface ActivityItem { id: string; projectId: string | null; actor: string; action: string; subject: string | null; detail: unknown; createdAt: string; }
 export interface RevisionItem { id: string; patternId: string; author: Actor; label: string | null; createdAt: string; }
 export interface ApplyResponse { pattern: Pattern; inverse: Command | null; refusals: Refusal[]; changed: boolean; }
@@ -33,7 +34,7 @@ export const api = {
   projects: {
     list: (q: { archived?: boolean; deleted?: boolean } = {}) =>
       call<ProjectSummary[]>("GET", `/api/projects?${new URLSearchParams({ ...(q.archived ? { archived: "1" } : {}), ...(q.deleted ? { deleted: "1" } : {}) })}`),
-    get: (id: string) => call<Project>("GET", `/api/projects/${id}`),
+    get: (id: string) => call<Project & { newKnits: number }>("GET", `/api/projects/${id}`),
     create: (b: { name: string; description?: string; starter?: "blank" | "social" }) => call<Project>("POST", "/api/projects", b),
     update: (id: string, b: { name?: string; description?: string; swatchId?: string | null; coverYarnId?: string | null }) => call<Project>("PATCH", `/api/projects/${id}`, b),
     action: (id: string, action: "duplicate" | "archive" | "restore" | "undelete", b: { name?: string } = {}) => call<Project>("POST", `/api/projects/${id}/actions`, { action, ...b }),
@@ -127,10 +128,15 @@ export const api = {
     start: (patternId: string, params: KnitParams) => call<JobItem>("POST", `/api/patterns/${patternId}/knit`, { params }),
     preview: (patternId: string, params: KnitParams) => call<{ units: { label: string; size: Size; issues: KnitIssue[] }[] }>("POST", `/api/patterns/${patternId}/knit`, { params, dryRun: true }),
     job: (id: string) => call<JobItem>("GET", `/api/jobs/${id}`),
+    /** What is knitting or waiting to, in one project or in all of them. */
+    active: (projectId?: string) => call<JobItem[]>("GET", `/api/jobs?kind=knit&active=1${projectId ? `&project=${projectId}` : ""}`),
     cancel: (id: string) => call<JobItem>("DELETE", `/api/jobs/${id}`),
     list: (projectId: string, q: { pattern?: string; batch?: string } = {}) => call<KnitRecord[]>("GET", `/api/projects/${projectId}/knits?${new URLSearchParams(Object.entries(q).filter(([, v]) => v) as [string, string][])}`),
     remove: (id: string) => call<{ ok: true }>("DELETE", `/api/knits/${id}`),
     tag: (id: string, tags: string[]) => call<KnitRecord>("PATCH", `/api/knits/${id}`, { tags }),
+    /** The person has looked at it: its New badge goes. */
+    seen: (id: string) => call<KnitRecord>("PATCH", `/api/knits/${id}`, { seen: true }),
+    allSeen: (projectId: string) => call<{ marked: number }>("POST", `/api/projects/${projectId}/knits/seen`, {}),
     writePost: (id: string, ask?: string) => call<KnitRecord>("POST", `/api/knits/${id}/post`, ask ? { ask } : {}),
     setPost: (id: string, post: { caption?: string; hashtags?: string[]; audioId?: string | null }) => call<KnitRecord>("PUT", `/api/knits/${id}/post`, post),
   },
@@ -138,6 +144,9 @@ export const api = {
     config: () => call<ModelConfig>("GET", "/api/agent/model"),
     save: (b: Partial<Pick<ModelConfig, "model" | "maxTurns" | "maxKnits">> & { apiKey?: string; clearKey?: boolean }) => call<ModelConfig>("PUT", "/api/agent/model", b),
     test: () => call<{ ok: true }>("POST", "/api/agent/model/test", {}),
+    /** What the person's key has spent through knitted, and the limits on it. */
+    usage: () => call<UsageSummary>("GET", "/api/agent/usage"),
+    setLimits: (l: Partial<SpendLimits>) => call<UsageSummary>("PUT", "/api/agent/usage", l),
     /** The path of the MCP address for Claude Code and other MCP clients, key included. POST makes a new one. */
     mcp: () => call<{ path: string }>("GET", "/api/agent/mcp"),
     newMcpAddress: () => call<{ path: string }>("POST", "/api/agent/mcp", {}),
@@ -261,7 +270,7 @@ export interface SyncJob {
   progress: { current: SyncStep | "done"; steps: Record<SyncStep, SyncStepState>; pages: { url: string; title: string }[]; shots: { done: number; total: number }; live: string; chars: number } | null;
   result: { brief: Brief; swatchId: string | null; pictures: number; skipped: number; notes: string[] } | null; createdAt: string; finishedAt: string | null;
 }
-export interface KnitParams { sizes?: Size[]; format?: "png" | "jpeg" | "webp" | "mp4"; scale?: 1 | 2; rows?: Record<string, string>[]; reuse?: boolean; }
+export interface KnitParams { sizes?: Size[]; format?: "png" | "jpeg" | "webp" | "mp4"; scale?: 1 | 2; fps?: 30 | 60; rows?: Record<string, string>[]; reuse?: boolean; }
 export interface JobItem {
   id: string; kind: string; status: "queued" | "running" | "done" | "failed" | "cancelled" | "interrupted"; projectId: string | null; error: string | null;
   progress: { total: number; done: number; current: string | null; units: { label: string; status: string; issues: KnitIssue[]; knitId?: string }[]; step?: string; frames?: { done: number; total: number } | null } | null;
@@ -271,6 +280,7 @@ export interface JobItem {
 }
 export const knitFileUrl = (k: { id: string }, download = false) => `/api/knits/${k.id}/file${download ? "?download=1" : ""}`;
 export type { KnitRecord, KnitIssue };
+export type { SpendLimits, UsageSummary };
 
 export interface VoiceConfig {
   provider: "system" | "openai" | "piper"; voice: string; speed: number; baseUrl: string; model: string;

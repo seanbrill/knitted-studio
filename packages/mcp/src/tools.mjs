@@ -18,7 +18,8 @@
 //    one, and never makes one the project's.
 
 import { applyCommand, instanceOf, joinFolder, motionLint, parentOf, partFromStitches, preflight, uniqueSlotName, COLOR_ROLES, FOLDER_SECTIONS, PRESETS, SIZES, CommandSchema } from "@knitted/core";
-import { activeSwatch, cleanFolder, cropToYarn, getBrief, pdfText, readWebsite, setProfile, viewVideo, viewYarn, createFolder, createPart, createSwatch, createSwatchFromProposal, folderCounts, getKnit, getPart, getYarn, importYarn, importYarnFromPath, importYarnFromUrl, createCopy, knitPath, listFolders, listKnits, listParts, listYarn, moveAllToFolder, proposeFromWebsite, renameFolder, setCopyText, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
+import { GUIDE, GUIDE_TOPICS } from "./guide.mjs";
+import { activeSwatch, cleanFolder, cropToYarn, getBrief, pdfText, readWebsite, setProfile, viewVideo, viewYarn, createFolder, createPart, createSwatch, createSwatchFromProposal, folderCounts, getKnit, getPart, getYarn, setKnitPost, setKnitTags, importYarn, importYarnFromPath, importYarnFromUrl, createCopy, knitPath, listFolders, listKnits, countKnits, changedSince, listParts, listYarn, moveAllToFolder, proposeFromWebsite, renameFolder, setCopyText, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
 
 const obj = (properties, required = []) => ({ type: "object", properties, required, additionalProperties: false });
 const str = (description) => ({ type: "string", description });
@@ -41,7 +42,7 @@ export const untrusted = (label, text) => `<untrusted_data source="${label}">\n$
 // The tools that only look. They change nothing, so a client may run them without asking
 // (tools/list says readOnlyHint), and they still work while the person has paused the
 // model in the studio. Every other tool changes something.
-export const READ_ONLY = new Set(["get_studio_info", "list_projects", "get_project", "list_yarn", "view_yarn", "get_brand_guidelines", "get_brief", "read_website", "list_patterns", "get_pattern", "describe_pattern", "list_parts", "list_presets", "list_voices", "preview_pattern", "check_pattern", "get_job", "list_knits", "list_folders"]);
+export const READ_ONLY = new Set(["get_guide", "get_studio_info", "list_projects", "get_project", "list_yarn", "view_yarn", "get_brand_guidelines", "get_brief", "read_website", "list_patterns", "get_pattern", "describe_pattern", "list_parts", "list_presets", "list_voices", "preview_pattern", "check_pattern", "get_job", "list_knits", "list_folders"]);
 
 // When the process answering started. A build made after it means an older copy is answering.
 const STARTED_AT = new Date(Date.now() - process.uptime() * 1000).toISOString();
@@ -132,6 +133,8 @@ function fontNames(fonts) {
 
 export const TOOLS = [
   // ── the studio ──
+  { name: "get_guide", description: `How to use knitted well, a topic at a time: the numbers and habits that make work look designed, not merely generated. Read start first, then the topic before your first task of that kind. Topics: ${GUIDE_TOPICS.join(", ")}.`, inputSchema: obj({ topic: { type: "string", enum: GUIDE_TOPICS, description: "Leave out for start" } }),
+    async handler({ topic = "start" }) { return `${GUIDE[topic] ?? GUIDE.start}\n\n(Other topics: ${GUIDE_TOPICS.filter((t) => t !== topic).join(", ")}.)`; } },
   { name: "get_studio_info", description: "Which knitted is answering you: its version, when the build that is running was made (builtAt, null when it runs from source) and when it started (startedAt), the folder its library is in (home), and how many tools it has. When the app on this computer was built after builtAt, an older copy is still running: ask the person to quit knitted and open it again.", inputSchema: obj({}),
     async handler(_, { store }) { return { version: process.env.KNITTED_VERSION || "unknown", builtAt: process.env.KNITTED_BUILT_AT || null, startedAt: STARTED_AT, home: store.paths.root, toolCount: TOOLS.length }; } },
 
@@ -156,7 +159,7 @@ export const TOOLS = [
       if (yarnId) return newText(store, { projectId, yarnId, text, name, tags, folder });
       const shelf = reference ? "reference" : "yarn";
       let r;
-      if (text) r = await createCopy(store, projectId, { name: name ?? (reference ? "Note" : "Copy"), text, tags, folder, shelf }, "model");
+      if (text) r = await createCopy(store, projectId, { name: name ?? (reference ? "Note" : "Saved text"), text, tags, folder, shelf }, "model");
       else if (url) r = await importYarnFromUrl(store, projectId, url, { name, tags, folder, shelf, actor: "model" });
       else throw new Error("Give a url to fetch, or text to save. For a file on this computer, use import_yarn_file.");
       return added(store, r, tags);
@@ -348,7 +351,7 @@ export const TOOLS = [
     async handler({ patternId, stitch }, { store }) { const s = stitchRef(store.getPattern(patternId), stitch); const r = store.apply(patternId, { type: "removeStitch", id: s.id }, "model", { label: "Model removed a stitch" }); return { changed: r.changed, refused: r.refusals }; } },
   { name: "set_size", description: "Change a pattern's size. Everything is stored as fractions, so it re-lays out. Check the result with preview_pattern.", inputSchema: obj({ patternId: PATTERN, size: { type: "string", enum: SIZES.map((s) => s.name) } }, ["patternId", "size"]),
     async handler({ patternId, size }, { store }) { const sz = SIZES.find((s) => s.name === size); if (!sz) throw new Error(`Unknown size. Use one of: ${SIZES.map((s) => s.name).join(", ")}.`); const r = store.apply(patternId, { type: "setSize", size: sz }, "model", { label: "Model resized" }); return { changed: r.changed }; } },
-  { name: "apply_batch", description: "Apply several edit commands as ONE step, so a person can undo it as one. `atomic: true` applies all or nothing. Each command is {type, ...}: addStitch {stitch}, updateStitch {id, patch}, removeStitch {id}, reorder {id, toIndex}, setSize {size}, fillSlot {slot, content} (text slots only; set an image with updateStitch and a yarnId), setMeta {name, durationMs}, setMotion {stitchId, clips}, setAudio {audio}. setLocked is refused: only a person locks or unlocks.", inputSchema: obj({ patternId: PATTERN, commands: { type: "array", items: { type: "object" } }, atomic: { type: "boolean" } }, ["patternId", "commands"]),
+  { name: "apply_batch", description: "Apply several edit commands as ONE step, so a person can undo it as one. `atomic: true` applies all or nothing. Each command is {type, ...}: addStitch {stitch}, updateStitch {id, patch}, removeStitch {id}, reorder {id, toIndex}, setSize {size}, fillSlot {slot, content} (text slots only; set an image with updateStitch and a yarnId), setMeta {name, durationMs}, setMotion {stitchId, clips}, setAudio {audio}: the WHOLE list of sound clips, replacing what is there, so send every clip to keep (read them with get_pattern, motion.audio). A clip is {id, yarnId, startMs, kind: voice or music, gain (loudness: 1 as recorded, 0 silent, up to 2; music under a voice sits well at 0.15 to 0.3, and the knit also lowers music while a voice speaks), fadeInMs, fadeOutMs, loop, label}; any other field is refused. To change one clip's loudness, send the list with that clip's gain changed. setLocked is refused: only a person locks or unlocks.", inputSchema: obj({ patternId: PATTERN, commands: { type: "array", items: { type: "object" } }, atomic: { type: "boolean" } }, ["patternId", "commands"]),
     async handler({ patternId, commands, atomic }, { store }) {
       const parsed = CommandSchema.safeParse({ type: "batch", commands, atomic });
       if (!parsed.success) throw new Error(`Those commands are not valid: ${parsed.error.issues[0].path.join(".")}: ${parsed.error.issues[0].message}`);
@@ -418,7 +421,7 @@ export const TOOLS = [
     } },
   { name: "check_pattern", description: "Run the same quality checks Knit runs, without drawing anything: missing files, low contrast, text that will not fit, animation that is too busy. Fix errors before knitting.", inputSchema: obj({ patternId: PATTERN, params: { type: "object" } }, ["patternId"]),
     async handler({ patternId, params = {} }, { store, engine }) { const p = store.getPattern(patternId); return engine.previewKnit(store, { projectId: p.projectId, patternId, params }).map((u) => ({ unit: u.label, issues: u.issues.map((i) => `${i.level}: ${i.message}`) })); } },
-  { name: "knit_pattern", description: "Make real files (PNG, JPEG, WebP or MP4) from a pattern, through the same job the studio's Knit button uses, with the same checks. `params`: sizes (array of {name,w,h}), format, scale (1 or 2), rows (an array of objects of slot values, one per post, to make many). A row may only fill free slots. Returns file paths and any issues, or a jobId when wait is false.", inputSchema: obj({ projectId: PROJECT, patternId: PATTERN, params: { type: "object" }, wait: { type: "boolean" } }, ["patternId"]),
+  { name: "knit_pattern", description: "Make real files (PNG, JPEG, WebP or MP4) from a pattern, through the same job the studio's Knit button uses, with the same checks. `params`: sizes (array of {name,w,h}), format, scale (1 or 2), fps (30, or 60 for smoother fast motion, which takes about twice as long), rows (an array of objects of slot values, one per post, to make many). A row may only fill free slots. Returns file paths and any issues, or a jobId when wait is false.", inputSchema: obj({ projectId: PROJECT, patternId: PATTERN, params: { type: "object" }, wait: { type: "boolean" } }, ["patternId"]),
     async handler({ projectId, patternId, params = {}, wait = true }, { store, engine, limits }) {
       projectId = patternIn(store, patternId, projectId).projectId;
       const n = (params.rows?.length || 1) * (params.sizes?.length || 1);
@@ -435,8 +438,25 @@ export const TOOLS = [
     async handler({ jobId }, { store }) { const j = store.getJob(jobId); return { jobId: j.id, status: j.status, progress: j.progress && { done: j.progress.done, total: j.progress.total, current: j.progress.current }, result: j.result, error: j.error }; } },
   { name: "cancel_job", description: "Stop a running job.", inputSchema: obj({ jobId: str("The job id") }, ["jobId"]),
     async handler({ jobId }, { store, engine }) { return { status: engine.cancelJob(store, jobId).status }; } },
-  { name: "list_knits", description: "What has been knitted in a project, newest first.", inputSchema: obj({ projectId: PROJECT, folder: str("Only knits in this folder and the folders inside it") }, ["projectId"]),
-    async handler({ projectId, folder }, { store }) { return listKnits(store, projectId, { limit: 30, folder }).map((k) => ({ id: k.id, label: k.label, format: k.format, size: `${k.width}x${k.height}`, path: knitPath(store, k), ...filed(k) })); } },
+  { name: "list_knits", description: "What has been knitted in a project, newest first, a page at a time: total says how many there are, so page on with offset. A knit with patternChangedSince was made before its pattern was last saved, so it may not show the pattern as it is now: knit it again before it is posted.", inputSchema: obj({ projectId: str("The project. Not needed with patternId"), folder: str("Only knits in this folder and the folders inside it"), patternId: str("Only knits of this pattern"), limit: { type: "integer", minimum: 1, maximum: 200, description: "How many, 30 if left out" }, offset: { type: "integer", minimum: 0, description: "How many of the newest to skip" } }, []),
+    async handler({ projectId: given, folder, patternId, limit, offset }, { store }) {
+      const projectId = patternId ? patternIn(store, patternId, given).projectId : given;
+      if (!projectId) throw new Error("Give projectId, or a patternId to list that pattern's knits.");
+      const n = Math.max(1, Math.min(200, Number(limit) || 30)), from = Math.max(0, Number(offset) || 0);
+      const knits = listKnits(store, projectId, { folder, patternId, limit: n, offset: from });
+      const stale = changedSince(store, knits);
+      return { total: countKnits(store, projectId, { folder, patternId }), offset: from, knits: knits.map((k) => ({ id: k.id, label: k.label, pattern: k.patternName, format: k.format, size: `${k.width}x${k.height}`, made: k.createdAt, path: knitPath(store, k), ...(stale.has(k.id) ? { patternChangedSince: true } : {}), ...(k.tags.length ? { tags: k.tags } : {}), ...(k.post.caption ? { caption: k.post.caption, hashtags: k.post.hashtags ?? [] } : {}), seen: !!k.seenAt, ...filed(k) })) };
+    } },
+  { name: "tag_knit", description: "Set the tags on a knit: words to find it by in Knits, like launch or winter. Replaces the tags it has, so send every tag to keep.", inputSchema: obj({ knitId: str("The knit, by its id from list_knits"), tags: { type: "array", items: { type: "string" } } }, ["knitId", "tags"]),
+    async handler({ knitId, tags }, { store }) { const k = setKnitTags(store, knitId, tags.map(String).map((t) => t.slice(0, 40)).slice(0, 30)); return { id: k.id, tags: k.tags }; } },
+  { name: "set_knit_post", description: "Save what goes with a knit when it is posted: its caption, hashtags, and a track from the project's audio Yarn with a sentence on why it suits. What you leave out stays as it is. The person sees it in Knits, and can edit it. Read the guide topic posts first.", inputSchema: obj({ knitId: str("The knit, by its id from list_knits"), caption: str("The words, the hook first"), hashtags: { type: "array", items: { type: "string" }, description: "Each with or without its #" }, audioId: str("A Yarn id of kind audio from this project, or an empty string for no track"), audioWhy: str("Why that track suits it, in a sentence") }, ["knitId"]),
+    async handler({ knitId, caption, hashtags, audioId, audioWhy }, { store }) {
+      const k = getKnit(store, knitId);
+      if (audioId === "") audioId = null;
+      if (audioId) { const y = getYarn(store, audioId); if (y.projectId !== k.projectId || y.kind !== "audio") throw new Error(`${y.name} is not a sound in this knit's project. Pick one with list_yarn, kind audio.`); }
+      const out = setKnitPost(store, knitId, { ...(caption !== undefined ? { caption } : {}), ...(hashtags ? { hashtags } : {}), ...(audioId !== undefined ? { audioId } : {}), ...(audioWhy !== undefined ? { audioWhy } : {}), by: "model" });
+      return { id: out.id, post: out.post };
+    } },
 
   // ── folders ──
   // Each section of a project has folders of its own, which hold things and other folders.

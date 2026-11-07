@@ -13,16 +13,16 @@ import { mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import sharp from "sharp";
-import { applyCommand, hasErrors, overflowIssues, postflight, preflight, resolveStyle, SIZES } from "@knitted/core";
+import { applyCommand, fontFor, hasErrors, overflowIssues, postflight, preflight, resolveStyle, safeZoneIssues, SIZES } from "@knitted/core";
 import { activeSwatch, findKnitByHash, getPart, insertKnit, knitPath, listYarn } from "@knitted/core/node";
-import { fontFaceCss, fontPath } from "@knitted/fonts";
+import { fontFaceCss, fontPath, manifest as fontManifest } from "@knitted/fonts";
 import { familiesUsed, pageFor } from "@knitted/render";
 import { FPS, frameTimes, run } from "./knit.mjs";
 import { openRenderer } from "./renderer.mjs";
-import { measureLoudness, mixAudio, muxAudio, videoHash } from "./audio.mjs";
+import { mixAudio, muxAudio, videoHash } from "./audio.mjs";
 
 /** Bump when a change to rendering could change output bytes. It is part of every knit's hash. */
-export const ENGINE_VERSION = "1";
+export const ENGINE_VERSION = "2";
 
 export class Cancelled extends Error { constructor() { super("Knit cancelled."); this.kind = "cancelled"; } }
 
@@ -74,15 +74,70 @@ function unitsFor(pattern, params, yarn) {
 }
 
 /** Everything that can change the bytes, hashed. */
-function hashFor(store, unit, swatch, yarnMap, format, scale) {
+function hashFor(store, unit, swatch, yarnMap, format, scale, fps = FPS) {
   const used = unit.pattern.stitches.map((s) => s.yarnId).filter(Boolean).sort().map((id) => [id, yarnMap[id]?.hash]);
   const { id, version, updatedAt, projectId, ...pat } = unit.pattern; void id; void version; void updatedAt; void projectId;
   const parts = unit.pattern.stitches.filter((s) => s.partId).map((s) => { try { const p = getPart(store, s.partId); return [p.id, p.version]; } catch { return [s.partId, null]; } });
-  return sha({ engine: ENGINE_VERSION, pat, sw: { c: swatch.colors, f: swatch.fonts, r: swatch.rules }, used, parts, format, scale });
+  return sha({ engine: ENGINE_VERSION, pat, sw: { c: swatch.colors, f: swatch.fonts, r: swatch.rules }, used, parts, format, scale, ...(fps !== FPS ? { fps } : {}) });
 }
 
-async function measureOverflow(page) {
-  return page.evaluate(() => [...document.querySelectorAll(".stitch.text")].map((el) => ({ stitchId: el.dataset.stitchId, slot: el.dataset.slot || undefined, overflow: el.scrollHeight > el.clientHeight + 2 || el.scrollWidth > el.clientWidth + 2 })));
+/**
+ * Each text box as it is when everything has landed: does its text fit, and where do its lines
+ * sit (top and bottom, as fractions of the frame)? Measured with every animation off, then the
+ * clock is set back: at time 0 a word still waiting to rise in sits below its line, and was
+ * reported as text that does not fit.
+ */
+async function measureText(page) {
+  const out = await page.evaluate(() => {
+    const off = document.createElement("style");
+    off.textContent = ".stitch,.stitch *{animation:none!important}";
+    document.head.append(off);
+    const H = document.querySelector(".stage")?.clientHeight || window.innerHeight;
+    const r = [...document.querySelectorAll(".stitch.text")].map((el) => {
+      const t = el.querySelector(".t");
+      const at = t && el.offsetParent ? { top: (el.offsetTop + t.offsetTop) / H, bottom: (el.offsetTop + t.offsetTop + t.offsetHeight) / H } : {};
+      // By its lines, not the font's whole ascent and descent: a display face like Chango reaches
+      // far above its letters, and a "1" that fitted its box was reported as cut off.
+      const overflow = t ? t.offsetHeight > el.clientHeight + 2 || t.scrollWidth > el.clientWidth + 2 : el.scrollHeight > el.clientHeight + 2 || el.scrollWidth > el.clientWidth + 2;
+      return { stitchId: el.dataset.stitchId, slot: el.dataset.slot || undefined, overflow, ...at };
+    });
+    off.remove();
+    return r;
+  });
+  await page.evaluate(() => window.__stage.seek(0));
+  return out;
+}
+
+/**
+ * Fonts a pattern's text names that there is no file for: neither bundled nor a font in the
+ * project's Yarn. The browser would quietly draw them in a stand-in.
+ */
+export function missingFontIssues(pattern, swatch, yarn) {
+  const have = new Set([...fontManifest.map((f) => f.family), ...yarn.filter((y) => y.kind === "font" && !y.deletedAt).map((y) => y.meta?.family ?? y.name)]);
+  const out = [], told = new Set();
+  for (const s of pattern.stitches ?? []) {
+    if (s.kind !== "text") continue;
+    const st = resolveStyle(swatch, s.style);
+    if (st.hidden) continue;
+    const fam = String(typeof st.fontFamily === "string" ? st.fontFamily : fontFor(swatch, "display"));
+    if (have.has(fam) || told.has(fam)) continue;
+    told.add(fam);
+    out.push({ level: "warning", code: "missing-font", stitchId: s.id, slot: s.slot, message: `The ${s.slot ?? "text"} uses the font "${fam}", which knitted does not have, so it would be drawn in a stand-in font. Pick a bundled font for the swatch, or add the font's file to Yarn.` });
+  }
+  return out;
+}
+
+/**
+ * Font files the page asked for that did not load: their text was drawn in a stand-in. Every
+ * knit of 11-05 came out in Helvetica this way, when the desktop app could not find its fonts.
+ */
+async function brokenFonts(page) {
+  return page.evaluate(() => {
+    const bare = (f) => f.trim().replace(/^["']|["']$/g, "");
+    const used = new Set([...document.querySelectorAll(".stitch.text")].map((el) => bare(getComputedStyle(el).fontFamily.split(",")[0])));
+    const faces = [...document.fonts];
+    return [...used].filter((fam) => { const mine = faces.filter((f) => bare(f.family) === fam); return mine.length > 0 && !mine.some((f) => f.status === "loaded"); });
+  });
 }
 
 /**
@@ -120,7 +175,7 @@ export function previewKnit(store, { projectId, patternId, params = {} }) {
   const yarn = listYarn(store, projectId);
   const yarnMap = Object.fromEntries(yarn.map((y) => [y.id, y]));
   const scale = params.scale === 2 ? 2 : 1;
-  return unitsFor(pattern, params, yarn).map((u) => ({ label: u.label, size: u.size, issues: [...u.problems, ...preflight(u.pattern, swatch, { scale, yarn: yarnMap })] }));
+  return unitsFor(pattern, params, yarn).map((u) => ({ label: u.label, size: u.size, issues: [...u.problems, ...preflight(u.pattern, swatch, { scale, yarn: yarnMap }), ...missingFontIssues(u.pattern, swatch, yarn)] }));
 }
 
 /**
@@ -166,6 +221,8 @@ export async function renderPreview(store, patternId, { timeMs = 0, scale = 1, r
 export async function runKnit(store, { jobId, projectId, patternId, params = {}, signal, renderer: injected }) {
   const format = FORMATS[params.format ?? "png"] ? (params.format === "jpg" ? "jpeg" : params.format ?? "png") : "png";
   const scale = params.scale === 2 ? 2 : 1;
+  // 60 frames a second for fast motion: smoother, and about twice the frames to draw.
+  const fps = params.fps === 60 ? 60 : FPS;
   const pattern = store.getPattern(patternId);
   const swatch = activeSwatch(store, projectId);
   const yarn = listYarn(store, projectId);
@@ -194,11 +251,11 @@ export async function runKnit(store, { jobId, projectId, patternId, params = {},
       const entry = { label: unit.label, status: "pending", issues: [...unit.problems] };
       progress.units.push(entry);
       try {
-        const issues = [...unit.problems, ...preflight(unit.pattern, swatch, { scale, yarn: yarnMap })];
+        const issues = [...unit.problems, ...preflight(unit.pattern, swatch, { scale, yarn: yarnMap }), ...missingFontIssues(unit.pattern, swatch, yarn)];
         entry.issues = issues;
         if (hasErrors(issues)) { entry.status = "failed"; continue; }
 
-        const hash = hashFor(store, unit, swatch, yarnMap, fmt, scale);
+        const hash = hashFor(store, unit, swatch, yarnMap, fmt, scale, motion ? fps : FPS);
         const prior = params.reuse === false ? null : findKnitByHash(store, projectId, hash);
         if (prior && (await stat(knitPath(store, prior)).then(() => true, () => false))) { entry.status = "reused"; entry.knitId = prior.id; results.push(prior); continue; }
 
@@ -214,12 +271,21 @@ export async function runKnit(store, { jobId, projectId, patternId, params = {},
         try {
           await page.goto(pathToFileURL(pageFile).href);
           await page.evaluate(() => window.__stage.ready());
-          issues.push(...overflowIssues(await measureOverflow(page)));
+          const broken = await brokenFonts(page);
+          if (broken.length) {
+            issues.push(...broken.map((fam) => ({ level: "error", code: "font-failed", message: `The font "${fam}" did not load, so its text would be drawn in a stand-in font. Nothing was made. Try again; if it happens again, reinstall the app.` })));
+            entry.status = "failed"; entry.issues = issues; continue;
+          }
+          const measured = await measureText(page);
+          issues.push(...overflowIssues(measured));
+          // Preflight could only count the line a text box is anchored by; now its real lines.
+          const zoned = new Set(issues.filter((i) => i.code === "safe-zone").map((i) => i.stitchId));
+          issues.push(...safeZoneIssues(unit.pattern, swatch, measured.filter((m) => m.top != null)).filter((i) => !zoned.has(i.stitchId)));
           if (motion) {
             const { knit } = await import("./knit.mjs");
             progress.step = "Drawing the frames";
             // Every few frames, so the bar moves without a write for each one.
-            const r = await knit(page, { outDir: join(outRoot, day), name: `${base}.silent`, durationMs: unit.pattern.durationMs, fps: FPS, signal, onFrame: (done, total) => { progress.frames = { done, total }; if (done % 6 === 0 || done === total) publish(); } });
+            const r = await knit(page, { outDir: join(outRoot, day), name: `${base}.silent`, durationMs: unit.pattern.durationMs, fps, signal, onFrame: (done, total) => { progress.frames = { done, total }; if (done % 6 === 0 || done === total) publish(); } });
             progress.step = "Adding the sound and checking it"; publish();
             outFile = r.files[0];
             const sounds = (unit.pattern.motion?.audio ?? []).filter((a) => yarnMap[a.yarnId] && !yarnMap[a.yarnId].deletedAt);
@@ -228,15 +294,18 @@ export async function runKnit(store, { jobId, projectId, patternId, params = {},
               // and prove it: the decoded video must hash the same before and after.
               const mixFile = join(outRoot, day, `${base}.mix.wav`);
               // The video is whole frames, so the sound is padded to the last one, not to the exact length.
-              await mixAudio({ durationMs: Math.ceil((frameTimes(unit.pattern.durationMs, FPS).length * 1000) / FPS), out: mixFile, clips: sounds.map((a) => ({
+              await mixAudio({ durationMs: Math.ceil((frameTimes(unit.pattern.durationMs, fps).length * 1000) / fps), out: mixFile, clips: sounds.map((a) => ({
                 file: join(store.paths.yarnDir(projectId), yarnMap[a.yarnId].file), startMs: a.startMs, kind: a.kind, gain: a.gain, fadeInMs: a.fadeInMs, fadeOutMs: a.fadeOutMs, loop: a.loop, lengthMs: yarnMap[a.yarnId].durationMs,
               })) });
-              const loud = await measureLoudness(mixFile);
               const finalFile = join(outRoot, day, `${base}.mp4`);
-              await muxAudio({ video: outFile, audio: mixFile, out: finalFile });
+              // Measured on the finished file: the encoder can add peaks the mix did not have.
+              const loud = await muxAudio({ video: outFile, audio: mixFile, out: finalFile });
               if ((await videoHash(outFile)) !== (await videoHash(finalFile))) throw new Error("Adding the sound changed the picture. The file was thrown away.");
               await rm(outFile, { force: true }); await rm(mixFile, { force: true });
               outFile = finalFile; report = { ...report, lufs: loud.lufs, truePeak: loud.truePeak };
+              // The mix aims at -14 LUFS, what the apps play at. A real knit came out at -10.2 and
+              // nothing said so: too loud is turned down by the app, too quiet sounds weak beside the next video.
+              if (Number.isFinite(loud.lufs) && Math.abs(loud.lufs - -14) > 1.5) issues.push({ level: "warning", code: "loudness", message: `The sound came out at ${loud.lufs.toFixed(1)} LUFS, but social apps play videos at about -14. ${loud.lufs > -14 ? "It will be turned down and can sound squashed." : "It will sound quiet next to other videos."} Check the music and voiceover volumes.` });
             } else {
               const finalFile = join(outRoot, day, `${base}.mp4`);
               await rename(outFile, finalFile); // fs, not `mv`: this runs on Windows too
@@ -258,7 +327,7 @@ export async function runKnit(store, { jobId, projectId, patternId, params = {},
         let post;
         if (motion) {
           const v = await probeVideo(outFile);
-          post = postflight({ kind: "video", width: v.width, height: v.height, expectW: unit.size.w * scale, expectH: unit.size.h * scale, pixFmt: v.pixFmt, frames: v.frames, expectFrames: frameTimes(unit.pattern.durationMs, FPS).length, videoMs: v.videoMs, audioMs: v.audioMs });
+          post = postflight({ kind: "video", width: v.width, height: v.height, expectW: unit.size.w * scale, expectH: unit.size.h * scale, pixFmt: v.pixFmt, frames: v.frames, expectFrames: frameTimes(unit.pattern.durationMs, fps).length, videoMs: v.videoMs, audioMs: v.audioMs });
           report.frames = v.frames;
         } else {
           const m = await sharp(outFile).metadata();

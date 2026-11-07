@@ -107,6 +107,20 @@ test("Knit offers MP4 for an animated pattern, warns about brief text, and makes
   assert.ok(knits[0].report.issues.some((i) => i.code === "text-too-brief") || knits[0].durationMs > 0, "the motion lint reached the report");
 });
 
+test("at 60 frames a second the same video knits again, with twice the frames", async () => {
+  assert.equal((await j("POST", `/api/patterns/${patternId}/knit`, { params: { fps: 45 }, dryRun: true })).status, 400, "only 30 or 60");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Knit", exact: true }).click();
+  const dlg = page.getByRole("dialog");
+  await dlg.getByRole("radio", { name: "60 fps" }).click();
+  await dlg.getByText("Fast motion looks smoother.", { exact: false }).waitFor();
+  await dlg.getByRole("button", { name: /^Knit 1 file/ }).click();
+  await dlg.getByText(/1 file ready/).waitFor({ timeout: 120000 });
+  const [sixty, thirty] = (await j("GET", `/api/projects/${projectId}/knits`)).body;
+  assert.notEqual(sixty.id, thirty.id, "not the 30 fps file again");
+  assert.equal(sixty.report.frames, thirty.report.frames * 2);
+});
+
 for (const theme of ["day", "night"]) {
   test(`no serious accessibility violations with the timeline open in ${theme}`, async () => {
     await page.keyboard.press("Escape");

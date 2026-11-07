@@ -3,15 +3,16 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { api, uploadYarn, yarnPictureUrl, yarnThumbUrl, type ProjectSummary } from "@knitted/core/client";
+import { api, uploadYarn, yarnPictureUrl, yarnThumbUrl, type JobItem, type ProjectSummary } from "@knitted/core/client";
 import {
   Button, Chip, ConfirmDialog, ContextMenu, Dialog, EmptyState, Field, IconButton, Input, Menu, SegmentedControl,
-  Select, Skeleton, Textarea, icons, useToast, type MenuItems,
+  Select, Skeleton, StitchRow, Textarea, icons, useToast, type MenuItems,
 } from "@knitted/ui";
 import { PageHeader } from "./AppShell";
 import { SyncChoices } from "./SyncChoices";
 import type { SyncOptions } from "@knitted/core/client";
 import { timeAgo, useLive } from "@/lib/hooks";
+import { KnitQueue, knitShare } from "./KnitQueue";
 
 const { Plus, Search, MoreHorizontal, Pencil, Copy, Archive, Trash2, FolderOpen, Image: ImageIcon, Upload } = icons;
 
@@ -27,7 +28,9 @@ function useView(): [View, (v: View) => void] {
   return [view, (v) => { setView(v); try { localStorage.setItem("knitted.projects.view", v); } catch {} }];
 }
 
-function ProjectCard({ p, view, items, menuTrigger }: { p: ProjectSummary; view: View; items: MenuItems; menuTrigger: React.ReactElement }) {
+function ProjectCard({ p, view, items, menuTrigger, knitting }: { p: ProjectSummary; view: View; items: MenuItems; menuTrigger: React.ReactElement; knitting: JobItem[] }) {
+  const running = knitting.filter((j) => j.status === "running");
+  const pct = running.length ? Math.round((running.reduce((n, j) => n + knitShare(j), 0) / running.length) * 100) : null;
   const card = (
     <div className="card card-link" style={{ position: "relative", padding: view === "grid" ? "var(--space-3)" : "var(--space-3) var(--space-4)", display: view === "list" ? "flex" : "block", alignItems: "center", gap: "var(--space-4)" }}>
       <Link href={`/projects/${p.id}`} aria-label={`Open ${p.name}`} style={{ position: "absolute", inset: 0, borderRadius: "var(--radius-md)", zIndex: 1 }} />
@@ -47,6 +50,11 @@ function ProjectCard({ p, view, items, menuTrigger }: { p: ProjectSummary; view:
         <p className="body-sm" style={{ margin: "2px 0 0", color: "var(--ink-muted)" }}>
           {p.counts.patterns} {p.counts.patterns === 1 ? "pattern" : "patterns"} · {p.counts.yarn} yarn · {timeAgo(p.updatedAt)}
         </p>
+        {knitting.length > 0 && <Link href={`/projects/${p.id}/knits`} className="link body-sm" style={{ position: "relative", zIndex: 2, display: "flex", gap: 8, alignItems: "center", marginTop: 4 }}>
+          <span aria-hidden className="working" style={{ width: 7, height: 7, borderRadius: "50%", flex: "none" }} />
+          {pct !== null ? `Knitting, ${pct}%` : "Waiting to knit"}{knitting.length > running.length && running.length > 0 ? `, ${knitting.length - running.length} waiting` : ""}
+        </Link>}
+        {p.counts.newKnits > 0 && <Link href={`/projects/${p.id}/knits`} className="link body-sm" style={{ position: "relative", zIndex: 2, display: "inline-flex", gap: 6, alignItems: "center", marginTop: 4 }}><span className="new-badge in-row">New</span>{p.counts.newKnits} {p.counts.newKnits === 1 ? "knit" : "knits"} to see</Link>}
       </div>
       {p.example && <Chip tone="ember">Example</Chip>}
       {/* In the grid it sits on the picture, so it brings its own background to be seen on any picture. */}
@@ -54,6 +62,25 @@ function ProjectCard({ p, view, items, menuTrigger }: { p: ProjectSummary; view:
     </div>
   );
   return <ContextMenu items={items}>{card}</ContextMenu>;
+}
+
+/** The brand field and one action, above the projects until there is one of the person's own. */
+function Welcome({ onNew }: { onNew: () => void }) {
+  return (
+    <section aria-label="Welcome" style={{ background: "var(--ember)", color: "var(--on-ember)", borderRadius: "var(--radius-lg)", padding: "var(--space-12) var(--space-10)", position: "relative", overflow: "hidden", marginBottom: "var(--space-8)" }}>
+      <div aria-hidden style={{ position: "absolute", right: -20, top: 20, color: "var(--oxblood)", opacity: 0.55, display: "grid", gap: 6 }}>
+        {[7, 6, 7, 6, 7].map((n, i) => <StitchRow key={i} count={n} size={34} />)}
+      </div>
+      <p className="eyebrow" style={{ color: "var(--on-ember)" }}>Welcome</p>
+      <h2 className="display" style={{ margin: "var(--space-3) 0 var(--space-4)", maxWidth: 560 }}>
+        Make it <span className="accent" style={{ fontWeight: 400 }}>knitted.</span>
+      </h2>
+      <p className="body-lg prose" style={{ marginBottom: "var(--space-6)", maxWidth: 480 }}>
+        Set your brand once as a pattern. Then knit as many posts, stories and ads from it as you like.
+      </p>
+      <button type="button" className="btn btn-dark btn-lg" onClick={onNew}>Create your first project</button>
+    </section>
+  );
 }
 
 function ProjectsInner() {
@@ -65,6 +92,9 @@ function ProjectsInner() {
   const [sort, setSort] = useState<Sort>("recent");
   const [show, setShow] = useState<"active" | "archived">("active");
   const { data, refresh, error } = useLive(() => api.projects.list({ archived: show === "archived" }), [show]);
+  // Knits under way in every project, in one place above them all.
+  const { data: knitting } = useLive(() => api.knit.active(), []);
+  const named = new Map((data ?? []).map((p) => [p.id, p.name]));
 
   const [creating, setCreating] = useState(params.get("new") === "1");
   const [renaming, setRenaming] = useState<ProjectSummary | null>(null);
@@ -95,9 +125,12 @@ function ProjectsInner() {
 
   return (
     <div style={{ padding: "var(--space-8)", maxWidth: 1200 }}>
+      {data && show === "active" && data.every((p) => p.example) && <Welcome onNew={() => setCreating(true)} />}
       <PageHeader eyebrow="Library" title="Projects">
         <Button variant="primary" onClick={() => setCreating(true)}><Plus size={16} /> New project</Button>
       </PageHeader>
+
+      <KnitQueue jobs={knitting ?? []} place={(j) => j.projectId ? { label: named.get(j.projectId) ?? "A project", href: `/projects/${j.projectId}/knits` } : null} />
 
       <div style={{ display: "flex", gap: "var(--space-3)", alignItems: "center", flexWrap: "wrap", marginBottom: "var(--space-6)" }}>
         <div style={{ position: "relative", width: 280 }}>
@@ -133,13 +166,14 @@ function ProjectsInner() {
               p={p}
               view={view}
               items={menuFor(p)}
+              knitting={(knitting ?? []).filter((j) => j.projectId === p.id)}
               menuTrigger={<Menu trigger={<IconButton label={`Actions for ${p.name}`}><MoreHorizontal size={16} /></IconButton>} items={menuFor(p)} />}
             />
           ))}
         </div>
       )}
 
-      <NewProjectDialog open={creating} onOpenChange={(o) => { setCreating(o); if (!o && params.get("new")) router.replace("/projects"); }} onCreated={(p, next) => router.push(next ?? `/projects/${p.id}`)} />
+      <NewProjectDialog open={creating} onOpenChange={(o) => { setCreating(o); if (!o && params.get("new")) router.replace("/"); }} onCreated={(p, next) => router.push(next ?? `/projects/${p.id}`)} />
 
       <RenameDialog
         open={!!renaming}

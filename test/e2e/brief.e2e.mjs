@@ -134,7 +134,8 @@ test("knits under way are one panel: the one knitting with a bar that moves, the
   const projectId = (await j("POST", "/api/projects", { name: "Queue", starter: "social" })).body.id;
   const at = new Date().toISOString();
   const knitJob = (id, status, progress, name) => ({ id, kind: "knit", status, projectId, error: null, createdAt: at, finishedAt: null, result: null, input: { patternName: name }, progress });
-  await page.route(`**/api/projects/${projectId}/jobs`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([
+  const active = (url) => url.pathname === "/api/jobs" && url.searchParams.get("project") === projectId;
+  await page.route(active, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([
     knitJob("jb_1", "running", { total: 2, done: 1, current: "Launch banner · Story", units: [], step: "Drawing the frames", frames: { done: 75, total: 150 } }, "Launch banner"),
     knitJob("jb_2", "queued", null, "VO reel"),
     knitJob("jb_3", "queued", null, "Weekend post"),
@@ -150,5 +151,45 @@ test("knits under way are one panel: the one knitting with a bar that moves, the
   assert.equal(await panel.getByRole("button", { name: /^Cancel knitting/ }).count(), 3);
   await panel.getByRole("button", { name: "Cancel all" }).waitFor();
   assert.deepEqual(await axeProblems(page), []);
-  await page.unroute(`**/api/projects/${projectId}/jobs`);
+  await page.unroute(active);
+});
+
+test("knits under way show on every tab of their project, and on the projects page for all of them at once", async () => {
+  const a = (await j("POST", "/api/projects", { name: "Knitting here", starter: "social" })).body.id;
+  const b = (await j("POST", "/api/projects", { name: "Knitting there", starter: "blank" })).body.id;
+  const at = new Date().toISOString();
+  const knitJob = (id, projectId, status, progress, name) => ({ id, kind: "knit", status, projectId, error: null, createdAt: at, finishedAt: null, result: null, input: { patternName: name }, progress });
+  const all = [
+    knitJob("jb_a1", a, "running", { total: 2, done: 1, current: "Launch banner · Story", units: [], step: "Drawing the frames", frames: { done: 75, total: 150 } }, "Launch banner"),
+    knitJob("jb_a2", a, "queued", null, "VO reel"),
+    knitJob("jb_b1", b, "running", { total: 1, done: 0, current: "Sale post", units: [], frames: null }, "Sale post"),
+  ];
+  const active = (url) => url.pathname === "/api/jobs";
+  await page.route(active, (route) => {
+    const project = new URL(route.request().url()).searchParams.get("project");
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(all.filter((x) => !project || x.projectId === project)) });
+  });
+
+  await page.goto(`${studio.url}/projects/${a}`);
+  const panel = page.getByRole("region", { name: "Knitting" });
+  await panel.getByText("1 waiting").waitFor();
+  assert.equal(await panel.getByRole("progressbar").getAttribute("aria-valuenow"), "73");
+  assert.equal(await panel.getByText("Sale post").count(), 0, "only this project's");
+  assert.equal(await panel.getByRole("list", { name: "Waiting to knit" }).count(), 0, "the waiting ones are a count here");
+  await page.getByRole("link", { name: "Yarn", exact: true }).click();
+  await page.waitForURL(`**/projects/${a}/yarn`);
+  await panel.getByRole("link", { name: "See knits" }).click();
+  await page.waitForURL(`**/projects/${a}/knits`);
+  await page.getByRole("list", { name: "Waiting to knit" }).waitFor();
+  assert.equal(await page.getByRole("region", { name: "Knitting" }).count(), 1, "the Knits tab keeps its own panel, with the waiting ones listed, not a second one");
+
+  await page.goto(studio.url);
+  const every = page.getByRole("region", { name: "Knitting" });
+  await every.getByRole("link", { name: "Knitting there" }).waitFor();
+  await every.getByRole("link", { name: "Knitting here" }).first().waitFor();
+  assert.equal(await every.getByRole("progressbar").count(), 2, "a bar for each knit under way, in any project");
+  await page.getByRole("link", { name: "Knitting, 73%, 1 waiting" }).waitFor();
+  await page.getByRole("link", { name: "Knitting, 0%" }).waitFor();
+  assert.deepEqual(await axeProblems(page), []);
+  await page.unroute(active);
 });

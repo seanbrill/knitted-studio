@@ -7,7 +7,7 @@
 import { readFile } from "node:fs/promises";
 import { getBrief, getKnit, knitPath, listYarn, setKnitPost, ValidationError } from "@knitted/core/node";
 import { untrusted } from "@knitted/mcp/tools";
-import { AgentError, API_VERSION, DEFAULT_MODEL, failure } from "./index.mjs";
+import { AgentError, API_VERSION, DEFAULT_MODEL, failure, mayAsk, spend } from "./index.mjs";
 
 export const POST_SYSTEM = `You write what goes with a social post for knitted.studio, an app where a business makes its posts: the caption, the hashtags, and which track from the business's own music to put under it.
 
@@ -89,6 +89,7 @@ export async function writePost(store, knitId, { ask, apiKey, model = DEFAULT_MO
   if (!apiKey) throw new AgentError("Add your Anthropic key in Settings first, then write the caption again.", "config");
   if (ask && ask.length > 2000) throw new ValidationError("Say what to change in 2000 characters or fewer.");
   const knit = getKnit(store, knitId);
+  mayAsk(store);
   const audio = audioChoices(store, knit.projectId);
   const saved = cap(listYarn(store, knit.projectId, { kind: "copy" }).slice(0, 20).map((y) => `${y.name}: ${y.meta.text ?? ""}`).join("\n"), 2000);
   const prompt = postPrompt({ profile: getBrief(store, knit.projectId).profile, words: patternWords(store, knit.patternId), saved, knit, audio, current: knit.post, ask: ask?.trim() });
@@ -104,6 +105,7 @@ export async function writePost(store, knitId, { ask, apiKey, model = DEFAULT_MO
   }
   if (!res.ok) throw await failure(res);
   const msg = await res.json();
+  spend(store, { kind: "post", model: msg.model ?? model, projectId: knit.projectId, usage: msg.usage });
   if (msg.stop_reason === "refusal") throw new AgentError("The model declined to write this. Write the caption yourself, or try another model in Settings.", "refusal");
   const text = (msg.content ?? []).filter((b) => b.type === "text").map((b) => b.text).join("");
   const post = readPost(text, audio);

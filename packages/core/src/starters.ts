@@ -10,18 +10,20 @@ const id = (n: string) => `st_${n}`;
 function launchStitches(size: Size): Stitch[] {
   const tall = size.h / size.w > 1.2;
   const wide = size.w / size.h > 1.2;
+  const story = size.h / size.w > 1.7;
   const mk = (n: string, d: Draft): Stitch => ({ id: id(n), ...d });
   return [
     mk("bg", { kind: "image", slot: "backdrop", x: 0, y: 0, w: 1, h: 1, locked: false, style: { background: "$color.primary" } }),
+    // A story's bottom 18% is under the app's reply bar, so a story's layout sits higher.
     mk("eyebrow", {
-      kind: "text", slot: "eyebrow", x: 0.08, y: wide ? 0.3 : tall ? 0.62 : 0.55, w: 0.6, h: 0.04, locked: true, content: "NEW THIS WEEK",
+      kind: "text", slot: "eyebrow", x: 0.08, y: wide ? 0.3 : story ? 0.5 : tall ? 0.62 : 0.55, w: 0.6, h: 0.04, locked: true, content: "NEW THIS WEEK",
       style: { fontFamily: "$font.mono", fontSize: 0.022, letterSpacing: 0.14, textTransform: "uppercase", color: "$color.text" },
     }),
     mk("headline", {
-      kind: "text", slot: "headline", x: 0.08, y: wide ? 0.38 : tall ? 0.67 : 0.6, w: wide ? 0.6 : 0.84, h: wide ? 0.34 : tall ? 0.16 : 0.22, locked: false,
+      kind: "text", slot: "headline", x: 0.08, y: wide ? 0.38 : story ? 0.55 : tall ? 0.67 : 0.6, w: wide ? 0.6 : 0.84, h: wide ? 0.34 : tall ? 0.16 : 0.22, locked: false,
       content: "Make it knitted.", style: { fontFamily: "$font.display", fontSize: wide ? 0.11 : 0.085, fontWeight: 800, color: "$color.text" },
     }),
-    mk("logo", { kind: "image", slot: "logo", x: 0.08, y: 0.88, w: wide ? 0.14 : 0.26, h: 0.05, locked: true, style: { fit: "contain" } }),
+    mk("logo", { kind: "image", slot: "logo", x: 0.08, y: story ? 0.75 : 0.88, w: wide ? 0.14 : 0.26, h: 0.05, locked: true, style: { fit: "contain" } }),
   ];
 }
 

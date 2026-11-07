@@ -15,11 +15,30 @@ export interface PreflightOpts { scale?: number; yarn: Record<string, Yarn | und
 
 const hexOf = (v: unknown): string | null => (typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v) ? v.toLowerCase() : null);
 
-/** The colour behind a stitch: the backdrop's, else the swatch background. Good enough to judge text against. */
-function groundFor(p: Pattern, sw: Swatch): string {
-  const bg = p.stitches.find((s) => s.slot === "backdrop" || (s.x <= 0.001 && s.y <= 0.001 && s.w >= 0.99 && s.h >= 0.99));
-  const c = bg ? hexOf(resolveStyle(sw, bg.style).background) : null;
-  return c ?? colorFor(sw, "background");
+/**
+ * The colour a text stitch is read against: its own background, else the topmost thing under
+ * its middle that covers most of it (a button, a card, a terminal), else the page. Null when
+ * that is a picture, a video, a part or a gradient: there is no one colour to judge before
+ * it is drawn, and a number made up for it is worse than none. Judged against the page alone,
+ * every dark-on-pink button read 1.0:1, and 189 such warnings were all wrong.
+ */
+function groundFor(p: Pattern, sw: Swatch, text: Pattern["stitches"][number]): string | null {
+  const own = resolveStyle(sw, text.style);
+  if (own.background) return hexOf(own.background);
+  const cx = text.x + text.w / 2, cy = text.y + text.h / 2;
+  const below = p.stitches.slice(0, p.stitches.indexOf(text)).reverse();
+  for (const s of below) {
+    const st = resolveStyle(sw, s.style);
+    if (st.hidden || Number(st.opacity ?? 1) < 0.5) continue;
+    const overlapW = Math.max(0, Math.min(s.x + s.w, text.x + text.w) - Math.max(s.x, text.x));
+    const overlapH = Math.max(0, Math.min(s.y + s.h, text.y + text.h) - Math.max(s.y, text.y));
+    const covers = cx >= s.x && cx <= s.x + s.w && cy >= s.y && cy <= s.y + s.h && overlapW * overlapH >= 0.5 * text.w * text.h;
+    if (!covers) continue;
+    // A picture box with no file yet shows its own colour; with one, the picture.
+    if (((s.kind === "image" || s.kind === "video") && s.yarnId) || s.kind === "part") return null;
+    if (st.background) return hexOf(st.background);
+  }
+  return colorFor(sw, "background");
 }
 
 /**
@@ -39,7 +58,6 @@ export function preflight(p: Pattern, sw: Swatch, o: PreflightOpts): KnitIssue[]
   const issues: KnitIssue[] = [];
   const scale = o.scale ?? 1;
   const add = (i: KnitIssue) => issues.push(i);
-  const ground = groundFor(p, sw);
   for (const s of p.stitches) {
     const st = resolveStyle(sw, s.style);
     if (st.hidden) continue;
@@ -74,28 +92,81 @@ export function preflight(p: Pattern, sw: Swatch, o: PreflightOpts): KnitIssue[]
     if (s.kind === "text") {
       if (!(s.content ?? "").trim()) add({ level: "warning", code: "empty-text", stitchId: s.id, slot: s.slot, message: `The ${name} text is empty.` });
       const fg = hexOf(st.color) ?? colorFor(sw, "text");
-      const r = ratio(fg, ground);
+      const ground = groundFor(p, sw, s);
+      const r = ground ? ratio(fg, ground) : Infinity;
       const size = Number(st.fontSize ?? 0.05) * p.size.w;
       const large = size >= 56 || (size >= 42 && Number(st.fontWeight ?? 400) >= 700);
       const need = large ? 3 : 4.5;
-      if (r < need) add({ level: "warning", code: "low-contrast", stitchId: s.id, slot: s.slot, message: `The ${name} text is ${r.toFixed(1)}:1 against what is behind it. It needs ${need}:1 to read easily. Try a different colour from your swatch.` });
+      if (r < need) add({ level: "warning", code: "low-contrast", stitchId: s.id, slot: s.slot, message: `${s.slot ? `The ${s.slot} text` : `Text that says "${(s.content ?? "").replace(/\*/g, "").slice(0, 30)}"`} is ${r.toFixed(1)}:1 against what is behind it. It needs ${need}:1 to read easily. Try a different colour from your swatch.` });
     }
     if (s.x < -0.01 || s.y < -0.01 || s.x + s.w > 1.01 || s.y + s.h > 1.01) {
       if (!(s.slot === "backdrop")) add({ level: "warning", code: "off-canvas", stitchId: s.id, slot: s.slot, message: `The ${name} runs past the edge of the frame, so part of it will be cut off.` });
     }
   }
+  const voiced = (p.motion?.audio ?? []).some((a) => a.kind === "voice");
   for (const a of p.motion?.audio ?? []) {
     const y = o.yarn[a.yarnId];
     if (!y || y.deletedAt) issues.push({ level: "error", code: "missing-yarn", message: `The ${a.kind === "voice" ? "voiceover" : "music"} "${a.label ?? "sound"}" uses a file that was deleted. Choose another or remove it.` });
+    // Every track is levelled to the voice's loudness before mixing, so gain is how far under the
+    // voice the music sits. Real reels had 0.08 (22 dB under), from older advice, and the knit
+    // used to hide it by riding the gain up at the end; now it would barely be heard.
+    else if (a.kind === "music" && typeof a.gain === "number" && a.gain > 0 && a.gain < 0.25) issues.push({ level: "warning", code: "quiet-music", message: `The music${a.label ? ` "${a.label}"` : ""} is at gain ${a.gain}, ${Math.round(-20 * Math.log10(a.gain))} dB under the voice level, so it will barely be heard${voiced ? " even when nobody speaks" : ""}. Every track is brought to one loudness first, so 0.4 to 0.6 suits most videos${voiced ? ", and the knit lowers the music under the voice by itself" : ""}.` });
   }
   for (const m of motionLint(p)) issues.push({ level: "warning", code: m.code, stitchId: m.stitchId, message: m.message });
+  issues.push(...safeZoneIssues(p, sw));
   return issues;
 }
 
-export interface MeasuredText { stitchId: string; slot?: string; overflow: boolean; }
+/**
+ * Tall 9:16 frames are stories and reels, and the apps draw over their edges: the account
+ * name and progress bar over the top, the reply bar and buttons over the bottom. All 9 real
+ * stories reviewed put the logo under the first and the call to action under the second.
+ */
+export const STORY_SAFE = { top: 0.13, bottom: 0.18 };
+const isTall = (p: Pattern) => { const r = p.size.h / p.size.w; return r > 1.7 && r < 1.85; };
+
+/** Where text actually sits, measured in the page: fractions of the frame's height. */
+export interface TextExtent { stitchId: string; slot?: string; top: number; bottom: number; }
+
+/**
+ * Things the apps' bars would cover. Without a browser a text box's lines are not known, so
+ * only the line it is anchored by (its first, middle or last, from verticalAlign) is counted;
+ * given `measured`, the text's real extent is used instead. Small pictures and parts (a
+ * logo, a badge) count by their box. Full-bleed backgrounds are meant to run under the bars.
+ */
+export function safeZoneIssues(p: Pattern, sw: Swatch, measured?: TextExtent[]): KnitIssue[] {
+  if (!isTall(p)) return [];
+  const out: KnitIssue[] = [];
+  const topLine = STORY_SAFE.top, bottomLine = 1 - STORY_SAFE.bottom, slack = 0.005;
+  const flag = (s: Pattern["stitches"][number], top: number, bottom: number) => {
+    const what = s.kind === "text" ? (s.slot ? `${s.slot} text` : `text "${(s.content ?? "").replace(/\*/g, "").slice(0, 30)}"`) : (s.slot ?? s.kind);
+    if (top < topLine - slack) out.push({ level: "warning", code: "safe-zone", stitchId: s.id, slot: s.slot, message: `The ${what} is in the top ${Math.round(topLine * 100)}% of a 9:16 frame, where Instagram and TikTok put the account name and progress bar over it. Keep it below ${Math.round(topLine * p.size.h)}px.` });
+    else if (bottom > bottomLine + slack) out.push({ level: "warning", code: "safe-zone", stitchId: s.id, slot: s.slot, message: `The ${what} is in the bottom ${Math.round(STORY_SAFE.bottom * 100)}% of a 9:16 frame, where the reply bar and buttons cover it. Keep it above ${Math.round(bottomLine * p.size.h)}px.` });
+  };
+  const byId = new Map((measured ?? []).map((m) => [m.stitchId, m]));
+  for (const s of p.stitches) {
+    const st = resolveStyle(sw, s.style);
+    if (st.hidden || s.slot === "backdrop") continue;
+    if (s.kind === "text") {
+      if (!(s.content ?? "").trim()) continue;
+      const m = byId.get(s.id);
+      if (m) { flag(s, m.top, m.bottom); continue; }
+      const line = (Number(st.fontSize ?? 0.05) * p.size.w * Number(st.lineHeight ?? 1.05)) / p.size.h;
+      const va = st.verticalAlign;
+      const [a, b] = va === "bottom" ? [s.y + s.h - line, s.y + s.h] : va === "middle" ? [s.y + s.h / 2 - line / 2, s.y + s.h / 2 + line / 2] : [s.y, s.y + line];
+      flag(s, a, b);
+    } else if (s.kind === "image" || s.kind === "video" || s.kind === "part") {
+      if (s.w * s.h > 0.25) continue;
+      flag(s, s.y, s.y + s.h);
+    }
+  }
+  return out;
+}
+
+export interface MeasuredText { stitchId: string; slot?: string; overflow: boolean; top?: number; bottom?: number; }
 /** Turn the page's own measurements (does each text box fit its text?) into issues. */
 export function overflowIssues(measured: MeasuredText[]): KnitIssue[] {
-  return measured.filter((m) => m.overflow).map((m) => ({ level: "warning" as const, code: "text-overflow", stitchId: m.stitchId, slot: m.slot, message: `The ${m.slot ?? "text"} does not fit its box and will be cut off. Shorten it, make the box bigger, or turn on "shrink to fit".` }));
+  return measured.filter((m) => m.overflow).map((m) => ({ level: "warning" as const, code: "text-overflow", stitchId: m.stitchId, slot: m.slot, message: `The ${m.slot ?? "text"} does not fit its box, so it spills out over what is around it, or past the edge of the frame. Shorten it, make the box bigger, or turn on "shrink to fit".` }));
 }
 
 export interface PostCheckInput {

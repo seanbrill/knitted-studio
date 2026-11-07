@@ -11,6 +11,8 @@ import { RenameDialog } from "./ProjectsView";
 import { FolderCrumbs, FolderDialogs, FolderList, NewFolderButton, useFolders } from "./Folders";
 import { timeAgo, useLive } from "@/lib/hooks";
 import { ViewBar, layout, useView, type SortBy } from "./Views";
+import { AskModelDialog, aboutPattern } from "./AskModel";
+import { PickBox, SelectionBar, picking, useSelection } from "./Selection";
 
 const PATTERN_SORTS: SortBy<Pattern>[] = [
   { value: "updated", label: "Last changed", key: (p) => p.updatedAt, desc: true },
@@ -20,7 +22,7 @@ const PATTERN_SORTS: SortBy<Pattern>[] = [
   { value: "tall", label: "Tallest first", key: (p) => p.size.h / p.size.w, desc: true },
 ];
 
-const { Plus, MoreHorizontal, Pencil, Copy, Trash2, FolderOpen, FolderInput } = icons;
+const { Plus, MoreHorizontal, Pencil, Copy, Trash2, FolderOpen, FolderInput, Sparkles } = icons;
 
 const ACTOR_LABEL: Record<string, string> = { human: "You", fill: "You", model: "Your model", import: "Import", system: "knitted" };
 // A folder is in one section: say which, as the tabs name them.
@@ -46,7 +48,7 @@ const ACTION_TEXT = {
   "pattern.deleted": (s) => `deleted the pattern ${s}`,
   "edit.refused": (s) => `tried to change locked stitches in ${s}, and was told no`,
   "yarn.imported": (s, d) => `added ${s} to ${onShelf(d)}${cutFrom(d)}`,
-  "yarn.changed": (s) => `changed the copy ${s}`,
+  "yarn.changed": (s) => `changed the saved text ${s}`,
   "yarn.deleted": (s, d) => `deleted ${s} from ${onShelf(d)}`,
   "swatch.created": (s) => `added the swatch ${s}`,
   "brief.built": (s) => `built the profile from ${s}`,
@@ -87,8 +89,14 @@ export function PatternsView({ projectId }: { projectId: string }) {
   // A search or a size looks in the folder the person is in and every folder inside it.
   const filtering = !!q.trim() || size !== "all";
   const here = view.sorted((patterns ?? []).filter((p) => (filtering ? isInside(p.folder, kit.here) && p.name.toLowerCase().includes(q.trim().toLowerCase()) && (size === "all" || p.size.name === size) : p.folder === kit.here)));
+  const sel = useSelection(here);
+  const [asking, setAsking] = useState<Pattern | null>(null);
+  const [bulkDelete, setBulkDelete] = useState(false);
+  // A click with Shift, Ctrl or Cmd held picks the pattern instead of opening it.
+  const pick = (p: Pattern) => (e: React.MouseEvent) => { if (picking(e)) { e.preventDefault(); sel.toggle(p.id, e.shiftKey); } };
   const menu = (p: Pattern): MenuItems => [
     { label: "Open in editor", icon: <FolderOpen size={14} />, onSelect: () => router.push(`/projects/${projectId}/patterns/${p.id}`) },
+    { label: "Ask your model...", icon: <Sparkles size={14} />, onSelect: () => setAsking(p) },
     { label: "Rename", icon: <Pencil size={14} />, onSelect: () => setRenaming(p) },
     { label: "Duplicate", icon: <Copy size={14} />, onSelect: () => act(() => api.patterns.duplicate(p.id), "Duplicated") },
     { label: "Move to folder", icon: <FolderInput size={14} />, onSelect: () => kit.askMove([p], p.name) },
@@ -114,6 +122,11 @@ export function PatternsView({ projectId }: { projectId: string }) {
             <ViewBar view={view} what="patterns" />
           </div>
         )}
+        <SelectionBar sel={sel} total={here.length}>
+          <Button size="sm" onClick={() => kit.askMove(sel.picked, `${sel.count} ${sel.count === 1 ? "pattern" : "patterns"}`)}><FolderInput size={13} aria-hidden /> Move to folder</Button>
+          <Button size="sm" onClick={() => act(async () => { for (const p of sel.picked) await api.patterns.duplicate(p.id); }, `Duplicated ${sel.count}`)}><Copy size={13} aria-hidden /> Duplicate</Button>
+          <Button size="sm" variant="danger" onClick={() => setBulkDelete(true)}><Trash2 size={13} aria-hidden /> Delete</Button>
+        </SelectionBar>
         {filtering ? (kit.here && <p className="body-sm" style={{ margin: "0 0 var(--space-3)", color: "var(--ink-muted)" }}>Looking in {nameOf(kit.here)} and the folders in it.</p>) : <FolderList kit={kit} />}
         {!patterns || !kit.folders ? <Skeleton height={240} /> : patterns.length === 0 && kit.folders.length === 0 ? (
           <EmptyState title="No patterns yet" body="A pattern is a layout you set once and knit from again and again." action={<Button variant="primary" onClick={() => setCreating(true)}>New pattern</Button>} />
@@ -125,8 +138,10 @@ export function PatternsView({ projectId }: { projectId: string }) {
           <div style={layout(view.mode, 190)}>
             {here.map((p) => view.mode === "list" ? (
               <ContextMenu key={p.id} items={menu(p)}>
-                <div className="card card-link" draggable onDragStart={kit.dragThings([p.id])} style={{ padding: "6px var(--space-3) 6px 6px", position: "relative", display: "grid", gridTemplateColumns: "56px minmax(0, 1fr) auto auto", gap: "var(--space-3)", alignItems: "center" }}>
-                  <Link href={`/projects/${projectId}/patterns/${p.id}`} aria-label={`Open ${p.name}`} draggable={false} style={{ position: "absolute", inset: 0, zIndex: 1, borderRadius: "var(--radius-md)" }} />
+                <div className="pickable" data-selected={sel.has(p.id)}>
+                <PickBox sel={sel} id={p.id} name={p.name} className="pick-box" />
+                <div className="card card-link" draggable onDragStart={kit.dragThings(sel.has(p.id) ? sel.picked.map((x) => x.id) : [p.id])} style={{ padding: "6px var(--space-3) 6px 6px", position: "relative", display: "grid", gridTemplateColumns: "56px minmax(0, 1fr) auto auto", gap: "var(--space-3)", alignItems: "center" }}>
+                  <Link href={`/projects/${projectId}/patterns/${p.id}`} aria-label={`Open ${p.name}`} draggable={false} onClick={pick(p)} style={{ position: "absolute", inset: 0, zIndex: 1, borderRadius: "var(--radius-md)" }} />
                   <div className="thumb" aria-hidden style={{ width: 56, height: 56, padding: 4 }}>
                     <div style={{ width: p.size.w >= p.size.h ? "100%" : `${(p.size.w / p.size.h) * 100}%` }}><PatternThumb pattern={p} ctx={thumbs} /></div>
                   </div>
@@ -137,11 +152,14 @@ export function PatternsView({ projectId }: { projectId: string }) {
                   <span className="body-sm" style={{ color: "var(--ink-muted)", whiteSpace: "nowrap" }}>{timeAgo(p.updatedAt)}</span>
                   <span style={{ position: "relative", zIndex: 2 }}><Menu trigger={<IconButton label={`Actions for ${p.name}`}><MoreHorizontal size={16} /></IconButton>} items={menu(p)} /></span>
                 </div>
+                </div>
               </ContextMenu>
             ) : (
               <ContextMenu key={p.id} items={menu(p)}>
-                <div className="card card-link" draggable onDragStart={kit.dragThings([p.id])} style={{ padding: "var(--space-3)", position: "relative" }}>
-                  <Link href={`/projects/${projectId}/patterns/${p.id}`} aria-label={`Open ${p.name}`} draggable={false} style={{ position: "absolute", inset: 0, zIndex: 1, borderRadius: "var(--radius-md)" }} />
+                <div className="pickable" data-selected={sel.has(p.id)}>
+                <PickBox sel={sel} id={p.id} name={p.name} className="pick-box" />
+                <div className="card card-link" draggable onDragStart={kit.dragThings(sel.has(p.id) ? sel.picked.map((x) => x.id) : [p.id])} style={{ padding: "var(--space-3)", position: "relative" }}>
+                  <Link href={`/projects/${projectId}/patterns/${p.id}`} aria-label={`Open ${p.name}`} draggable={false} onClick={pick(p)} style={{ position: "absolute", inset: 0, zIndex: 1, borderRadius: "var(--radius-md)" }} />
                   <div className="thumb" style={{ aspectRatio: "4 / 5", padding: "var(--space-2)" }}>
                     <div style={{ width: "100%", maxHeight: "100%", display: "grid", placeItems: "center" }}>
                       <div style={{ width: p.size.w / p.size.h > 0.8 ? "100%" : `${(p.size.w / p.size.h / 0.8) * 100}%`, boxShadow: "0 1px 4px rgba(23,17,11,.18)" }}>
@@ -154,6 +172,7 @@ export function PatternsView({ projectId }: { projectId: string }) {
                   <span style={{ position: "absolute", top: 8, right: 8, zIndex: 2 }}>
                     <Menu trigger={<IconButton label={`Actions for ${p.name}`}><MoreHorizontal size={16} /></IconButton>} items={menu(p)} />
                   </span>
+                </div>
                 </div>
               </ContextMenu>
             ))}
@@ -181,6 +200,10 @@ export function PatternsView({ projectId }: { projectId: string }) {
       <ConfirmDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)} title={`Delete ${deleting?.name ?? "pattern"}?`}
         description="This removes the pattern and its history. Anything you already knitted from it stays."
         confirmLabel="Delete pattern" onConfirm={async () => { await api.patterns.remove(deleting!.id); await refresh(); toast("Pattern deleted"); }} />
+      <ConfirmDialog open={bulkDelete} onOpenChange={setBulkDelete} title={`Delete ${sel.count} ${sel.count === 1 ? "pattern" : "patterns"}?`}
+        description="This removes them and their history. Anything you already knitted from them stays." confirmLabel="Delete patterns"
+        onConfirm={async () => { for (const p of sel.picked) await api.patterns.remove(p.id); sel.clear(); await refresh(); toast("Deleted"); }} />
+      <AskModelDialog about={asking ? aboutPattern(asking) : null} onOpenChange={(o) => !o && setAsking(null)} />
       <FolderDialogs kit={kit} />
     </div>
   );

@@ -40,7 +40,7 @@ const EXT: Record<string, { kind: YarnKind; mime: string }> = {
 export const SUPPORTED = "PNG, JPG, WebP, GIF, AVIF, SVG, MP4, MOV, WebM, MP3, WAV, M4A, OGG, TTF, OTF, WOFF, WOFF2, PDF or a text file";
 /** A shelf, as a person reads it. */
 export const SHELF_NAME: Record<Shelf, string> = { yarn: "Yarn", reference: "the reference" };
-const KIND_WORD: Record<YarnKind, string> = { image: "a picture", video: "a video", audio: "a sound", font: "a font", copy: "copy", pdf: "a PDF" };
+const KIND_WORD: Record<YarnKind, string> = { image: "a picture", video: "a video", audio: "a sound", font: "a font", copy: "saved text", pdf: "a PDF" };
 export function cleanShelf(s: unknown): Shelf {
   if (s === undefined || s === null || s === "" || s === "yarn") return "yarn";
   if (s === "reference") return "reference";
@@ -201,7 +201,7 @@ export async function createCopy(store: Store, projectId: string, input: { name:
   cleanFolder(input.folder);
   const shelf = cleanShelf(input.shelf);
   const tmp = await writeTemp(store, projectId, Buffer.from(text, "utf8"));
-  return importYarn(store, projectId, tmp, `${input.name || "Copy"}.txt`, { name: input.name || (shelf === "reference" ? "Note" : "Copy"), tags: input.tags, folder: input.folder, actor, shelf });
+  return importYarn(store, projectId, tmp, `${input.name || "Saved text"}.txt`, { name: input.name || (shelf === "reference" ? "Note" : "Saved text"), tags: input.tags, folder: input.folder, actor, shelf });
 }
 
 /**

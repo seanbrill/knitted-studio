@@ -7,7 +7,7 @@ export default function NotFound() {
       <EmptyState
         title="That page is not here"
         body="It may have moved, or the link was typed wrong. Head back to your projects."
-        action={<Link href="/projects" className="btn btn-primary">Open projects</Link>}
+        action={<Link href="/" className="btn btn-primary">Open projects</Link>}
       />
     </div>
   );

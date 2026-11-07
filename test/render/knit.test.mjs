@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
-import { activeSwatch, importYarn, knitPath, listKnits, openStore, updateSwatch, uploadTempPath, getKnit } from "@knitted/core/node";
+import { activeSwatch, importYarn, knitPath, listKnits, openStore, updateSwatch, uploadTempPath, getKnit, yarnPath } from "@knitted/core/node";
 import { postflight, preflight, SIZES } from "@knitted/core";
 import { openRenderer, runKnit, previewKnit, applyRow } from "@knitted/engine";
 
@@ -105,6 +105,37 @@ test("missing Yarn blocks that knit before any drawing, with a fix", async () =>
   assert.match(r.progress.units[0].issues[0].message, /deleted\. Choose another file/);
 });
 
+test("a font knitted has no file for is reported before anything is drawn", () => {
+  const p = store.createPattern(project.id, { name: "No such font", size: SIZES[2], stitches: [{ id: "t", kind: "text", slot: "headline", x: 0.1, y: 0.1, w: 0.8, h: 0.2, locked: false, content: "Hello", style: { fontFamily: "Helvetica Neue LT Pro" } }] });
+  const [w] = previewKnit(store, { projectId: project.id, patternId: p.id }).flatMap((u) => u.issues).filter((i) => i.code === "missing-font");
+  assert.match(w.message, /"Helvetica Neue LT Pro", which knitted does not have, so it would be drawn in a stand-in font/);
+  const ok = store.createPattern(project.id, { name: "Bundled font", size: SIZES[2], stitches: [{ id: "t", kind: "text", x: 0.1, y: 0.1, w: 0.8, h: 0.2, locked: false, content: "Hello", style: { fontFamily: "Lora" } }] });
+  assert.deepEqual(previewKnit(store, { projectId: project.id, patternId: ok.id }).flatMap((u) => u.issues).filter((i) => i.code === "missing-font"), []);
+});
+
+test("a font file that will not load stops the knit, instead of drawing the text in a stand-in", async () => {
+  // Every knit of 11-05 came out in Helvetica when the desktop app could not find its fonts, and nothing said so.
+  const tmp = uploadTempPath(store, project.id); mkdirSync(join(tmp, ".."), { recursive: true });
+  writeFileSync(tmp, readFileSync(new URL("../../packages/fonts/files/lora-latin-wght-normal.woff2", import.meta.url)));
+  const { yarn } = await importYarn(store, project.id, tmp, "brand.woff2", {});
+  store.db.prepare("update yarn set meta = json_set(meta, '$.family', 'Brand Face') where id = ?").run(yarn.id);
+  execFileSync("rm", [yarnPath(store, yarn)]);
+  const p = store.createPattern(project.id, { name: "Lost font", size: SIZES[2], stitches: [{ id: "t", kind: "text", slot: "headline", x: 0.1, y: 0.1, w: 0.8, h: 0.2, locked: false, content: "Hello", style: { fontFamily: "Brand Face" } }] });
+  const r = await knit(p.id, { reuse: false });
+  assert.equal(r.knits.length, 0);
+  assert.match(r.progress.units[0].issues.find((i) => i.code === "font-failed").message, /"Brand Face" did not load.*Nothing was made/);
+});
+
+test("text still rising in at the start is measured where it lands, so a snug box is not reported as overflowing", async () => {
+  // A real "notch.fm" end card: one line in a snug box, brought in a word at a time, was reported
+  // as cut off because at time 0 the word sits 0.4em below its line.
+  const p = store.createPattern(project.id, { name: "Snug", size: { name: "T", w: 360, h: 640 }, stitches: [{ id: "t", kind: "text", slot: "headline", x: 0.05, y: 0.4, w: 0.9, h: 0.07, locked: false, content: "notch", style: { fontSize: 0.1, verticalAlign: "middle", textAlign: "center" } }] });
+  store.apply(p.id, { type: "setMeta", durationMs: 600 }, "human");
+  store.apply(p.id, { type: "setMotion", stitchId: "t", clips: [{ id: "c", preset: "stitch-in", startMs: 0, endMs: 500 }] }, "human");
+  const { progress } = await knit(p.id, { reuse: false });
+  assert.deepEqual(progress.units[0].issues.filter((i) => i.code === "text-overflow"), []);
+});
+
 test("a long headline is reported as overflowing its box", async () => {
   const p = store.createPattern(project.id, { name: "Overflow", size: SIZES[2], stitches: [{ id: "t", kind: "text", slot: "headline", x: 0.05, y: 0.05, w: 0.3, h: 0.05, locked: false, content: "This headline is far too long to fit inside such a small box at this size", style: { fontFamily: "$font.display", fontSize: 0.08, color: "$color.text" } }] });
   const { progress } = await knit(p.id, { reuse: false });
@@ -165,6 +196,23 @@ test("MOTION: a 1 second pattern becomes a yuv420p MP4 with exactly 30 frames, i
   const md5 = (f) => execFileSync("ffmpeg", ["-v", "error", "-i", f, "-f", "framemd5", "-"]).toString().split("\n").filter((l) => /^0,/.test(l)).map((l) => l.split(",").pop().trim());
   assert.deepEqual(md5(fa), md5(knitPath(store, b)), "every decoded frame is identical across runs: time is SET, never waited for");
   assert.notEqual(md5(fa)[0], md5(fa)[29], "and the animation really moves");
+});
+
+test("a video's colours come out as drawn: converted and tagged BT.709, and it can start playing before it has all loaded", async () => {
+  // Converted with ffmpeg's default BT.601 matrix and left untagged, players read the file as 709 and
+  // a brand red came out orange in real FileFreak knits.
+  const p = store.createPattern(project.id, { name: "Red", size: { name: "Test", w: 320, h: 320 }, stitches: [
+    { id: "b", kind: "shape", x: 0, y: 0, w: 1, h: 1, locked: false, style: { background: "#e0242f" } },
+  ] });
+  store.apply(p.id, { type: "setMeta", durationMs: 500 }, "human");
+  const file = knitPath(store, (await knit(p.id, { reuse: false })).knits[0]);
+  const tags = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=color_space,color_primaries,color_transfer,color_range", "-of", "json", file]).toString()).streams[0];
+  assert.deepEqual(tags, { color_range: "tv", color_space: "bt709", color_transfer: "bt709", color_primaries: "bt709" });
+  const px = execFileSync("ffmpeg", ["-v", "error", "-i", file, "-frames:v", "1", "-vf", "crop=8:8:156:156,scale=1:1:in_color_matrix=bt709:in_range=tv,format=rgb24", "-f", "rawvideo", "-"]);
+  const want = [0xe0, 0x24, 0x2f];
+  assert.ok([...px].every((v, i) => Math.abs(v - want[i]) <= 4), `decoded as 709 it is the red that was drawn: got ${[...px].join(",")}`);
+  const bytes = readFileSync(file);
+  assert.ok(bytes.indexOf("moov") < bytes.indexOf("mdat"), "the index is at the front (faststart)");
 });
 
 // ── the quality gates must be able to FAIL (the brief: prove a check on its own bug) ──

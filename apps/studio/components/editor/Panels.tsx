@@ -78,8 +78,8 @@ export function YarnPanel({ projectId, onYarnChanged }: { projectId: string; onY
   const use = (y: Yarn) => {
     const sel = st.pattern.stitches.find((s) => s.id === st.selection[0]);
     if (sel && (sel.kind === "image" || sel.kind === "video") && (y.kind === "image" || y.kind === "video")) { st.dispatch({ type: "updateStitch", id: sel.id, patch: { yarnId: y.id } }, { label: "Set image" }); return; }
-    if (y.kind === "copy" && sel?.kind === "text") { st.dispatch({ type: "updateStitch", id: sel.id, patch: { content: y.meta.text ?? "" } }, { label: "Use copy" }); return; }
-    if (y.kind === "copy") { addStitch({ kind: "text", x: 0.08, y: 0.4, w: 0.84, h: 0.12, locked: false, content: y.meta.text ?? "", style: { fontFamily: "$font.body", fontSize: 0.04, fontWeight: 500, color: "$color.text" } }, "Add copy"); return; }
+    if (y.kind === "copy" && sel?.kind === "text") { st.dispatch({ type: "updateStitch", id: sel.id, patch: { content: y.meta.text ?? "" } }, { label: "Use saved text" }); return; }
+    if (y.kind === "copy") { addStitch({ kind: "text", x: 0.08, y: 0.4, w: 0.84, h: 0.12, locked: false, content: y.meta.text ?? "", style: { fontFamily: "$font.body", fontSize: 0.04, fontWeight: 500, color: "$color.text" } }, "Add saved text"); return; }
     const w = 0.6, ratio = y.width && y.height ? y.width / y.height : 1;
     addStitch({ kind: y.kind === "video" ? "video" : "image", x: 0.2, y: 0.2, w, h: (w * st.pattern.size.w) / ratio / st.pattern.size.h, locked: false, yarnId: y.id, style: { fit: "cover" } }, "Add image");
   };
@@ -111,7 +111,7 @@ export function YarnPanel({ projectId, onYarnChanged }: { projectId: string; onY
         </ul>
       )}
       {copy.length > 0 && <>
-        <h3 className="eyebrow" style={{ margin: "var(--space-4) 0 var(--space-2)" }}>Copy</h3>
+        <h3 className="eyebrow" style={{ margin: "var(--space-4) 0 var(--space-2)" }}>Saved text</h3>
         <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 6 }}>
           {copy.map((y) => <li key={y.id}><button className="card card-link" draggable onDragStart={drag(y)} onClick={() => use(y)} style={{ width: "100%", textAlign: "left", padding: 8, cursor: "pointer", font: "inherit", color: "inherit" }}><span className="label">{y.name}</span><br /><span className="body-sm" style={{ color: "var(--ink-muted)" }}>{(y.meta.text ?? "").slice(0, 60)}</span></button></li>)}
         </ul>

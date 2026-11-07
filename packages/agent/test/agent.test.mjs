@@ -49,7 +49,8 @@ test("the model fills a free slot, is REFUSED on a locked one, is told so, and s
   assert.equal(toolResult.type, "tool_result");
   assert.match(toolResult.content, /locked by the pattern/);
   assert.equal(r.text, "I changed the headline. The eyebrow is locked by your brand, so I left it.");
-  assert.deepEqual(r.usage, { inputTokens: 250, outputTokens: 50 }, "token usage is summed from the API's own counts");
+  assert.deepEqual({ inputTokens: r.usage.inputTokens, outputTokens: r.usage.outputTokens }, { inputTokens: 250, outputTokens: 50 }, "token usage is summed from the API's own counts");
+  assert.equal(r.usage.cost.toFixed(6), ((250 * 2 + 50 * 10) / 1e6).toFixed(6), "and priced at the model's rates");
   assert.equal(r.turns, 2);
   assert.ok(r.changedCount >= 1);
   assert.ok(store.activity(project.id).some((a) => a.action === "edit.refused" && a.actor === "model"));

@@ -204,3 +204,32 @@ test("the editor's Yarn panel shows the same folders, and each one opens in plac
   await panel.getByRole("navigation", { name: "Where you are in Yarn" }).getByRole("button", { name: "Yarn" }).click();
   await panel.getByRole("button", { name: "Use beat" }).waitFor({ state: "detached" });
 });
+
+test("in Patterns, several picked at once are duplicated and deleted together, and Esc lets go", async () => {
+  const all = async () => (await j("GET", `/api/projects/${projectId}/patterns`)).body;
+  const here = (await all()).filter((p) => !p.folder);
+  assert.ok(here.length >= 2);
+  await page.goto(`${studio.url}/projects/${projectId}`);
+  await page.getByRole("checkbox", { name: `Select ${here[0].name}` }).click();
+  const bar = page.getByRole("toolbar", { name: "Selection" });
+  await bar.getByText("1 selected").waitFor();
+  // A modifier click on a card picks it rather than opening it.
+  await page.getByRole("link", { name: `Open ${here[1].name}` }).click({ modifiers: ["ControlOrMeta"] });
+  await bar.getByText("2 selected").waitFor();
+  assert.match(page.url(), /\/projects\/pj_\w+$/, "still on the list");
+
+  const was = (await all()).length;
+  await bar.getByRole("button", { name: "Duplicate" }).click();
+  await serverHas(studio, `/api/projects/${projectId}/patterns`, (p) => p.length === was + 2);
+  const copies = (await all()).filter((p) => p.name === `${here[0].name} copy` || p.name === `${here[1].name} copy`);
+  assert.equal(copies.length, 2);
+
+  await page.keyboard.press("Escape");
+  await bar.waitFor({ state: "detached" });
+  for (const c of copies) await page.getByRole("checkbox", { name: `Select ${c.name}` }).click();
+  await bar.getByText("2 selected").waitFor();
+  await bar.getByRole("button", { name: "Delete" }).click();
+  await page.getByRole("button", { name: "Delete patterns" }).click();
+  await serverHas(studio, `/api/projects/${projectId}/patterns`, (p) => p.length === was);
+  assert.deepEqual(await problems(), []);
+});

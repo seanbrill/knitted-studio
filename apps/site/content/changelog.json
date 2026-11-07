@@ -1,5 +1,40 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
+  "next": {
+    "title": "A long list, worked through",
+    "items": [
+      "Keep writing while your model answers: what you send waits its turn under the conversation, and goes when the answer is in. Take any of it out of the queue. If you stop a run, the rest wait for you.",
+      "Your model can set how loud the music is under a voiceover. It used to try names for the setting that did nothing; now it is told the name, and a name it gets wrong is refused out loud instead of ignored.",
+      "Projects is the first page now, and it and every project's tabs show the knits under way, so you can see what is knitting everywhere at once.",
+      "Knits nobody has opened yet say New, and Mark all seen clears them.",
+      "Pick several patterns, knits or Yarn files at once: Cmd or Ctrl-click, Shift-click for a run, Cmd or Ctrl+A for everything shown, Escape to clear. Then tag, file, download, duplicate or delete them together.",
+      "Ask your model about a pattern, a knit or a file from its own menu: say what to change, and it does it in the chat.",
+      "Spending: what your model has cost this month, and a limit that stops it before it goes over.",
+      "Copy in Yarn is called Saved text, which says what it is.",
+      "Knit at 60 frames a second for fast motion.",
+      "Your model reads a guide before it works, topic by topic: patterns, motion, voiceovers, posts and more.",
+      "Frames are drawn about three times faster.",
+      "Footage in a video no longer stutters. At Story size every third frame used to repeat.",
+      "Type-on types a letter at a time, each in its place, and stitch-in brings the words in one by one, each rising into place.",
+      "A second animation on the same thing no longer cancels the first, the slow zoom works on video too, and a pulse keeps its beat. Entrances ease in evenly instead of jumping most of the way in the first frames.",
+      "Text that slides in is as sharp as a still before and after it moves.",
+      "Sound no longer crackles: the finished file's peaks are measured and kept under the limit.",
+      "Every voice line and music track is brought to one loudness, music dips once under a voice instead of swelling between words, and music cut off by the end of the video fades out.",
+      "Videos come out at the loudness the apps play at, and a knit that does not says so.",
+      "Music set too quiet to hear under a voice is flagged, with the level that suits.",
+      "Colours in videos match the pattern: a brand red no longer turns orange. Videos also start playing before they have finished loading.",
+      "Headlines are balanced over their lines, with no word left alone at the end. Code keeps its indentation, and a pop grows from where the words are.",
+      "A short word that starts a sentence stays with the word after it, and a number stays with its unit, so a line no longer ends on a lone \"It\" or splits \"5 GB\".",
+      "Text that fits its box is no longer reported as cut off: a display font's tall ascent, or a word still rising in, set it off.",
+      "Contrast warnings look at what is really behind the words, like a button, a card or a band, instead of the page.",
+      "Stories warn when words or a logo sit under the app's top bar or reply bar.",
+      "A knit made before its pattern was last changed says so, so an old file is not posted by mistake.",
+      "A font knitted does not have, or one that fails to load, is reported instead of quietly drawn in a stand-in.",
+      "Website pictures are taken at twice the pixels, so a part cut out of one stays sharp in a post.",
+      "Motion checks catch entrances too fast to see, type-on too fast to read, and long stills anywhere in a video, the end included.",
+      "Your model can page through every knit in a project, not just the newest 30."
+    ]
+  },
   "entries": [
     {
       "version": "0.1.13",
