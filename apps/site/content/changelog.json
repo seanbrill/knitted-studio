@@ -1,16 +1,18 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
-  "next": {
-    "title": "Any voice model, used to the full",
-    "items": [
-      "A voice server shows its own voices and models in Settings, including the presets its model has but does not list (Qwen3's Ryan, Serena and the rest). Type any voice name it takes.",
-      "Give a style in words (\"warm, deep and confident\") for models that take one, and any other options your server takes, as JSON.",
-      "A voice server's own error now shows in Settings, like an unsupported voice, instead of \"Something broke on our side\". A model name the server does not have falls back to its own speech model.",
-      "A voiceover is spoken in one take, so the voice sounds the same from the first line to the last, then cut at the pauses into a clip per line.",
-      "A voiceover's sound now runs to the video's last frame, so a knit no longer refuses it as a few milliseconds short."
-    ]
-  },
   "entries": [
+    {
+      "version": "0.1.11",
+      "date": "2026-11-07",
+      "title": "Any voice model, used to the full",
+      "items": [
+        "A voice server shows its own voices and models in Settings, including the presets its model has but does not list (Qwen3's Ryan, Serena and the rest). Type any voice name it takes.",
+        "Give a style in words (\"warm, deep and confident\") for models that take one, and any other options your server takes, as JSON.",
+        "A voice server's own error now shows in Settings, like an unsupported voice, instead of \"Something broke on our side\". A model name the server does not have falls back to its own speech model.",
+        "A voiceover is spoken in one take, so the voice sounds the same from the first line to the last, then cut at the pauses into a clip per line.",
+        "A voiceover's sound now runs to the video's last frame, so a knit no longer refuses it as a few milliseconds short."
+      ]
+    },
     {
       "version": "0.1.10",
       "date": "2026-11-06",
