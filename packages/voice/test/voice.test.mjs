@@ -101,7 +101,7 @@ function speechServer({ status = 200 } = {}) {
     if (status !== 200) { res.statusCode = status; return res.end("denied"); }
     res.setHeader("content-type", "audio/wav"); res.end(readFileSync(wav));
   });
-  return new Promise((r) => server.listen(0, "127.0.0.1", () => r({ base: `http://127.0.0.1:${server.address().port}`, calls, close: () => server.close() })));
+  return new Promise((r) => server.listen(0, "127.0.0.1", () => r({ base: `http://127.0.0.1:${server.address().port}`, calls, close: () => { server.closeAllConnections(); server.close(); } })));
 }
 
 test("the OpenAI-compatible provider speaks the standard request and writes the audio", async () => {
@@ -109,9 +109,10 @@ test("the OpenAI-compatible provider speaks the standard request and writes the 
   const p = openaiCompatible({ baseUrl: s.base + "/", apiKey: "k-123", model: "kokoro" });
   const out = join(dir, "o.wav");
   await p.synthesize({ text: "Hello there", voice: "af_heart", speed: 1.1, out });
-  assert.equal(s.calls[0].url, "/v1/audio/speech");
-  assert.equal(s.calls[0].auth, "Bearer k-123");
-  assert.deepEqual(s.calls[0].body, { model: "kokoro", input: "Hello there", voice: "af_heart", speed: 1.1, response_format: "wav" });
+  // It asks for the server's models first (its model name may be a label); the speech request is the one to read.
+  const spoke = s.calls.find((c) => c.url === "/v1/audio/speech");
+  assert.equal(spoke.auth, "Bearer k-123");
+  assert.deepEqual(spoke.body, { model: "kokoro", input: "Hello there", voice: "af_heart", speed: 1.1, response_format: "wav" });
   assert.ok(await durationOf(out) > 1000);
   s.close();
 });
@@ -160,4 +161,47 @@ test("the built-in voice really speaks on this machine", { skip: process.platfor
   const r = await speak(system, { text: "Make it knitted.", voice: "default", cacheDir: join(dir, "sys") });
   assert.ok(r.durationMs > 600 && r.durationMs < 5000, `a real utterance: ${r.durationMs}ms`);
   assert.ok((await system.voices()).length > 5);
+});
+
+// ── a voice server's full range, and one take cut into lines ──
+import { cutTake, readWav } from "../src/index.mjs";
+
+/** A mono 16-bit WAV of loud and quiet stretches: [ms, loud?] each. */
+function takeOf(parts, rate = 24000) {
+  const n = parts.reduce((a, [ms]) => a + Math.round((ms / 1000) * rate), 0), b = Buffer.alloc(44 + n * 2);
+  b.write("RIFF", 0); b.writeUInt32LE(36 + n * 2, 4); b.write("WAVEfmt ", 8); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22);
+  b.writeUInt32LE(rate, 24); b.writeUInt32LE(rate * 2, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34); b.write("data", 36); b.writeUInt32LE(n * 2, 40);
+  let at = 0;
+  for (const [ms, loud] of parts) for (let i = 0; i < Math.round((ms / 1000) * rate); i++, at++) b.writeInt16LE(loud ? Math.round(Math.sin(at / 9) * 12000) : 0, 44 + at * 2);
+  return b;
+}
+
+test("a take is cut at the sentence pauses, not at a breath inside a line", () => {
+  // Line one has a comma pause (300ms) inside it; the lines end with 500ms pauses; line two has a 130ms breath.
+  const wav = takeOf([[100, false], [900, true], [300, false], [900, true], [500, false], [700, true], [130, false], [700, true], [500, false], [1600, true], [100, false]]);
+  const parts = cutTake(wav, ["Your library, sorted by your scores.", "Rate every song from one to ten.", "Then let the music follow what you love."]);
+  assert.deepEqual(parts.map((p) => Math.round(p.fromMs)), [0, 2450, 4480]);
+  assert.equal(Math.round(parts.at(-1).toMs), 6430);
+  assert.equal(readWav(parts[1].wav).dataLength, Math.round(((4480 - 2450) / 1000) * 24000) * 2, "each line is its own WAV, cut from the take");
+  assert.equal(cutTake(Buffer.from("not a wav"), ["a", "b"]), null, "a file it cannot read stays whole");
+});
+
+test("a voice server gets the voice, the style as instructions and any other options, and its own error comes back", async () => {
+  const seen = [];
+  const fetchImpl = async (url, init) => {
+    seen.push({ url, body: init?.body ? JSON.parse(init.body) : null });
+    if (url.endsWith("/v1/models")) return Response.json({ data: [{ id: "tts", family: "qwen3_tts" }] });
+    if (url.endsWith("/v1/audio/voices")) return Response.json({ voices: ["default"] });
+    if (JSON.parse(init.body).voice === "alloy") return Response.json({ error: { message: "Qwen3 custom voice unsupported speaker: alloy" } }, { status: 500 });
+    return new Response(takeOf([[200, true]]), { status: 200 });
+  };
+  const p = openaiCompatible({ baseUrl: "http://voices.test", model: "tts", style: "deep and powerful", options: { language: "English" }, fetchImpl });
+  assert.deepEqual((await p.voices()).map((v) => v.id).slice(0, 3), ["default", "Ryan", "Aiden"], "the model's presets, though the server lists only default");
+  const out = join(mkdtempSync(join(tmpdir(), "kn-voice-")), "a.wav");
+  await p.synthesize({ text: "Hi.", voice: "Ryan", out });
+  assert.deepEqual(seen.at(-1).body, { model: "tts", input: "Hi.", voice: "Ryan", speed: 1, response_format: "wav", instructions: "deep and powerful", language: "English" });
+  await p.synthesize({ text: "Hi.", voice: "default", out, style: "whispered" });
+  assert.equal(seen.at(-1).body.voice, undefined, "default is the server's own choice");
+  assert.equal(seen.at(-1).body.instructions, "whispered", "a style for one voiceover wins over Settings");
+  await assert.rejects(p.synthesize({ text: "Hi.", voice: "alloy", out }), (e) => e.name === "VoiceError" && /unsupported speaker: alloy\. Pick another voice in Settings\./.test(e.message));
 });

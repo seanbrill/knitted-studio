@@ -886,12 +886,12 @@
   },
   {
     "name": "list_voices",
-    "summary": "The voices available for voiceover, and whether the configured voice works right now.",
+    "summary": "What the configured voice can do: its voices, the model and its family, the style and other options set in Settings, and whether it works right now. Read it before synthesize_voiceover to pick a voice the server really has.",
     "params": []
   },
   {
     "name": "synthesize_voiceover",
-    "summary": "Speak lines and put them on the pattern's timeline as sound, optionally with timed captions. Returns a job id: check it with get_job. The pattern becomes a video long enough for the speech.",
+    "summary": "Speak a script and put it on the pattern's timeline as sound, optionally with timed captions. Give the WHOLE script in one call, a line per caption, never one call per line: it is spoken in one take, so the voice stays the same from start to end (a voice model asked line by line drifts in pitch and pace), then cut at the pauses into a clip per line, placed as spoken. Pick the voice from list_voices. style is how to say it, in words (\"warm, confident, slower at the end\"), for models that take one; options are any other fields the voice server takes. oneTake: false speaks each line on its own, only for lines that must stay separate. Returns a job id: check it with get_job. The pattern becomes a video long enough for the speech.",
     "params": [
       {
         "name": "patternId",
@@ -903,13 +903,31 @@
         "name": "lines",
         "type": "string[]",
         "required": true,
-        "description": ""
+        "description": "The whole script, in order: a line per caption"
       },
       {
         "name": "voice",
         "type": "string",
         "required": false,
-        "description": ""
+        "description": "A voice from list_voices"
+      },
+      {
+        "name": "style",
+        "type": "string",
+        "required": false,
+        "description": "How to say it, in words, for models that take an instruction"
+      },
+      {
+        "name": "options",
+        "type": "object",
+        "required": false,
+        "description": "Other fields for the voice server, as it documents them"
+      },
+      {
+        "name": "oneTake",
+        "type": "boolean",
+        "required": false,
+        "description": "Default true: one take, cut into lines"
       },
       {
         "name": "captions",

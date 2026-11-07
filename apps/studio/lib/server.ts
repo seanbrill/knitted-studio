@@ -61,6 +61,8 @@ export function route<A extends unknown[]>(fn: (...args: A) => Promise<Response>
       if (k.kind === "zod") return fail(400, "validation", explain(e as ZodError));
       if (k.kind === "not_found") return fail(404, "not_found", k.message);
       if (k.kind === "conflict") return fail(409, "conflict", k.message, { currentVersion: k.currentVersion });
+      // A voice that could not be made says why, in the voice server's own words.
+      if ((e as Error)?.name === "VoiceError") return fail(502, "voice", k.message);
       console.error(e);
       return fail(500, "internal", "Something broke on our side. Your work is saved; try again.");
     }

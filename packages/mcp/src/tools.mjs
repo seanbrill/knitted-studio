@@ -389,10 +389,16 @@ export const TOOLS = [
     } },
 
   // ── voice ──
-  { name: "list_voices", description: "The voices available for voiceover, and whether the configured voice works right now.", inputSchema: obj({}),
-    async handler(_, { engine }) { const { provider } = await engine.activeVoice(); const ok = await provider.available(); return { provider: provider.id, available: ok, voices: ok ? (await provider.voices()).slice(0, 40) : [] }; } },
-  { name: "synthesize_voiceover", description: "Speak lines and put them on the pattern's timeline as sound, optionally with timed captions. Returns a job id: check it with get_job. The pattern becomes a video long enough for the speech.", inputSchema: obj({ patternId: PATTERN, lines: { type: "array", items: { type: "string" } }, voice: { type: "string" }, captions: { type: "boolean" } }, ["patternId", "lines"]),
-    async handler({ patternId, lines, voice, captions = true }, { store, engine }) { const p = store.getPattern(patternId); const j = engine.startVoiceJob(store, { projectId: p.projectId, patternId, lines, voice, captions, actor: "model" }); return { jobId: j.id }; } },
+  { name: "list_voices", description: "What the configured voice can do: its voices, the model and its family, the style and other options set in Settings, and whether it works right now. Read it before synthesize_voiceover to pick a voice the server really has.", inputSchema: obj({}),
+    async handler(_, { engine }) {
+      const { provider, settings } = await engine.activeVoice();
+      const ok = await provider.available();
+      const models = ok && provider.models ? await provider.models().catch(() => []) : [];
+      return { provider: provider.id, available: ok, voice: settings.voice, model: settings.model, models, style: settings.style || null, options: settings.options ?? {}, voices: ok ? (await provider.voices().catch(() => [])).slice(0, 40) : [],
+        takes: provider.id === "openai" ? "A voice server: style goes as instructions, and options as extra fields of the speech request (OpenAI's /v1/audio/speech), so any field the server documents can be passed." : "A local voice: only voice and speed apply." };
+    } },
+  { name: "synthesize_voiceover", description: "Speak a script and put it on the pattern's timeline as sound, optionally with timed captions. Give the WHOLE script in one call, a line per caption, never one call per line: it is spoken in one take, so the voice stays the same from start to end (a voice model asked line by line drifts in pitch and pace), then cut at the pauses into a clip per line, placed as spoken. Pick the voice from list_voices. style is how to say it, in words (\"warm, confident, slower at the end\"), for models that take one; options are any other fields the voice server takes. oneTake: false speaks each line on its own, only for lines that must stay separate. Returns a job id: check it with get_job. The pattern becomes a video long enough for the speech.", inputSchema: obj({ patternId: PATTERN, lines: { type: "array", items: { type: "string" }, description: "The whole script, in order: a line per caption" }, voice: str("A voice from list_voices"), style: str("How to say it, in words, for models that take an instruction"), options: { type: "object", description: "Other fields for the voice server, as it documents them", additionalProperties: true }, oneTake: { type: "boolean", description: "Default true: one take, cut into lines" }, captions: { type: "boolean" } }, ["patternId", "lines"]),
+    async handler({ patternId, lines, voice, style, options, oneTake = true, captions = true }, { store, engine }) { const p = store.getPattern(patternId); const j = engine.startVoiceJob(store, { projectId: p.projectId, patternId, lines, voice, style, options, oneTake, captions, actor: "model" }); return { jobId: j.id }; } },
 
   // ── seeing, checking, making ──
   { name: "preview_pattern", description: "Render the pattern and SEE it: returns a PNG. Use it after layout changes to check your own work. `time` is milliseconds for animated patterns.", inputSchema: obj({ patternId: PATTERN, time: { type: "number" } }, ["patternId"]),

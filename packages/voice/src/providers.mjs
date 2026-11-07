@@ -6,7 +6,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 
-export class VoiceError extends Error { constructor(m, kind = "voice") { super(m); this.kind = kind; } }
+export class VoiceError extends Error { constructor(m, kind = "voice") { super(m); this.kind = kind; this.name = "VoiceError"; } }
 
 function run(cmd, args, { input, timeoutMs = 120_000 } = {}) {
   return new Promise((resolve, reject) => {
@@ -48,27 +48,58 @@ export const system = {
   },
 };
 
+// Speakers a model has but its server may not list: Qwen3-TTS CustomVoice's presets.
+const FAMILY_VOICES = {
+  qwen3_tts: [["Ryan", "English male, energetic"], ["Aiden", "English male, sunny"], ["Vivian", "Chinese female, bright"], ["Serena", "Chinese female, warm"], ["Uncle_Fu", "Chinese male, mellow"], ["Dylan", "Beijing male, youthful"], ["Eric", "Sichuan male, lively"], ["Ono_Anna", "Japanese female, playful"], ["Sohee", "Korean female, warm"]],
+};
+const voiceOf = (v) => (typeof v === "string" ? { id: v, label: v } : v && (v.id ?? v.voice_id ?? v.name) ? { id: String(v.id ?? v.voice_id ?? v.name), label: [v.name ?? v.id ?? v.voice_id, v.description].filter(Boolean).join(", ") } : null);
+
 /**
  * Any server that speaks OpenAI's `/v1/audio/speech`: Kokoro or Piper behind
  * llm-factory, LM Studio, a local server, a cloud API. A base URL is the whole integration.
+ * `style` goes as `instructions` (how to say it, in words), and `options` go in the request
+ * as they are, for whatever else the server takes: a model's full range, not just a voice.
  */
-export function openaiCompatible({ baseUrl, apiKey, model = "tts-1", fetchImpl = fetch } = {}) {
+export function openaiCompatible({ baseUrl, apiKey, model = "tts-1", style = "", options = {}, fetchImpl = fetch } = {}) {
+  const root = (baseUrl ?? "").replace(/\/+$/, "");
+  const headers = { "content-type": "application/json", ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}) };
+  let resolved = null;
+  const get = async (path) => { try { const r = await fetchImpl(`${root}${path}`, { headers, signal: AbortSignal.timeout(5000) }); return r.ok ? await r.json() : null; } catch { return null; } };
   return {
     id: "openai", label: "A voice server on your network",
+    cacheExtra: JSON.stringify([root, model, style, options]),
     async available() { return !!baseUrl; },
-    async voices() { return [{ id: "alloy", label: "alloy" }, { id: "nova", label: "nova" }, { id: "af_heart", label: "af_heart (Kokoro)" }]; },
-    async synthesize({ text, voice = "alloy", speed = 1, out }) {
+    /** The models the server has loaded, with what kind each is (its family). */
+    async models() { const m = await get("/v1/models"); return (m?.data ?? []).map((x) => ({ id: String(x.id), family: x.family ?? null, task: x.task ?? null })); },
+    /** The voices the server lists, and the presets its model is known to have. */
+    async voices() {
+      const listed = await get("/v1/audio/voices");
+      const out = (Array.isArray(listed) ? listed : listed?.voices ?? listed?.data ?? []).map(voiceOf).filter(Boolean);
+      const family = (await this.models()).find((x) => x.id === model)?.family ?? (await this.models())[0]?.family;
+      for (const [id, label] of FAMILY_VOICES[family] ?? []) if (!out.some((v) => v.id.toLowerCase() === id.toLowerCase())) out.push({ id, label: `${id}, ${label}` });
+      if (out.length || listed) return out;
+      return [{ id: "alloy", label: "alloy" }, { id: "nova", label: "nova" }, { id: "af_heart", label: "af_heart (Kokoro)" }];
+    },
+    async synthesize({ text, voice, speed = 1, out, style: say, options: more }) {
       if (!baseUrl) throw new VoiceError("Add your voice server's address in Settings first.", "config");
-      const url = `${baseUrl.replace(/\/+$/, "")}/v1/audio/speech`;
+      const how = say ?? style;
+      // A model name the server does not have (a typo, a label) is its own speech model, when it says which.
+      resolved ??= this.models().then((ms) => (!ms.length || ms.some((m) => m.id === model) ? model : (ms.find((m) => m.task === "tts") ?? ms[0]).id), () => model);
+      const body = { model: await resolved, input: text, ...(voice && voice !== "default" ? { voice } : {}), speed, response_format: "wav", ...(how ? { instructions: how } : {}), ...options, ...(more ?? {}) };
       let res;
       try {
-        res = await fetchImpl(url, { method: "POST", headers: { "content-type": "application/json", ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}) }, body: JSON.stringify({ model, input: text, voice, speed, response_format: "wav" }), signal: AbortSignal.timeout(120_000) });
+        res = await fetchImpl(`${root}/v1/audio/speech`, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(300_000) });
       } catch (e) {
         const host = new URL(baseUrl).host;
         throw new VoiceError(`Could not reach ${host}. Is your voice server running? (${e.cause?.code ?? e.name})`, "unreachable");
       }
       if (res.status === 401 || res.status === 403) throw new VoiceError("The voice server rejected your key. Check it in Settings.", "auth");
-      if (!res.ok) throw new VoiceError(`The voice server answered ${res.status}. ${(await res.text()).slice(0, 160)}`, "server");
+      if (!res.ok) {
+        const raw = await res.text();
+        let said = raw; try { said = JSON.parse(raw)?.error?.message ?? raw; } catch { /* not JSON */ }
+        const hint = /speaker|voice/i.test(said) ? " Pick another voice in Settings." : /model/i.test(said) ? " Check the model name in Settings." : "";
+        throw new VoiceError(`The voice server said: ${String(said).slice(0, 200)}.${hint}`, "server");
+      }
       await mkdir(dirname(out), { recursive: true });
       await writeFile(out, Buffer.from(await res.arrayBuffer()));
     },

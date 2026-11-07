@@ -224,7 +224,8 @@ export async function runKnit(store, { jobId, projectId, patternId, params = {},
               // Mix, measure, then lay the sound over the picture WITHOUT touching a frame,
               // and prove it: the decoded video must hash the same before and after.
               const mixFile = join(outRoot, day, `${base}.mix.wav`);
-              await mixAudio({ durationMs: unit.pattern.durationMs, out: mixFile, clips: sounds.map((a) => ({
+              // The video is whole frames, so the sound is padded to the last one, not to the exact length.
+              await mixAudio({ durationMs: Math.ceil((frameTimes(unit.pattern.durationMs, FPS).length * 1000) / FPS), out: mixFile, clips: sounds.map((a) => ({
                 file: join(store.paths.yarnDir(projectId), yarnMap[a.yarnId].file), startMs: a.startMs, kind: a.kind, gain: a.gain, fadeInMs: a.fadeInMs, fadeOutMs: a.fadeOutMs, loop: a.loop, lengthMs: yarnMap[a.yarnId].durationMs,
               })) });
               const loud = await measureLoudness(mixFile);

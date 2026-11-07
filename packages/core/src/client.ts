@@ -114,7 +114,7 @@ export const api = {
   voice: {
     config: () => call<VoiceConfig>("GET", "/api/voice/config"),
     save: (b: Partial<Omit<VoiceConfig, "key">> & { apiKey?: string; clearKey?: boolean }) => call<VoiceConfig>("PUT", "/api/voice/config", b),
-    voices: () => call<{ provider: string; label: string; available: boolean; voices: { id: string; label: string }[] }>("GET", "/api/voice/voices"),
+    voices: () => call<{ provider: string; label: string; available: boolean; voices: { id: string; label: string }[]; models?: { id: string; family?: string | null }[] }>("GET", "/api/voice/voices"),
     /** Speak one sentence and return the audio. Errors carry the provider's one-line fix. */
     async test(text: string, voice?: string): Promise<{ url: string; durationMs: number }> {
       const res = await fetch("/api/voice/test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, voice }) });
@@ -272,6 +272,10 @@ export type { KnitRecord, KnitIssue };
 
 export interface VoiceConfig {
   provider: "system" | "openai" | "piper"; voice: string; speed: number; baseUrl: string; model: string;
+  /** How to say it, in words: sent to a voice server as `instructions`. */
+  style?: string;
+  /** Anything else the voice server takes, sent as it is. */
+  options?: Record<string, unknown>;
   key: { present: boolean; source: "environment" | "keychain" | "none"; backend: string | null; canStore: boolean };
 }
 

@@ -38,8 +38,9 @@ test("settings: a bad server address is refused in plain words", async () => {
 test("settings: an unreachable voice server gives a one-line fix, not a stack trace", async () => {
   await j("PUT", "/api/voice/config", { provider: "openai", baseUrl: "http://127.0.0.1:1" });
   const res = await fetch(`${studio.url}/api/voice/test`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "hi" }) });
-  assert.equal(res.status, 500, "an unexpected provider error is reported, not swallowed");
   await j("PUT", "/api/voice/config", { provider: "system" });
+  assert.equal(res.status, 502, "the voice's own problem, not something broken in knitted");
+  assert.match((await res.json()).error.message, /Could not reach 127\.0\.0\.1:1\. Is your voice server running\?/);
 });
 
 test("the Settings Voice tab speaks a test sentence", { skip: !mac }, async () => {
@@ -80,7 +81,7 @@ test("knitting that pattern makes an MP4 with sound at a sensible loudness, and 
   const job = (await j("POST", `/api/patterns/${patternId}/knit`, { params: { reuse: false } })).body;
   let jj;
   for (let i = 0; i < 240; i++) { jj = (await j("GET", `/api/jobs/${job.id}`)).body; if (["done", "failed", "cancelled"].includes(jj.status)) break; await new Promise((r) => setTimeout(r, 500)); }
-  assert.equal(jj.status, "done", JSON.stringify(jj.progress?.units?.[0]?.issues));
+  assert.equal(jj.status, "done", JSON.stringify([jj.error, jj.progress?.units?.[0]?.issues]));
   const k = (await j("GET", `/api/projects/${projectId}/knits`)).body[0];
   assert.ok(Math.abs(k.report.lufs - -14) < 1.5, `loudness ${k.report.lufs}`);
   const file = `${studio.home}/projects/${projectId}/knits/${k.file}`;

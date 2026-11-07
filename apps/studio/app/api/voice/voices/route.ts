@@ -6,5 +6,6 @@ export const dynamic = "force-dynamic";
 export const GET = route(async () => {
   const { provider } = await activeVoice(store());
   const available = await provider.available();
-  return ok({ provider: provider.id, label: provider.label, available, voices: available ? await provider.voices().catch(() => []) : [] });
+  const models = available && "models" in provider ? await (provider as { models: () => Promise<{ id: string }[]> }).models().catch(() => []) : [];
+  return ok({ provider: provider.id, label: provider.label, available, voices: available ? await provider.voices().catch(() => []) : [], models });
 });
