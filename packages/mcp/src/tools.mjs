@@ -19,7 +19,8 @@
 
 import { applyCommand, instanceOf, joinFolder, motionLint, sceneChange, parentOf, partFromStitches, preflight, uniqueSlotName, checkPost, metricsLine, COLOR_ROLES, FOLDER_SECTIONS, PLATFORMS, PRESETS, SIZES, CommandSchema } from "@knitted/core";
 import { GUIDE, GUIDE_TOPICS } from "./guide.mjs";
-import { activeSwatch, cancelPost, createPost, getAccount, getPost, listAccounts, listPosts, postInsights, validatePost, cleanFolder, cropToYarn, getBrief, pdfText, readWebsite, setProfile, viewVideo, viewYarn, createFolder, createPart, createSwatch, createSwatchFromProposal, folderCounts, getKnit, getPart, getYarn, setKnitPost, setKnitTags, importYarn, importYarnFromPath, importYarnFromUrl, createCopy, knitPath, listFolders, listKnits, countKnits, changedSince, listParts, listYarn, moveAllToFolder, proposeFromWebsite, renameFolder, setCopyText, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
+import { LIBRARY_ID } from "@knitted/core";
+import { setYarnScope, activeSwatch, cancelPost, createPost, getAccount, getPost, listAccounts, listPosts, postInsights, validatePost, cleanFolder, cropToYarn, getBrief, pdfText, readWebsite, setProfile, viewVideo, viewYarn, createFolder, createPart, editPart, partUsage, createSwatch, createSwatchFromProposal, folderCounts, getKnit, getPart, getYarn, setKnitPost, setKnitTags, importYarn, importYarnFromPath, importYarnFromUrl, createCopy, knitPath, listFolders, listKnits, countKnits, changedSince, listParts, listYarn, moveAllToFolder, proposeFromWebsite, renameFolder, setCopyText, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
 
 const obj = (properties, required = []) => ({ type: "object", properties, required, additionalProperties: false });
 const str = (description) => ({ type: "string", description });
@@ -48,6 +49,14 @@ async function settled(store, jobId, ms) {
   let j = store.getJob(jobId);
   while (!["done", "failed", "cancelled", "interrupted"].includes(j.status) && Date.now() < end) { await new Promise((r) => setTimeout(r, 300)); j = store.getJob(jobId); }
   return j;
+}
+
+/** The project a file goes into: the Library when asked for, which has no reference of its own. */
+function into(store, projectId, library, reference) {
+  if (!library) return projectId;
+  if (reference) throw new Error("The reference is one business's: a file for the Library goes in its Yarn. Leave out reference.");
+  store.getProject(projectId);
+  return LIBRARY_ID;
 }
 
 export const READ_ONLY = new Set(["get_guide", "get_studio_info", "list_projects", "get_project", "list_yarn", "view_yarn", "get_brand_guidelines", "get_brief", "read_website", "list_patterns", "get_pattern", "describe_pattern", "list_parts", "list_presets", "list_voices", "preview_pattern", "check_pattern", "get_job", "list_knits", "list_folders", "list_social_accounts", "list_posts", "post_insights"]);
@@ -157,13 +166,14 @@ export const TOOLS = [
     async handler({ projectId, yarnId }, { store }) { const p = store.updateProject(projectId, { coverYarnId: yarnId || null }, "model"); return { id: p.id, picture: p.coverYarnId }; } },
 
   // ── yarn ──
-  { name: "list_yarn", description: "List the files (Yarn) in a project: images, video, audio, fonts, PDFs and saved copy. Filter by kind, tag, a search word or a folder. Use a Yarn name or id when filling an image slot. With reference: true, the Brief's reference instead: files about the business to look at with view_yarn, like pictures of its website.", inputSchema: obj({ projectId: PROJECT, kind: { type: "string", enum: ["image", "video", "audio", "font", "copy", "pdf"] }, tag: str("Only Yarn with this tag"), q: str("Search the names"), folder: str("Only Yarn in this folder and the folders inside it, like Royalty free music"), reference: REFERENCE }, ["projectId"]),
+  { name: "list_yarn", description: "List the files (Yarn) in a project: images, video, audio, fonts, PDFs and saved copy. Filter by kind, tag, a search word or a folder. Use a Yarn name or id when filling an image slot. The Library's files, which every project shares (a logo, a font used for every brand), come after the project's own, marked library: true, unless a folder is given. With reference: true, the Brief's reference instead: files about the business to look at with view_yarn, like pictures of its website.", inputSchema: obj({ projectId: PROJECT, kind: { type: "string", enum: ["image", "video", "audio", "font", "copy", "pdf"] }, tag: str("Only Yarn with this tag"), q: str("Search the names"), folder: str("Only Yarn in this folder and the folders inside it, like Royalty free music"), reference: REFERENCE }, ["projectId"]),
     async handler({ projectId, kind, tag, q, folder, reference }, { store }) {
-      return listYarn(store, projectId, { kind, tag, q, folder, shelf: reference ? "reference" : "yarn" }).slice(0, 60).map((y) => ({ id: y.id, name: y.name, kind: y.kind, tags: y.tags, ...filed(y), ...(y.width ? { size: `${y.width}x${y.height}` } : {}), ...(y.kind === "pdf" ? { pages: y.meta.pages ?? 1 } : {}), ...(y.meta.site ? { page: y.meta.site.url, device: y.meta.site.device } : {}), ...(y.durationMs ? { seconds: +(y.durationMs / 1000).toFixed(1) } : {}), ...(y.kind === "copy" ? { text: untrusted(`yarn:${y.name}`, (y.meta.text ?? "").slice(0, 800)) } : {}), ...(y.meta.warnings?.length ? { warnings: y.meta.warnings } : {}) }));
+      return listYarn(store, projectId, { kind, tag, q, folder, shelf: reference ? "reference" : "yarn" }).slice(0, 60).map((y) => ({ id: y.id, name: y.name, kind: y.kind, tags: y.tags, ...(y.projectId === LIBRARY_ID && projectId !== LIBRARY_ID ? { library: true } : {}), ...filed(y), ...(y.width ? { size: `${y.width}x${y.height}` } : {}), ...(y.kind === "pdf" ? { pages: y.meta.pages ?? 1 } : {}), ...(y.meta.site ? { page: y.meta.site.url, device: y.meta.site.device } : {}), ...(y.durationMs ? { seconds: +(y.durationMs / 1000).toFixed(1) } : {}), ...(y.kind === "copy" ? { text: untrusted(`yarn:${y.name}`, (y.meta.text ?? "").slice(0, 800)) } : {}), ...(y.meta.warnings?.length ? { warnings: y.meta.warnings } : {}) }));
     } },
-  { name: "import_yarn", description: "Add a file to a project's Yarn from a public web address: an image, a video, a sound, a font (to use it in a swatch), a PDF or a text file. Or save a piece of text as reusable copy. A file on this computer goes in with import_yarn_file instead. A file that is already there is not added twice: you get the one there, with these tags added. To bring a piece of copy up to date, give its yarnId with the new text: it keeps its id, and no second copy is saved beside it.", inputSchema: obj({ projectId: PROJECT, url: str(`A public https link to a ${SUPPORTED} file`), text: str("Copy to save, instead of a file"), yarnId: str("A piece of copy already in Yarn, by its id, to give it this text instead of saving new copy"), name: str("What to call it"), tags: { type: "array", items: { type: "string" }, description: "Tags to give it, like [\"product\"], so a slot can take `tag:product`" }, folder: FOLDER("it"), reference: REFERENCE }, ["projectId"]),
-    async handler({ projectId, url, text, yarnId, name, tags, folder, reference }, { store }) {
+  { name: "import_yarn", description: "Add a file to a project's Yarn from a public web address: an image, a video, a sound, a font (to use it in a swatch), a PDF or a text file. Or save a piece of text as reusable copy. A file on this computer goes in with import_yarn_file instead. A file that is already there is not added twice: you get the one there, with these tags added. To bring a piece of copy up to date, give its yarnId with the new text: it keeps its id, and no second copy is saved beside it.", inputSchema: obj({ projectId: PROJECT, url: str(`A public https link to a ${SUPPORTED} file`), text: str("Copy to save, instead of a file"), yarnId: str("A piece of copy already in Yarn, by its id, to give it this text instead of saving new copy"), name: str("What to call it"), tags: { type: "array", items: { type: "string" }, description: "Tags to give it, like [\"product\"], so a slot can take `tag:product`" }, folder: FOLDER("it"), reference: REFERENCE, library: { type: "boolean", description: "Into the Library, which every project shares, instead of this project's Yarn: for what every brand uses" } }, ["projectId"]),
+    async handler({ projectId: asked, url, text, yarnId, name, tags, folder, reference, library }, { store }) {
       tagList(tags);
+      const projectId = into(store, asked, library, reference);
       if (yarnId) return newText(store, { projectId, yarnId, text, name, tags, folder });
       const shelf = reference ? "reference" : "yarn";
       let r;
@@ -172,10 +182,16 @@ export const TOOLS = [
       else throw new Error("Give a url to fetch, or text to save. For a file on this computer, use import_yarn_file.");
       return added(store, r, tags);
     } },
-  { name: "import_yarn_file", description: `Add a file on this computer to a project's Yarn, by its whole path, like /Users/you/Pictures/hero.png: an image, a video, a sound, a font, a PDF or a text file, for one that has no public address. It is copied in, and the file on the computer is left as it is. A file that is already there is not added twice: you get the one there, with these tags added. Hidden folders and files, like ~/.ssh or .env, are not read. The studio reads the computer it runs on: when you are on another one, publish the file at a public address and use import_yarn with its url.`, inputSchema: obj({ projectId: PROJECT, path: str(`The whole path of a ${SUPPORTED} on this computer`), name: str("What to call it, instead of the file's own name"), tags: { type: "array", items: { type: "string" }, description: "Tags to give it, like [\"product\"], so a slot can take `tag:product`" }, folder: FOLDER("it"), reference: REFERENCE }, ["projectId", "path"]),
-    async handler({ projectId, path, name, tags, folder, reference }, { store }) {
+  { name: "import_yarn_file", description: `Add a file on this computer to a project's Yarn, by its whole path, like /Users/you/Pictures/hero.png: an image, a video, a sound, a font, a PDF or a text file, for one that has no public address. It is copied in, and the file on the computer is left as it is. A file that is already there is not added twice: you get the one there, with these tags added. Hidden folders and files, like ~/.ssh or .env, are not read. The studio reads the computer it runs on: when you are on another one, publish the file at a public address and use import_yarn with its url.`, inputSchema: obj({ projectId: PROJECT, path: str(`The whole path of a ${SUPPORTED} on this computer`), name: str("What to call it, instead of the file's own name"), tags: { type: "array", items: { type: "string" }, description: "Tags to give it, like [\"product\"], so a slot can take `tag:product`" }, folder: FOLDER("it"), reference: REFERENCE, library: { type: "boolean", description: "Into the Library, which every project shares, instead of this project's Yarn: for what every brand uses" } }, ["projectId", "path"]),
+    async handler({ projectId, path, name, tags, folder, reference, library }, { store }) {
       tagList(tags);
-      return added(store, await importYarnFromPath(store, projectId, path, { name, tags, folder, shelf: reference ? "reference" : "yarn", actor: "model" }), tags);
+      return added(store, await importYarnFromPath(store, into(store, projectId, library, reference), path, { name, tags, folder, shelf: reference ? "reference" : "yarn", actor: "model" }), tags);
+    } },
+  { name: "share_yarn", description: "Move a file from a project's Yarn into the Library, where every project can use it (library: true), or out of the Library into one project (library: false, with that projectId). It keeps its id, so every pattern that uses it keeps it. A Library file other projects use stays in the Library. Ask the person first: it changes what every project sees.", inputSchema: obj({ yarnId: str("From list_yarn"), library: { type: "boolean", description: "true: into the Library. false: out of it, into projectId" }, projectId: str("For library: false, the project it goes into") }, ["yarnId", "library"]),
+    async handler({ yarnId, library, projectId }, { store }) {
+      if (!library && !projectId) throw new Error("Say which project it goes into, with projectId.");
+      const y = await setYarnScope(store, yarnId, library ? LIBRARY_ID : projectId);
+      return { id: y.id, name: y.name, in: y.projectId === LIBRARY_ID ? "the Library, for every project" : store.getProject(y.projectId).name };
     } },
   { name: "tag_yarn", description: "Set the tags on a piece of Yarn. Tags let a batch pick from a group, like `tag:product`.", inputSchema: obj({ yarnId: str("The yarn id"), tags: { type: "array", items: { type: "string" } } }, ["yarnId", "tags"]),
     async handler({ yarnId, tags }, { store }) { return { id: yarnId, tags: updateYarn(store, yarnId, { tags }).tags }; } },
@@ -369,7 +385,7 @@ export const TOOLS = [
 
   // ── parts and motion ──
   { name: "list_parts", description: "Reusable parts you can insert: lower thirds, quotes, price tags and the project's own. Each lists its slots.", inputSchema: obj({ projectId: PROJECT }, ["projectId"]),
-    async handler({ projectId }, { store }) { ensureBuiltinParts(store); return listParts(store, projectId).map((p) => ({ id: p.id, name: p.name, category: p.category, slots: p.slots.map((s) => `${s.name}${s.locked ? " [locked]" : ""}`), aspect: +p.aspect.toFixed(2), ...filed(p) })); } },
+    async handler({ projectId }, { store }) { ensureBuiltinParts(store); return listParts(store, projectId).map((p) => ({ id: p.id, name: p.name, category: p.category, slots: p.slots.map((s) => `${s.name}${s.locked ? " [locked]" : ""}`), aspect: +p.aspect.toFixed(2), ...(p.builtin ? { starter: true } : !p.projectId ? { library: true } : {}), ...(p.kind === "code" ? { code: true } : {}), ...filed(p) })); } },
   { name: "insert_part", description: "Put a part into a pattern. Then fill its slots with fill_slots using `instance.slot`.", inputSchema: obj({ patternId: PATTERN, partId: str("From list_parts"), slot: str("A name for this instance"), x: { type: "number" }, y: { type: "number" }, w: { type: "number" }, overrides: { type: "object", additionalProperties: { type: "string" } } }, ["patternId", "partId"]),
     async handler({ patternId, partId, slot, x = 0.1, y = 0.7, w = 0.6, overrides = {} }, { store }) {
       const part = getPart(store, partId); const p = store.getPattern(patternId);
@@ -398,6 +414,14 @@ export const TOOLS = [
       const inst = instanceOf(part, box, slot);
       const r = store.apply(patternId, { type: "batch", atomic: true, commands: [...sel.map((s) => ({ type: "removeStitch", id: s.id })), { type: "addStitch", stitch: inst }] }, "model", { label: `Model made ${part.name} a part` });
       return { ...out, instance: r.changed ? slot : null, refused: r.refusals };
+    } },
+  // The studio's Edit on a Part, for a model: the Part opens as a pattern of its own shape, and
+  // the usual pattern tools change it. Locks hold there as they do in any pattern.
+  { name: "edit_part", description: "Change one of the project's own parts, or a library part, everywhere it is used. Returns the patternId the part is edited through: read and change it with the usual pattern tools (get_pattern, update_stitch, apply_batch and the rest), and every change goes to the part, as its next version. The pattern's frame is the part's own box, and its size is the part's shape. A stitch with a slot name is a slot of the part; a slot the brand locked stays locked. Patterns that use the part show the change at once and offer the person to accept it. The starter parts and parts written in code are not edited this way: duplicate a starter first.", inputSchema: obj({ partId: str("From list_parts"), projectId: PROJECT }, ["partId", "projectId"]),
+    async handler({ partId, projectId }, { store }) {
+      const p = editPart(store, partId, projectId);
+      const used = partUsage(store, partId).length;
+      return { patternId: p.id, name: p.name, size: `${p.size.w}x${p.size.h}`, stitches: p.stitches.map((s) => s.slot ?? s.id), usedIn: `${used} ${used === 1 ? "pattern" : "patterns"}` };
     } },
   { name: "list_presets", description: "The animation presets available to set_motion.", inputSchema: obj({}),
     async handler() { return PRESETS.map((p) => ({ id: p.id, label: p.label, kind: p.kind, defaultMs: p.defaultMs, ...(p.text ? { onlyText: true } : {}), ...(p.image ? { onlyImages: true } : {}) })); } },
@@ -479,7 +503,7 @@ export const TOOLS = [
     async handler({ knitId, caption, hashtags, audioId, audioWhy }, { store }) {
       const k = getKnit(store, knitId);
       if (audioId === "") audioId = null;
-      if (audioId) { const y = getYarn(store, audioId); if (y.projectId !== k.projectId || y.kind !== "audio") throw new Error(`${y.name} is not a sound in this knit's project. Pick one with list_yarn, kind audio.`); }
+      if (audioId) { const y = getYarn(store, audioId); if ((y.projectId !== k.projectId && y.projectId !== LIBRARY_ID) || y.kind !== "audio") throw new Error(`${y.name} is not a sound in this knit's project or the Library. Pick one with list_yarn, kind audio.`); }
       const out = setKnitPost(store, knitId, { ...(caption !== undefined ? { caption } : {}), ...(hashtags ? { hashtags } : {}), ...(audioId !== undefined ? { audioId } : {}), ...(audioWhy !== undefined ? { audioWhy } : {}), by: "model" });
       return { id: out.id, post: out.post };
     } },

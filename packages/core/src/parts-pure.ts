@@ -37,6 +37,31 @@ export function partFromStitches(selection: Stitch[], frame: { w: number; h: num
   return { draft: { name: o.name, description: o.description, category: o.category ?? "other", stitches: children, slots, aspect: (b.w) / (b.h) }, box };
 }
 
+/**
+ * A Part as it was edited in the editor, where its frame is the Part's own box. A stitch with
+ * a slot name is a slot of the Part, locked when the stitch is; a Part cannot hold a Part.
+ */
+export function partFromEditor(stitches: Stitch[], size: { w: number; h: number }): { stitches: Stitch[]; slots: PartSlot[]; aspect: number } {
+  const kids = stitches.filter((s) => s.kind !== "part");
+  const ok = (n?: string) => !!n && /^[a-z][a-z0-9_]{0,40}$/.test(n);
+  const seen = new Set<string>();
+  const slots: PartSlot[] = [];
+  for (const s of kids) {
+    if (!ok(s.slot) || seen.has(s.slot!) || (s.kind !== "text" && s.kind !== "image")) continue;
+    seen.add(s.slot!);
+    slots.push({ name: s.slot!, kind: s.kind, default: s.kind === "text" ? s.content : s.yarnId, locked: !!s.locked });
+  }
+  return { stitches: kids.map((s) => ({ ...s, locked: false })), slots: slots.slice(0, 24), aspect: size.w / size.h };
+}
+
+/** The other way: a Part's stitches as the editor shows them, its locked slots locked. */
+export function editorFromPart(part: Pick<Part, "stitches" | "slots" | "aspect">): { stitches: Stitch[]; size: { name: string; w: number; h: number } } {
+  const locked = new Set(part.slots.filter((s) => s.locked).map((s) => s.name));
+  const a = part.aspect || 1;
+  const size = a >= 1 ? { name: "Part", w: 1080, h: Math.max(16, Math.round(1080 / a)) } : { name: "Part", w: Math.max(16, Math.round(1080 * a)), h: 1080 };
+  return { stitches: part.stitches.map((s) => ({ ...s, locked: !!s.slot && locked.has(s.slot) })), size };
+}
+
 /** The stitch that stands for a Part inside a Pattern. */
 export function instanceOf(part: Pick<Part, "id" | "version" | "slots" | "name">, box: { x: number; y: number; w: number; h: number }, slotName: string): Stitch {
   return { id: rid(), kind: "part", slot: slotName, x: box.x, y: box.y, w: box.w, h: box.h, locked: false, partId: part.id, partVersion: part.version, overrides: {}, partSlots: part.slots };

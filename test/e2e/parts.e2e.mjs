@@ -105,6 +105,81 @@ test("export then import brings a part back, and the API refuses a script server
   assert.equal((await j("DELETE", `/api/parts/${(await j("GET", `/api/projects/${projectId}/parts`)).body.find((p) => p.builtin).id}`)).status, 400, "starters cannot be deleted");
 });
 
+// ── a Part changed in the editor ───────────────────────────────────────────
+let partPage;
+test("Edit opens a part of your own in the editor, as a part: no Knit, no parts inside it, a way back to Parts", async () => {
+  await page.goto(`${studio.url}/projects/${projectId}/parts`);
+  await page.getByRole("button", { name: "Edit My headline" }).click();
+  await page.waitForURL(/\/patterns\/pt_/);
+  partPage = page.url();
+  await page.getByRole("note", { name: "Changing a part" }).getByText(/It is in 1 pattern/).waitFor();
+  await frame().locator("[data-stitch-id]").first().waitFor();
+  assert.equal(await page.getByRole("button", { name: "Knit" }).count(), 0, "a part is not knitted on its own");
+  assert.equal(await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Parts", exact: true }).count(), 0, "a part holds no parts");
+  assert.equal(await page.getByRole("button", { name: "Save as part" }).count(), 0);
+  await page.getByRole("navigation", { name: "Breadcrumbs" }).getByRole("link", { name: "Parts", exact: true }).waitFor();
+  const listed = (await j("GET", `/api/projects/${projectId}/patterns`)).body;
+  assert.equal(listed.some((p) => page.url().endsWith(p.id)), false, "it is not one of the project's Patterns");
+});
+
+test("a change there is the part's, one version for the sitting, and the pattern that uses it offers the update", async () => {
+  const part = (await j("GET", `/api/projects/${projectId}/parts`)).body.find((p) => p.name === "My headline");
+  const pid = partPage.split("/").pop();
+  const name = page.getByLabel("Part name");
+  await name.fill("My headline, bolder");
+  await name.press("Enter");
+  await serverHas(studio, `/api/parts/${part.id}`, (r) => r.part.name === "My headline, bolder" && r.part.version === part.version + 1);
+  const text = (await j("GET", `/api/patterns/${pid}`)).body.stitches.find((s) => s.kind === "text");
+  assert.equal((await j("POST", `/api/patterns/${pid}/commands`, { command: { type: "updateStitch", id: text.id, patch: { content: "Changed in the part" } } })).status, 200);
+  await serverHas(studio, `/api/parts/${part.id}`, (r) => r.part.stitches.some((s) => s.content === "Changed in the part"));
+  assert.equal((await j("GET", `/api/parts/${part.id}`)).body.part.version, part.version + 1, "still one version");
+  await page.getByRole("link", { name: "Done" }).click();
+  await page.getByRole("heading", { name: "Starter parts" }).waitFor();
+  await openEditor();
+  await frame().getByText("Changed in the part").waitFor();
+  await page.getByRole("list", { name: "Layers" }).getByRole("button", { name: /^my_headline/ }).click();
+  await page.getByText(/This part has changed since you added it/).waitFor();
+  await page.getByRole("button", { name: "Accept the update" }).click();
+  await serverHas(studio, `/api/patterns/${patternId}`, (p) => p.stitches.find((s) => s.slot === "my_headline").partVersion === part.version + 1);
+});
+
+test("Change the part, in a pattern's inspector, opens that part", async () => {
+  await page.getByRole("button", { name: "Change the part" }).click();
+  await page.waitForURL(partPage);
+  await page.getByRole("note", { name: "Changing a part" }).waitFor();
+});
+
+test("a starter is edited as a copy of your own, and a code part as its code", async () => {
+  await page.goto(`${studio.url}/projects/${projectId}/parts`);
+  await page.getByRole("button", { name: "Edit a copy of Lower third" }).click();
+  await page.waitForURL(/\/patterns\/pt_/);
+  await page.getByRole("note", { name: "Changing a part" }).getByText(/Nothing uses it yet/).waitFor();
+  const parts = (await j("GET", `/api/projects/${projectId}/parts`)).body;
+  assert.equal(parts.filter((p) => p.name === "Lower third" && !p.builtin).length, 1, "a copy of its own");
+  assert.equal(parts.find((p) => p.name === "Lower third" && p.builtin).version, parts.find((p) => p.name === "Lower third" && p.builtin).version, "the starter is as it was");
+  await page.goto(`${studio.url}/projects/${projectId}/parts`);
+  // The export test imported a second Slide card: either is one to change.
+  await page.getByRole("button", { name: "Edit Slide card" }).first().click();
+  const dlg = page.getByRole("dialog", { name: "Edit Slide card" });
+  assert.match(await dlg.getByLabel("Markup").inputValue(), /\{\{kicker\}\}/);
+  await dlg.getByLabel("Markup").fill("<div>{{kicker}}: {{title}}</div>");
+  await dlg.getByRole("button", { name: "Save part" }).click();
+  await page.getByText(/Saved Slide card/).waitFor();
+  const card = (await j("GET", `/api/projects/${projectId}/parts`)).body.find((p) => p.name === "Slide card" && p.html === "<div>{{kicker}}: {{title}}</div>");
+  assert.equal(card?.version, 2);
+});
+
+for (const theme of ["day", "night"]) {
+  test(`no serious accessibility violations on a part open in the editor in ${theme}`, async () => {
+    await page.goto(partPage);
+    await page.getByRole("note", { name: "Changing a part" }).waitFor();
+    await frame().locator("[data-stitch-id]").first().waitFor();
+    await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
+    await page.waitForTimeout(500);
+    assert.deepEqual((await axeProblems(page)).filter((p) => !p.startsWith("scrollable-region")), []);
+  });
+}
+
 for (const theme of ["day", "night"]) {
   test(`no serious accessibility violations on the Parts page and the Parts panel in ${theme}`, async () => {
     await page.goto(`${studio.url}/projects/${projectId}/parts`);
@@ -115,7 +190,7 @@ for (const theme of ["day", "night"]) {
     await openEditor();
     await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
     await page.getByRole("button", { name: "Parts", exact: true }).click();
-    await page.getByRole("button", { name: "Add Lower third" }).waitFor();
+    await page.getByRole("button", { name: "Add Lower third" }).first().waitFor();
     await page.waitForTimeout(500);
     assert.deepEqual((await axeProblems(page)).filter((p) => !p.startsWith("scrollable-region")), []);
   });

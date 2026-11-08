@@ -50,6 +50,7 @@ const ACTION_TEXT = {
   "yarn.imported": (s, d) => `added ${s} to ${onShelf(d)}${cutFrom(d)}`,
   "yarn.changed": (s) => `changed the saved text ${s}`,
   "yarn.deleted": (s, d) => `deleted ${s} from ${onShelf(d)}`,
+  "yarn.shared": (s, d) => ((d as { to?: string } | null)?.to === "library" ? `moved ${s} to the Library, for every project` : `took ${s} out of the Library, into this project`),
   "swatch.created": (s) => `added the swatch ${s}`,
   "brief.built": (s) => `built the profile from ${s}`,
   "brief.changed": (_s, d) => ((d as { undo?: boolean } | null)?.undo ? "put back the profile from before" : "changed the profile"),

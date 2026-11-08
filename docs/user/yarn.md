@@ -1,7 +1,7 @@
 ---
 title: Yarn
 order: 4
-summary: Your photos, logos, video, audio, fonts, PDFs and copy, kept per project.
+summary: Your photos, logos, video, audio, fonts, PDFs and copy, kept per project or in the Library for every project.
 status: shipped
 ---
 # Yarn
@@ -10,7 +10,7 @@ Yarn is your raw material. Photos, logos, video, sound, fonts, PDFs and pieces o
 
 ## Where it lives
 
-Yarn belongs to a project, and each file is kept in the project's folder on your computer. A Pattern points at the file itself, not at its name, so renaming a file does not break anything. **Replace file** swaps in a new file, and every Pattern that uses it shows the new one.
+Yarn belongs to a project, or to the [Library](#the-library), which every project shares. Each file is kept in its project's folder on your computer. A Pattern points at the file itself, not at its name, so renaming a file does not break anything. **Replace file** swaps in a new file, and every Pattern that uses it shows the new one.
 
 ## Adding Yarn
 
@@ -50,6 +50,16 @@ Open a PDF to turn its pages, or choose **Read its words**. Open a picture or a 
 
 Files about the business that are not for patterns, like a menu to read, belong in the [Brief](/docs/brief/)'s reference. **Move to the Brief** puts one there.
 
+## The Library
+
+The Library is what every project shares: a logo, a font or a photo you use for every brand. Open **Library** in the side bar to see it, and add files there the way you add them to a project.
+
+- Its files are in every project's Yarn in the editor, under **From the Library**, and your model sees them too.
+- A project's Yarn page shows the project's own files, and says how many the Library has.
+- **Move to the Library**, on a file in a project, puts it there. Every Pattern that uses it keeps it.
+- On the Library page, **Move into a project** takes a file back into one project. A file that other projects use stays in the Library.
+- The Brief's reference is about one business, so its files do not go in the Library.
+
 ## Good Yarn
 
 - Upload logos at least 1000 pixels wide so they print sharp. A file named as a logo that is narrower gets a warning.
@@ -58,4 +68,4 @@ Files about the business that are not for patterns, like a menu to read, belong 
 
 ## Your model
 
-Your model adds Yarn from a public web address, or from a file on your computer by its path, and saves pieces of text as copy. It copies a file in and leaves yours as it was. It does not read hidden folders or files, such as ~/.ssh. It can bring a piece of copy up to date, such as a note on how a job is going, instead of saving a second one beside it. The project's Activity shows each file it adds and each piece of copy it changes. It can look at a picture or a PDF with `view_yarn`, and cut a part out of one with `crop_to_yarn`. It cannot delete Yarn.
+Your model adds Yarn from a public web address, or from a file on your computer by its path, and saves pieces of text as copy. It copies a file in and leaves yours as it was. It does not read hidden folders or files, such as ~/.ssh. It can bring a piece of copy up to date, such as a note on how a job is going, instead of saving a second one beside it. The project's Activity shows each file it adds and each piece of copy it changes. It can look at a picture or a PDF with `view_yarn`, and cut a part out of one with `crop_to_yarn`. It adds a file to the Library when asked, and `share_yarn` moves one in or out. It cannot delete Yarn.

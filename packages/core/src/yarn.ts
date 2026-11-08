@@ -17,6 +17,7 @@ import { isIP } from "node:net";
 import { tmpdir } from "node:os";
 import sharp, { type Sharp } from "sharp";
 import type { CropBox, Shelf, Yarn, YarnKind, YarnMeta } from "./types.ts";
+import { LIBRARY_ID } from "./types.ts";
 import { newId } from "./ids.ts";
 import { NotFoundError, ValidationError, type Store } from "./store.ts";
 import { hasTool, run } from "./proc.ts";
@@ -136,19 +137,70 @@ export function getYarn(store: Store, id: string): Yarn {
   return toYarn(r);
 }
 
-/** `folder`: only what is in that folder, or in the folders inside it. `shelf`: Yarn, unless it says the reference. */
-export function listYarn(store: Store, projectId: string, f: { kind?: string; q?: string; tag?: string; folder?: string; deleted?: boolean; shelf?: Shelf } = {}): Yarn[] {
+/**
+ * `folder`: only what is in that folder, or in the folders inside it. `shelf`: Yarn, unless it
+ * says the reference. A project's Yarn includes the Library's, which every project shares
+ * (after its own), unless `library: false` or a folder of the project's is asked for.
+ */
+export function listYarn(store: Store, projectId: string, f: { kind?: string; q?: string; tag?: string; folder?: string; deleted?: boolean; shelf?: Shelf; library?: boolean } = {}): Yarn[] {
   const shelf = cleanShelf(f.shelf);
-  const rows = (store.db.prepare(`select * from yarn where project_id = ? and shelf = ? and deleted_at is ${f.deleted ? "not null" : "null"} order by created_at desc, rowid desc`).all(projectId, shelf) as Row[]).map(toYarn);
+  const shared = shelf === "yarn" && projectId !== LIBRARY_ID && f.library !== false && !f.folder;
+  const rows = (store.db.prepare(`select * from yarn where project_id in (?, ?) and shelf = ? and deleted_at is ${f.deleted ? "not null" : "null"} order by project_id = ?, created_at desc, rowid desc`).all(projectId, shared ? LIBRARY_ID : projectId, shelf, LIBRARY_ID) as Row[]).map(toYarn);
   const q = f.q?.trim().toLowerCase();
   const folder = folderNamed(store, projectId, shelf, f.folder);
   return rows.filter((y) => (!f.kind || y.kind === f.kind) && (!f.tag || y.tags.includes(f.tag)) && isInside(y.folder, folder) && (!q || y.name.toLowerCase().includes(q) || y.tags.some((t) => t.includes(q))));
 }
 
-/** Where a piece of Yarn is used: every Pattern with a Stitch pointing at it. */
+/** Where a piece of Yarn is used: every Pattern with a Stitch pointing at it. A Library file's, in every project. */
 export function yarnUsage(store: Store, yarnId: string): { patternId: string; patternName: string; projectId: string }[] {
   const y = getYarn(store, yarnId);
-  return store.listPatterns(y.projectId).filter((p) => p.stitches.some((s) => s.yarnId === yarnId)).map((p) => ({ patternId: p.id, patternName: p.name, projectId: p.projectId }));
+  const patterns = y.projectId === LIBRARY_ID
+    ? (store.db.prepare("select id from patterns where part_id is null and doc like ? order by created_at, rowid").all(`%"yarnId":"${yarnId}"%`) as Row[]).map((r) => store.getPattern(r.id as string))
+    : store.listPatterns(y.projectId);
+  return patterns.filter((p) => p.stitches.some((s) => s.yarnId === yarnId)).map((p) => ({ patternId: p.id, patternName: p.name, projectId: p.projectId }));
+}
+
+/**
+ * Move a file from a project's Yarn into the Library, where every project can use it, or from
+ * the Library into one project. Its id stays, so every pattern that uses it keeps it. It keeps
+ * its folder's name, and what was made from it (its thumbnail, a PDF's pages) goes with it.
+ * Out of the Library, it would leave a gap in the other projects that use it: refused while any do.
+ */
+export async function setYarnScope(store: Store, id: string, to: string): Promise<Yarn> {
+  const y = getYarn(store, id);
+  if (y.projectId === to) return y;
+  if (y.deletedAt) throw new ValidationError("That file was deleted. Bring it back first.");
+  if (y.shelf !== "yarn") throw new ValidationError("Only Yarn goes in the Library. A file in the reference is about one business: move it to Yarn first.");
+  if (y.projectId !== LIBRARY_ID && to !== LIBRARY_ID) throw new ValidationError("A file moves between a project and the Library, not from one project to another.");
+  store.getProject(to);
+  if (y.projectId === LIBRARY_ID) {
+    const elsewhere = yarnUsage(store, id).filter((u) => u.projectId !== to);
+    if (elsewhere.length) {
+      const names = [...new Set(elsewhere.map((u) => store.getProject(u.projectId).name))];
+      throw new ValidationError(`${y.name} is used in ${elsewhere.length} ${elsewhere.length === 1 ? "pattern" : "patterns"} in ${names.length === 1 ? names[0] : `${names.length} other projects`}, so it stays in the Library. Take it out of ${elsewhere.length === 1 ? "that pattern" : "those patterns"} first.`);
+    }
+  }
+  const dup = store.db.prepare("select name from yarn where project_id = ? and shelf = 'yarn' and hash = ? and deleted_at is null and id != ? limit 1").get(to, y.hash, id) as Row | undefined;
+  if (dup) throw new ValidationError(`${to === LIBRARY_ID ? "The Library" : "That project"} already has this file, as ${dup.name}. Use that one, and delete this copy.`);
+  // The file and everything named for it, moved under the same names.
+  const from = store.paths.yarnDir(y.projectId), into = store.paths.yarnDir(to);
+  const moves: [string, string][] = [[join(from, y.file), join(into, y.file)]];
+  for (const sub of [".thumbs", ".text"]) {
+    for (const n of await readdir(join(from, sub)).catch(() => [] as string[])) if (n === y.meta.thumb || n.startsWith(`${y.id}-`) || n.startsWith(`${y.id}.`)) moves.push([join(from, sub, n), join(into, sub, n)]);
+  }
+  const done: [string, string][] = [];
+  try {
+    for (const [a, b] of moves) { await mkdir(join(b, ".."), { recursive: true }); await rename(a, b); done.push([a, b]); }
+    store.write(() => {
+      store.db.prepare("update yarn set project_id = ?, folder = ?, updated_at = ? where id = ?").run(to, fileInto(store, to, "yarn", y.folder), new Date().toISOString(), id);
+      store.logRow(y.projectId, "human", "yarn.shared", y.name, { to: to === LIBRARY_ID ? "library" : "project" });
+      if (to !== LIBRARY_ID) store.logRow(to, "human", "yarn.shared", y.name, { to: "project" });
+    });
+  } catch (e) {
+    for (const [a, b] of done.reverse()) await rename(b, a).catch(() => {});
+    throw e;
+  }
+  return getYarn(store, id);
 }
 
 // ── writes ───────────────────────────────────────────────────────────────────

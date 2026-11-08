@@ -16,5 +16,7 @@ export { Send, CalendarClock, ExternalLink } from "lucide-react";
 export { SlidersHorizontal } from "lucide-react";
 // Insights: how posts did.
 export { ChartNoAxesColumn } from "lucide-react";
+// The Library: what every project shares.
+export { Library } from "lucide-react";
 // The timeline: hear the sound while it plays, or not.
 export { Volume2, VolumeX } from "lucide-react";

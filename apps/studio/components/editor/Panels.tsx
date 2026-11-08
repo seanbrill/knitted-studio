@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useRef } from "react";
 import { api, uploadYarn, yarnThumbUrl } from "@knitted/core/client";
-import { colorFor, COLOR_ROLES, foldersIn, nameOf, type Stitch, type Yarn } from "@knitted/core";
+import { colorFor, COLOR_ROLES, foldersIn, nameOf, LIBRARY_ID, type Stitch, type Yarn } from "@knitted/core";
 import { Button, EmptyState, icons, useToast } from "@knitted/ui";
 import { useEditor } from "@/lib/editor/store";
 import { useLive } from "@/lib/hooks";
@@ -68,8 +68,11 @@ export function YarnPanel({ projectId, onYarnChanged }: { projectId: string; onY
   const toast = useToast();
   const input = useRef<HTMLInputElement>(null);
   const items = useMemo(() => Object.values(st.yarn).sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [st.yarn]);
-  const kit = useFolders(projectId, "yarn", items, { inAddress: false, onChanged: onYarnChanged });
-  const here = items.filter((y) => y.folder === kit.here);
+  // The project's own files are in its folders; the Library's, which every project shares, come after.
+  const own = useMemo(() => items.filter((y) => y.projectId !== LIBRARY_ID), [items]);
+  const shared = useMemo(() => items.filter((y) => y.projectId === LIBRARY_ID && (y.kind === "image" || y.kind === "video" || y.kind === "copy")), [items]);
+  const kit = useFolders(projectId, "yarn", own, { inAddress: false, onChanged: onYarnChanged });
+  const here = own.filter((y) => y.folder === kit.here);
   const visual = here.filter((y) => y.kind === "image" || y.kind === "video");
   const copy = here.filter((y) => y.kind === "copy");
   // Onto the canvas it places the file; onto a folder here it files it.
@@ -98,26 +101,44 @@ export function YarnPanel({ projectId, onYarnChanged }: { projectId: string; onY
       <input ref={input} type="file" multiple hidden aria-label="Upload Yarn" onChange={(e) => { void upload([...(e.target.files ?? [])]); e.target.value = ""; }} />
       <p className="body-sm" style={{ color: "var(--ink-muted)", margin: "8px 0 12px" }}>Click to add or swap. Drag onto the canvas to place it exactly{kit.folders?.length ? ", or onto a folder to file it" : ""}.</p>
       <PanelFolders kit={kit} empty={visual.length === 0 && copy.length === 0} />
-      {items.length === 0 && !kit.folders?.length ? <EmptyState title="No yarn yet" body="Upload a photo or logo to use it here." /> : visual.length > 0 && (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          {visual.map((y) => (
-            <li key={y.id}>
-              <button draggable aria-label={`Use ${y.name}`} onDragStart={drag(y)} onClick={() => use(y)}
-                style={{ width: "100%", padding: 0, border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden", background: "var(--surface-sunken)", cursor: "grab", aspectRatio: "1" }}>
-                {y.meta.thumb ? <img src={yarnThumbUrl(y)} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : <span className="eyebrow">{y.kind}</span>}
-              </button>
-            </li>
-          ))}
-        </ul>
+      {items.length === 0 && !kit.folders?.length ? <EmptyState title="No yarn yet" body="Upload a photo or logo to use it here." /> : <YarnTiles list={visual} drag={drag} use={use} />}
+      <SavedText list={copy} drag={drag} use={use} />
+      {!kit.here && shared.length > 0 && (
+        <section aria-label="From the Library" style={{ marginTop: "var(--space-5)" }}>
+          <h3 className="eyebrow" style={{ margin: "0 0 4px" }}>From the Library</h3>
+          <p className="body-sm" style={{ color: "var(--ink-muted)", margin: "0 0 var(--space-2)" }}>Every project can use these. <Link className="link" href="/library">The Library</Link></p>
+          <YarnTiles list={shared.filter((y) => y.kind !== "copy")} drag={drag} use={use} />
+          <SavedText list={shared.filter((y) => y.kind === "copy")} drag={drag} use={use} heading={false} />
+        </section>
       )}
-      {copy.length > 0 && <>
-        <h3 className="eyebrow" style={{ margin: "var(--space-4) 0 var(--space-2)" }}>Saved text</h3>
-        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 6 }}>
-          {copy.map((y) => <li key={y.id}><button className="card card-link" draggable onDragStart={drag(y)} onClick={() => use(y)} style={{ width: "100%", textAlign: "left", padding: 8, cursor: "pointer", font: "inherit", color: "inherit" }}><span className="label">{y.name}</span><br /><span className="body-sm" style={{ color: "var(--ink-muted)" }}>{(y.meta.text ?? "").slice(0, 60)}</span></button></li>)}
-        </ul>
-      </>}
     </div>
   );
+}
+
+type Use = { drag: (y: Yarn) => (e: React.DragEvent) => void; use: (y: Yarn) => void };
+function YarnTiles({ list, drag, use }: { list: Yarn[] } & Use) {
+  if (!list.length) return null;
+  return (
+    <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+      {list.map((y) => (
+        <li key={y.id}>
+          <button draggable aria-label={`Use ${y.name}`} onDragStart={drag(y)} onClick={() => use(y)}
+            style={{ width: "100%", padding: 0, border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden", background: "var(--surface-sunken)", cursor: "grab", aspectRatio: "1" }}>
+            {y.meta.thumb ? <img src={yarnThumbUrl(y)} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : <span className="eyebrow">{y.kind}</span>}
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+function SavedText({ list, drag, use, heading = true }: { list: Yarn[]; heading?: boolean } & Use) {
+  if (!list.length) return null;
+  return <>
+    {heading && <h3 className="eyebrow" style={{ margin: "var(--space-4) 0 var(--space-2)" }}>Saved text</h3>}
+    <ul style={{ listStyle: "none", margin: heading ? 0 : "var(--space-2) 0 0", padding: 0, display: "grid", gap: 6 }}>
+      {list.map((y) => <li key={y.id}><button className="card card-link" draggable onDragStart={drag(y)} onClick={() => use(y)} style={{ width: "100%", textAlign: "left", padding: 8, cursor: "pointer", font: "inherit", color: "inherit" }}><span className="label">{y.name}</span><br /><span className="body-sm" style={{ color: "var(--ink-muted)" }}>{(y.meta.text ?? "").slice(0, 60)}</span></button></li>)}
+    </ul>
+  </>;
 }
 
 const TEXT_PRESETS: { label: string; sample: string; stitch: Omit<Stitch, "id"> }[] = [

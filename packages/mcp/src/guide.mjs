@@ -103,7 +103,8 @@ Yarn holds pictures, video, sound, fonts, PDFs and saved text. The Brief's refer
 - crop_to_yarn cuts a part out of a picture or a PDF page as a new picture: a product from a brochure, a logo from a menu.
 - Saved text: import_yarn with text saves words to use again (headlines, taglines, hashtags); with its yarnId and new text it is updated in place.
 - A slot takes a Yarn name or id, or "tag:product" for the first file with that tag.
-- import_yarn brings a file from a public link; import_yarn_file one from this computer.`,
+- import_yarn brings a file from a public link; import_yarn_file one from this computer.
+- The Library is what every project shares: its files are in every project's Yarn, after the project's own, marked library: true. With library: true, import_yarn and import_yarn_file put a file there, for what every brand uses. share_yarn moves a file into the Library, or out into the one project that uses it; ask the person first.`,
 
   knitting: `# Knitting: making the files
 
@@ -131,7 +132,8 @@ get_brief has the business's profile, the person's notes, the website it was rea
 A part is a reusable piece, like a lower third, a quote card, a price tag or the brand's footer, used in many patterns at once: change the part and every pattern that uses it changes.
 - list_parts: the starter parts and the project's own, each with its slots.
 - insert_part puts one in a pattern; then fill_slots with "instance.slot", like lower_third.name.
-- create_part makes one from stitches already in a pattern (replace: true swaps them for a linked copy). Slots stay slots, locks stay locks.`,
+- create_part makes one from stitches already in a pattern (replace: true swaps them for a linked copy). Slots stay slots, locks stay locks.
+- edit_part changes one of the person's own parts: it gives a patternId, and the usual pattern tools change the part through it. Its frame is the part's box. Every pattern that uses the part shows the change; the person accepts it in each. Starter parts are duplicated first; code parts are not edited this way.`,
 
   posts: `# Posts: what goes with a knit
 

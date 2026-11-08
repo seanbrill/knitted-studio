@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, pdfPageUrl, uploadYarn, yarnFileUrl, yarnThumbUrl } from "@knitted/core/client";
-import { isInside, nameOf, type CropBox, type Shelf, type Yarn, type YarnKind } from "@knitted/core";
+import { isInside, nameOf, LIBRARY_ID, type CropBox, type Shelf, type Yarn, type YarnKind } from "@knitted/core";
 import {
-  Button, Chip, ConfirmDialog, Dialog, Drawer, DropZone, EmptyState, Field, IconButton, Input, Menu, SegmentedControl, Skeleton, Textarea,
+  Button, Chip, ConfirmDialog, Dialog, Drawer, DropZone, EmptyState, Field, IconButton, Input, Menu, SegmentedControl, Select, Skeleton, Textarea,
   Tip, icons, useToast,
 } from "@knitted/ui";
 import { formatBytes, timeAgo, useLive } from "@/lib/hooks";
@@ -15,7 +15,7 @@ import { TagFilter, ViewBar, commonSorts, layout, useView, type SortBy } from ".
 import { AskModelButton, aboutYarn } from "./AskModel";
 import { PickBox, SelectionBar, TagDialog, picking, useSelection } from "./Selection";
 
-const { Upload, Plus, Search, FileText, Music, Film, Type, Image: ImageIcon, X, AlertTriangle, Trash2, Download, Link2: LinkIcon, RotateCcw, FolderInput, FilePdf, Crop, BookOpen, Monitor, Smartphone, ChevronLeft, ChevronRight, Play } = icons;
+const { Upload, Plus, Search, FileText, Music, Film, Type, Image: ImageIcon, X, AlertTriangle, Trash2, Download, Link2: LinkIcon, RotateCcw, FolderInput, FilePdf, Crop, BookOpen, Monitor, Smartphone, ChevronLeft, ChevronRight, Play, Library } = icons;
 const spoken = (path: string) => path.split("/").join(" / ");
 
 const KINDS: { value: "all" | YarnKind; label: string }[] = [
@@ -120,6 +120,10 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
   const [cropping, setCropping] = useState<Yarn | null>(null);
   // Yarn is what a list is when it says no shelf.
   const asked = shelf === "yarn" ? undefined : shelf;
+  // The Library's files are in every project's Yarn, but a project's page is its own files:
+  // the Library has a page of its own, and a file moves between the two.
+  const isLibrary = projectId === LIBRARY_ID;
+  const [taking, setTaking] = useState<Yarn | null>(null);
   const [kind, setKind] = useState<"all" | YarnKind>("all");
   const [q, setQ] = useState("");
   const [tag, setTag] = useState<string | undefined>();
@@ -131,8 +135,9 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
   const [tagging, setTagging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
-  const { data, refresh } = useLive(() => api.yarn.list(projectId, { kind: kind === "all" ? undefined : kind, q: q || undefined, tag, shelf: asked }), [projectId, kind, q, tag, shelf]);
-  const { data: all, refresh: refreshAll } = useLive(() => api.yarn.list(projectId, { shelf: asked }), [projectId, shelf]);
+  const { data, refresh } = useLive(() => api.yarn.list(projectId, { kind: kind === "all" ? undefined : kind, q: q || undefined, tag, shelf: asked, library: false }), [projectId, kind, q, tag, shelf]);
+  const { data: all, refresh: refreshAll } = useLive(() => api.yarn.list(projectId, { shelf: asked, library: false }), [projectId, shelf]);
+  const { data: shared } = useLive(() => (isLibrary || shelf !== "yarn" ? Promise.resolve(null) : api.yarn.list(LIBRARY_ID)), [isLibrary, shelf]);
   const reload = useCallback(async () => { await Promise.all([refresh(), refreshAll()]); }, [refresh, refreshAll]);
   const kit = useFolders(projectId, section, all, { onChanged: reload });
   const uploads = useUploads(projectId, reload, shelf);
@@ -158,6 +163,14 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
   }, [uploads, kit.here]);
 
   const hasFiles = (e: React.DragEvent) => [...e.dataTransfer.types].includes("Files");
+
+  const share = async (list: Yarn[], to: string, where: string) => {
+    let moved = 0;
+    for (const y of list) { try { await api.yarn.share(y.id, to); moved++; } catch (e) { toast((e as Error).message); } }
+    sel.clear(); setDetail(null); await reload();
+    if (moved) toast(`Moved ${list.length === 1 ? list[0].name : counted(moved, section)} ${where}`);
+  };
+  const toLibrary = (list: Yarn[]) => share(list, LIBRARY_ID, "to the Library. Every project can use it now.");
 
   const removeOne = async (y: Yarn) => {
     await api.yarn.remove(y.id); await refresh(); setDetail(null);
@@ -185,6 +198,11 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
         </div>
       </div>
 
+      {shared && shared.length > 0 && !kit.here && (
+        <p className="body-sm" style={{ margin: "0 0 var(--space-3)", color: "var(--ink-muted)", display: "flex", gap: 6, alignItems: "center" }}>
+          <Library size={14} aria-hidden /> {shared.length === 1 ? "1 file" : `${shared.length} files`} in the Library {shared.length === 1 ? "is" : "are"} in this project&apos;s Yarn too, in the editor. <Link className="link" href="/library">Open the Library</Link>
+        </p>
+      )}
       <FolderCrumbs kit={kit} />
       <div style={{ display: "flex", gap: "var(--space-3)", alignItems: "center", flexWrap: "wrap", marginBottom: "var(--space-4)" }}>
         <SegmentedControl<"all" | YarnKind> label="Kind" value={kind} onChange={setKind} options={KINDS} />
@@ -198,9 +216,10 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
 
       <SelectionBar sel={sel} total={shown.length}>
         <Button size="sm" onClick={() => kit.askMove(picked, counted(picked.length, section))}><FolderInput size={13} aria-hidden /> Move to folder</Button>
-        <Button size="sm" tip={shelf === "yarn" ? "To the Brief: for your model to look at, not to put in a pattern" : "To Yarn, to put in a pattern"} onClick={async () => { const ids = picked.map((y) => y.id); await kit.attempt(() => api.folders.move(projectId, shelf === "yarn" ? "reference" : "yarn", ids, "")); sel.clear(); await reload(); toast(`Moved ${counted(ids.length, section)} to ${shelf === "yarn" ? "the reference, in the Brief" : "Yarn"}`); }}>
+        {shelf === "yarn" && !isLibrary && <Button size="sm" tip="Every project can use them. Patterns that use them keep them." onClick={() => toLibrary(picked)}><Library size={13} aria-hidden /> Move to the Library</Button>}
+        {!isLibrary && <Button size="sm" tip={shelf === "yarn" ? "To the Brief: for your model to look at, not to put in a pattern" : "To Yarn, to put in a pattern"} onClick={async () => { const ids = picked.map((y) => y.id); await kit.attempt(() => api.folders.move(projectId, shelf === "yarn" ? "reference" : "yarn", ids, "")); sel.clear(); await reload(); toast(`Moved ${counted(ids.length, section)} to ${shelf === "yarn" ? "the reference, in the Brief" : "Yarn"}`); }}>
           <BookOpen size={13} aria-hidden /> {shelf === "yarn" ? "Move to the Brief" : "Move to Yarn"}
-        </Button>
+        </Button>}
         <Button size="sm" onClick={() => setTagging(true)}>Add tag</Button>
         <Button size="sm" variant="danger" onClick={() => setBulkDelete(true)}><Trash2 size={13} aria-hidden /> Delete</Button>
       </SelectionBar>
@@ -278,10 +297,12 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
 
       <UploadTray items={uploads.items} onCancel={uploads.cancel} onClear={uploads.clearFinished} />
       <YarnDrawer id={detail} projectId={projectId} onClose={() => setDetail(null)} onChanged={reload} onDelete={removeOne} onMove={(y) => kit.askMove([y], y.name)} onCrop={setCropping}
+        onShare={(y) => (isLibrary ? setTaking(y) : toLibrary([y]))}
         onShelf={async (y) => {
           const to: Shelf = y.shelf === "yarn" ? "reference" : "yarn";
           if (await kit.attempt(() => api.folders.move(projectId, to, [y.id], ""))) { setDetail(null); await reload(); toast(`Moved ${y.name} to ${to === "reference" ? "the reference, in the Brief" : "Yarn"}`); }
         }} />
+      <TakeDialog y={taking} onOpenChange={(o) => !o && setTaking(null)} onTake={async (to, name) => { const y = taking!; setTaking(null); await share([y], to, `into ${name}`); }} />
       <CropDialog y={cropping} onOpenChange={(o) => !o && setCropping(null)} onDone={async (made) => { setCropping(null); await reload(); toast(`Cut out ${made.name}, in ${made.shelf === "reference" ? "the reference" : "Yarn"}`); }} />
       <NewCopyDialog open={copyOpen} onOpenChange={setCopyOpen} projectId={projectId} folder={kit.here} shelf={shelf} onDone={reload} />
       <FromUrlDialog open={urlOpen} onOpenChange={setUrlOpen} projectId={projectId} folder={kit.here} shelf={shelf} onDone={reload} />
@@ -293,7 +314,8 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
   );
 }
 
-function YarnDrawer({ id, projectId, onClose, onChanged, onDelete, onMove, onCrop, onShelf }: { id: string | null; projectId: string; onClose: () => void; onChanged: () => void; onDelete: (y: Yarn) => Promise<void>; onMove: (y: Yarn) => void; onCrop: (y: Yarn) => void; onShelf: (y: Yarn) => void }) {
+function YarnDrawer({ id, projectId, onClose, onChanged, onDelete, onMove, onCrop, onShelf, onShare }: { id: string | null; projectId: string; onClose: () => void; onChanged: () => void; onDelete: (y: Yarn) => Promise<void>; onMove: (y: Yarn) => void; onCrop: (y: Yarn) => void; onShelf: (y: Yarn) => void; onShare: (y: Yarn) => void }) {
+  const isLibrary = projectId === LIBRARY_ID;
   const toast = useToast();
   const { data, refresh } = useLive(() => (id ? api.yarn.get(id) : Promise.resolve(null)), [id]);
   const [name, setName] = useState("");
@@ -312,7 +334,7 @@ function YarnDrawer({ id, projectId, onClose, onChanged, onDelete, onMove, onCro
     <Drawer open={!!id} onOpenChange={(o) => !o && onClose()} title={y?.name ?? "Yarn"}>
       {y && data && (
         <div style={{ display: "grid", gap: "var(--space-5)" }}>
-          <p className="eyebrow" style={{ marginTop: 4 }}>{KIND_WORD[y.kind]}{y.shelf === "reference" ? ", in the reference" : ""}</p>
+          <p className="eyebrow" style={{ marginTop: 4 }}>{KIND_WORD[y.kind]}{y.shelf === "reference" ? ", in the reference" : isLibrary ? ", in the Library" : ""}</p>
           {y.kind === "pdf" ? <PdfPages y={y} /> : y.meta.site ? <SitePicture y={y} /> : (
           <div style={{ borderRadius: "var(--radius-md)", overflow: "hidden", background: "var(--surface-sunken)", maxHeight: 320, display: "grid", placeItems: "center" }}>
             {y.kind === "video" ? <video src={yarnFileUrl(y)} controls preload="metadata" poster={y.meta.thumb ? yarnThumbUrl(y) : undefined} style={{ width: "100%", maxHeight: 320 }} />
@@ -349,12 +371,13 @@ function YarnDrawer({ id, projectId, onClose, onChanged, onDelete, onMove, onCro
           <div>
             <p className="eyebrow" style={{ marginBottom: 6 }}>Used in</p>
             {data.usage.length === 0 ? <p className="body-sm" style={{ color: "var(--ink-muted)", margin: 0 }}>Not used in any pattern yet.</p> : (
-              <ul style={{ margin: 0, paddingLeft: 18 }}>{data.usage.map((u) => <li key={u.patternId} className="body-sm"><Link href={`/projects/${projectId}/patterns/${u.patternId}`} className="link">{u.patternName}</Link></li>)}</ul>
+              <ul style={{ margin: 0, paddingLeft: 18 }}>{data.usage.map((u) => <li key={u.patternId} className="body-sm"><Link href={`/projects/${u.projectId}/patterns/${u.patternId}`} className="link">{u.patternName}</Link></li>)}</ul>
             )}
           </div>
           <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
             {(y.kind === "image" || y.kind === "pdf") && <Button tip="Cut a part of it out as a new picture, to use in a pattern" onClick={() => onCrop(y)}><Crop size={14} aria-hidden /> Cut out a part</Button>}
-            <Button tip={y.shelf === "yarn" ? "For your model to look at and read about the business, not to put in a pattern" : "To put it in a pattern"} onClick={() => onShelf(y)}><BookOpen size={14} aria-hidden /> {y.shelf === "yarn" ? "Move to the Brief" : "Move to Yarn"}</Button>
+            {y.shelf === "yarn" && <Button tip={isLibrary ? "Out of the Library, into the one project that uses it" : "Every project can use it. Patterns that use it keep it."} onClick={() => onShare(y)}><Library size={14} aria-hidden /> {isLibrary ? "Move into a project" : "Move to the Library"}</Button>}
+            {!isLibrary && <Button tip={y.shelf === "yarn" ? "For your model to look at and read about the business, not to put in a pattern" : "To put it in a pattern"} onClick={() => onShelf(y)}><BookOpen size={14} aria-hidden /> {y.shelf === "yarn" ? "Move to the Brief" : "Move to Yarn"}</Button>}
             <Button onClick={() => replace.current?.click()}><RotateCcw size={14} aria-hidden /> Replace file</Button>
             <input ref={replace} type="file" hidden aria-label="Choose a replacement file" onChange={async (e) => {
               const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
@@ -362,7 +385,7 @@ function YarnDrawer({ id, projectId, onClose, onChanged, onDelete, onMove, onCro
             }} />
             <a className="btn btn-secondary" href={yarnFileUrl(y)} download={y.originalName}><Download size={14} aria-hidden /> Download</a>
             <AskModelButton about={aboutYarn(y)} />
-            {(y.kind === "image" || y.kind === "video") && y.meta.thumb && (
+            {!isLibrary && (y.kind === "image" || y.kind === "video") && y.meta.thumb && (
               <Button onClick={async () => { try { await api.projects.update(projectId, { coverYarnId: y.id }); toast("It is now the project's picture, on its card in Projects."); } catch (err) { toast((err as Error).message); } }}>
                 <ImageIcon size={14} aria-hidden /> Use as project picture
               </Button>
@@ -375,6 +398,19 @@ function YarnDrawer({ id, projectId, onClose, onChanged, onDelete, onMove, onCro
         </div>
       )}
     </Drawer>
+  );
+}
+
+/** Out of the Library, into one project: which. */
+function TakeDialog({ y, onOpenChange, onTake }: { y: Yarn | null; onOpenChange: (o: boolean) => void; onTake: (to: string, name: string) => void }) {
+  const { data: projects } = useLive(() => api.projects.list(), []);
+  const [to, setTo] = useState("");
+  const pick = to || projects?.[0]?.id || "";
+  return (
+    <Dialog open={!!y} onOpenChange={onOpenChange} title={`Move ${y?.name ?? "it"} into a project`} description="It leaves the Library, so only that project has it. A file other projects use stays in the Library."
+      actions={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" disabled={!pick} onClick={() => onTake(pick, projects!.find((p) => p.id === pick)!.name)}>Move</Button></>}>
+      <Field label="Project"><Select aria-label="Project" value={pick} onValueChange={setTo} options={(projects ?? []).map((p) => ({ value: p.id, label: p.name }))} /></Field>
+    </Dialog>
   );
 }
 

@@ -64,13 +64,15 @@ export const api = {
     restore: (id: string, revisionId: string) => call<Pattern>("POST", `/api/patterns/${id}/revisions`, { revisionId }),
   },
   yarn: {
-    /** `shelf`: Yarn, unless it says the reference (the Brief's files). */
-    list: (projectId: string, q: { kind?: string; q?: string; tag?: string; shelf?: Shelf } = {}) =>
-      call<Yarn[]>("GET", `/api/projects/${projectId}/yarn?${new URLSearchParams(Object.entries(q).filter(([, v]) => v) as [string, string][])}`),
+    /** `shelf`: Yarn, unless it says the reference (the Brief's files). `library: false`: without the Library's files. */
+    list: (projectId: string, q: { kind?: string; q?: string; tag?: string; shelf?: Shelf; library?: boolean } = {}) =>
+      call<Yarn[]>("GET", `/api/projects/${projectId}/yarn?${new URLSearchParams(Object.entries({ ...q, library: q.library === false ? "0" : undefined }).filter(([, v]) => v) as [string, string][])}`),
     get: (id: string) => call<{ yarn: Yarn; usage: { patternId: string; patternName: string; projectId: string }[] }>("GET", `/api/yarn/${id}`),
     update: (id: string, b: { name?: string; tags?: string[] }) => call<Yarn>("PATCH", `/api/yarn/${id}`, b),
     remove: (id: string) => call<{ ok: true }>("DELETE", `/api/yarn/${id}`),
     undelete: (id: string) => call<Yarn>("POST", `/api/yarn/${id}`, { action: "undelete" }),
+    /** Into the Library, for every project (`to` LIBRARY_ID), or out of it into the project `to`. */
+    share: (id: string, to: string) => call<Yarn>("POST", `/api/yarn/${id}`, { action: "share", to }),
     copy: (projectId: string, b: { name: string; text: string; folder?: string; shelf?: Shelf }) => call<{ yarn: Yarn; existing: boolean }>("POST", `/api/projects/${projectId}/yarn/copy`, b),
     fromUrl: (projectId: string, url: string, folder?: string, shelf?: Shelf) => call<{ yarn: Yarn; existing: boolean }>("POST", `/api/projects/${projectId}/yarn/url`, { url, folder, shelf }),
     /** A part of a picture or a PDF's page, as a new picture: in Yarn unless `shelf` says the reference. */
@@ -114,6 +116,8 @@ export const api = {
     /** `folder`, for duplicate: where the copy goes. Left out, it goes next to the original. */
     action: (id: string, action: "duplicate" | "to-library" | "to-project" | "export", projectId?: string, folder?: string) => call<Part>("POST", `/api/parts/${id}`, { action, projectId, folder }),
     import: (projectId: string, file: unknown, scope: "project" | "library" = "project", folder?: string) => call<Part>("POST", `/api/projects/${projectId}/parts`, { name: "import", file, scope, folder }),
+    /** The pattern a Part is edited through, to open in the editor. Every change there is the Part's. */
+    edit: (id: string, projectId: string) => call<Pattern>("POST", `/api/parts/${id}`, { action: "edit", projectId }),
   },
   voice: {
     config: () => call<VoiceConfig>("GET", "/api/voice/config"),

@@ -29,19 +29,23 @@ export function TopBar({ projectId, timeline, onTimeline, onHistory, onShortcuts
   const zoomPct = Math.round((st.zoom === "fit" ? 0 : st.zoom) * 100);
   const base = `/projects/${projectId}`;
   const projectName = project?.name ?? "Project";
+  // A Part open here: its way back is to Parts, and it is not knitted on its own.
+  const isPart = !!pattern.partId;
+  const back = isPart ? `${base}/parts` : base;
 
   return (
     <header className="editor-bar" style={{ height: "var(--topbar-h)", borderBottom: "1px solid var(--line)", background: "var(--surface)", display: "flex", alignItems: "center", gap: "var(--space-3)", padding: "0 var(--space-3)", flexShrink: 0 }}>
-      <Tip text={`Back to the patterns in ${projectName}`}><Link href={base} className="icon-btn" aria-label={`Back to ${projectName}`}><ArrowLeft size={16} /></Link></Tip>
+      <Tip text={isPart ? `Back to the parts in ${projectName}` : `Back to the patterns in ${projectName}`}><Link href={back} className="icon-btn" aria-label={isPart ? `Back to the parts in ${projectName}` : `Back to ${projectName}`}><ArrowLeft size={16} /></Link></Tip>
       <div className="editor-title">
         <nav aria-label="Breadcrumbs" className="editor-where body-sm">
           <Link href="/" className="editor-where-link">Projects</Link>
           <ChevronRight size={12} aria-hidden />
           <Link href={base} className="editor-where-link" title={projectName}>{projectName}</Link>
+          {isPart && <><ChevronRight size={12} aria-hidden /><Link href={back} className="editor-where-link">Parts</Link></>}
         </nav>
         <div className="editor-name">
           {/* Its own name is where it is renamed. */}
-          <input aria-label="Pattern name" aria-current="page" defaultValue={pattern.name} key={pattern.name} title={pattern.name} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== pattern.name) st.dispatch({ type: "setMeta", name: v }, { label: "Rename" }); else e.target.value = pattern.name; }} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+          <input aria-label={isPart ? "Part name" : "Pattern name"} aria-current="page" defaultValue={pattern.name} key={pattern.name} title={pattern.name} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== pattern.name) st.dispatch({ type: "setMeta", name: v }, { label: "Rename" }); else e.target.value = pattern.name; }} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
             className="label editor-name-input" style={{ width: Math.max(8, pattern.name.length + 1) + "ch" }} />
           <span role="status" aria-live="polite" className="editor-saved" data-state={status}>{status === "saving" ? "Saving..." : status === "error" ? "Not saved" : "Saved"}</span>
         </div>
@@ -51,10 +55,10 @@ export function TopBar({ projectId, timeline, onTimeline, onHistory, onShortcuts
 
       <div style={{ flex: 1 }} />
       <div className="editor-group roomy">
-        <Tip text="Pattern lays out the design. Fill only changes the words and pictures in its open slots, as a batch or your model does.">
+        {!isPart && <Tip text="Pattern lays out the design. Fill only changes the words and pictures in its open slots, as a batch or your model does.">
           <div><SegmentedControl<EditMode> label="Mode" value={mode} onChange={st.setMode} options={[{ value: "pattern", label: "Pattern" }, { value: "fill", label: "Fill" }]} /></div>
-        </Tip>
-        <Tip text={`The size it is knitted at: ${pattern.size.w} by ${pattern.size.h} pixels. Custom is any size you like.`}>
+        </Tip>}
+        <Tip text={isPart ? `The part's shape: ${pattern.size.w} by ${pattern.size.h}. Where it is used, it keeps its width and takes this shape when the update is accepted.` : `The size it is knitted at: ${pattern.size.w} by ${pattern.size.h} pixels. Custom is any size you like.`}>
           <div className="editor-size">
             <Select aria-label="Size" value={sizeValue} onValueChange={(v) => { if (v === "Custom") { setCustom(true); return; } const sz = SIZES.find((s) => s.name === v)!; st.dispatch({ type: "setSize", size: sz }, { label: "Resize" }); }}
               shown={<span className="editor-size-shown">{size?.name ?? "Custom"}<span className="editor-size-px">{pattern.size.w}x{pattern.size.h}</span></span>}
@@ -84,7 +88,9 @@ export function TopBar({ projectId, timeline, onTimeline, onHistory, onShortcuts
           { label: "Keyboard shortcuts", icon: <Command size={14} />, shortcut: "Ctrl+/", onSelect: onShortcuts },
         ]} />
       </div>
-      <Button variant="primary" tip="Makes the finished files from this pattern, as pictures or a video." onClick={onKnit} disabled={knitting}>{knitting ? "Knitting..." : "Knit"}</Button>
+      {isPart
+        ? <Tip text="Every change is already saved to the part. Back to Parts."><Link href={back} className="btn btn-primary">Done</Link></Tip>
+        : <Button variant="primary" tip="Makes the finished files from this pattern, as pictures or a video." onClick={onKnit} disabled={knitting}>{knitting ? "Knitting..." : "Knit"}</Button>}
 
       <CustomSize open={custom} onOpenChange={setCustom} current={pattern.size} onApply={(sz) => st.dispatch({ type: "setSize", size: sz }, { label: "Resize" })} />
     </header>

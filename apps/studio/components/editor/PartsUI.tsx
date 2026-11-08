@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { api } from "@knitted/core/client";
 import { instanceOf, isInside, partFromStitches, uniqueSlotName, detachInstance, type Part, type PartCategory, type PartSlot, type Stitch } from "@knitted/core";
 import { Button, Chip, Dialog, EmptyState, Field, Input, Select, Switch, icons, useToast } from "@knitted/ui";
@@ -121,6 +122,8 @@ export function SavePartDialog({ open, onOpenChange, projectId }: { open: boolea
 /** The inspector for a Part instance: its slots as fields, detach, and "this part has changed". */
 export function PartInstanceInspector({ stitch }: { stitch: Stitch }) {
   const st = useEditor();
+  const router = useRouter();
+  const toast = useToast();
   const part = stitch.partId ? st.parts[stitch.partId] : undefined;
   const yarn = Object.values(st.yarn).filter((y) => y.kind === "image");
   const set = (slot: string, value: string) => st.dispatch({ type: "fillSlot", slot: `${stitch.slot}.${slot}`, content: value }, { label: `Fill ${slot}` });
@@ -132,13 +135,22 @@ export function PartInstanceInspector({ stitch }: { stitch: Stitch }) {
     st.select(kids.map((k) => k.id));
   };
   const slotDefs: PartSlot[] = part.slots;
+  // Accepting takes the part's shape too: it keeps its width here, and its height follows.
+  const accept = () => {
+    const { w: W, h: H } = st.pattern.size;
+    const h = Math.round(((stitch.w * W) / part.aspect / H) * 1e5) / 1e5;
+    st.dispatch({ type: "updateStitch", id: stitch.id, patch: { partVersion: part.version, partSlots: part.slots, ...(Math.abs(h - stitch.h) > 1e-3 ? { h } : {}) } }, { label: "Accept part update" });
+  };
+  const edit = async () => {
+    try { const p = await api.parts.edit(part.id, st.pattern.projectId); router.push(`/projects/${p.projectId}/patterns/${p.id}`); } catch (e) { toast((e as Error).message); }
+  };
   return (
     <div style={{ display: "grid", gap: "var(--space-3)" }}>
       <p className="body-sm" style={{ margin: 0 }}><Package size={13} aria-hidden /> Linked to <strong>{part.name}</strong>, version {part.version}.</p>
       {outdated && (
         <div className="panel" style={{ padding: 10 }} role="status">
           <p className="body-sm" style={{ margin: "0 0 6px" }}>This part has changed since you added it. It is already showing the new look.</p>
-          <Button size="sm" onClick={() => st.dispatch({ type: "updateStitch", id: stitch.id, patch: { partVersion: part.version, partSlots: part.slots } }, { label: "Accept part update" })}>Accept the update</Button>
+          <Button size="sm" onClick={accept}>Accept the update</Button>
         </div>
       )}
       {slotDefs.map((sl) => (
@@ -150,6 +162,7 @@ export function PartInstanceInspector({ stitch }: { stitch: Stitch }) {
           )}
         </Field>
       ))}
+      {!part.builtin && part.kind === "stitches" && <Button tip="Opens the part itself. A change there shows in every pattern that uses it." onClick={edit}>Change the part</Button>}
       <Button onClick={detach}>Detach to edit freely</Button>
     </div>
   );

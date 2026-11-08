@@ -348,4 +348,27 @@ export const MIGRATIONS: Migration[] = [
       alter table social_posts add column metrics_note text;
     `,
   },
+  {
+    version: 15,
+    name: "part-editing",
+    // A Part is edited in the pattern editor through a pattern of its own, hidden from the
+    // project's Patterns: part_id says which Part it edits, and every change goes to the Part.
+    // part_base is the Part's version when this editing began, so one sitting is one version.
+    sql: `
+      alter table patterns add column part_id text;
+      alter table patterns add column part_base integer;
+      create index patterns_part on patterns (part_id);
+    `,
+  },
+  {
+    version: 16,
+    name: "library",
+    // The Library: Yarn every project can use, kept as a project of its own (LIBRARY_ID) so a
+    // file there is stored, found, deleted and brought back the way any project's Yarn is.
+    // It is never listed with the projects.
+    sql: `
+      insert or ignore into projects (id, name, description, created_at, updated_at)
+        values ('library', 'Library', 'What every project shares.', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    `,
+  },
 ];

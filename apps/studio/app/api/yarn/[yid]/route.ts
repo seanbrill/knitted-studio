@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { deleteYarn, getYarn, undeleteYarn, updateYarn, yarnUsage } from "@knitted/core/node";
+import { deleteYarn, getYarn, setYarnScope, undeleteYarn, updateYarn, yarnUsage } from "@knitted/core/node";
 import { body, ok, route, store } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
@@ -16,8 +16,12 @@ export const PATCH = route(async (req: Request, { params }: Ctx) => ok(updateYar
 
 export const DELETE = route(async (_: Request, { params }: Ctx) => { deleteYarn(store(), (await params).yid); return ok({ ok: true }); });
 
+// `share`: into the Library (`to: "library"`), or out of it into the project `to`.
+const Action = z.discriminatedUnion("action", [z.object({ action: z.literal("undelete") }), z.object({ action: z.literal("share"), to: z.string().min(1).max(80) })]);
 export const POST = route(async (req: Request, { params }: Ctx) => {
-  await body(req, z.object({ action: z.literal("undelete") }));
-  undeleteYarn(store(), (await params).yid);
-  return ok(getYarn(store(), (await params).yid));
+  const b = await body(req, Action);
+  const { yid } = await params;
+  if (b.action === "share") return ok(await setYarnScope(store(), yid, b.to));
+  undeleteYarn(store(), yid);
+  return ok(getYarn(store(), yid));
 });

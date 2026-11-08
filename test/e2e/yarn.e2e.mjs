@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
-import { axeProblems, launchBrowser, startStudio } from "./harness.mjs";
+import { axeProblems, launchBrowser, serverHas, startStudio } from "./harness.mjs";
 import { ROOT } from "../lib/scan.mjs";
 
 let studio, browser, page, projectId;
@@ -78,7 +78,8 @@ test("kind filters and search narrow the library, and a late answer never undoes
   await page.getByRole("button", { name: /^clip/ }).waitFor();
   // The whole library answers after the search does, as a busy server can: what the
   // search found has to stand. (Under load this put the clip back, and the test hung.)
-  const whole = (u) => u.pathname === `/api/projects/${projectId}/yarn` && !u.search;
+  // The project's page asks for its own files: the whole of them is `?library=0` and nothing else.
+  const whole = (u) => u.pathname === `/api/projects/${projectId}/yarn` && u.search === "?library=0";
   await page.route(whole, async (r) => { await new Promise((ok) => setTimeout(ok, 1200)); await r.continue().catch(() => {}); });
   try {
     const late = page.waitForResponse((res) => whole(new URL(res.url())));
@@ -165,6 +166,57 @@ test("cancelling an upload leaves no partial file behind", async () => {
   const tmpDir = join(studio.home, "projects", projectId, "yarn", ".tmp");
   assert.deepEqual(existsSync(tmpDir) ? readdirSync(tmpDir) : [], [], "no .part file left");
 });
+
+// ── the Library: what every project shares ─────────────────────────────────
+let otherId;
+test("a file moved to the Library leaves the project's page, keeps its id, and is in another project's editor", async () => {
+  otherId = (await j("POST", "/api/projects", { name: "Florist e2e", starter: "social" })).body.id;
+  const logo = (await j("GET", `/api/projects/${projectId}/yarn`)).body.find((y) => y.name === "brand-logo");
+  await page.goto(`${studio.url}/projects/${projectId}/yarn`);
+  await page.getByRole("button", { name: /^brand-logo/ }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Move to the Library" }).click();
+  await page.getByText(/Moved brand-logo to the Library/).waitFor();
+  await page.getByRole("button", { name: /^brand-logo/ }).waitFor({ state: "detached" });
+  await page.getByText(/1 file in the Library is in this project's Yarn too/).waitFor();
+  const theirs = (await j("GET", `/api/projects/${otherId}/yarn`)).body.find((y) => y.id === logo.id);
+  assert.equal(theirs?.projectId, "library", "the other project has it, as the same file");
+  assert.equal((await j("GET", `/api/projects/${projectId}/yarn?library=0`)).body.some((y) => y.id === logo.id), false);
+  const [pat] = (await j("GET", `/api/projects/${otherId}/patterns`)).body;
+  await page.goto(`${studio.url}/projects/${otherId}/patterns/${pat.id}`);
+  await page.getByRole("button", { name: "Yarn", exact: true }).click();
+  await page.getByRole("region", { name: "From the Library" }).getByRole("button", { name: "Use brand-logo" }).waitFor();
+});
+
+test("the Library has its own page: files added there are every project's, and one can move into a project", async () => {
+  await page.goto(`${studio.url}/library`);
+  await page.getByRole("heading", { name: "What every project shares" }).waitFor();
+  await page.getByLabel("Choose files to upload").setInputFiles(f("clip.mp4"));
+  await page.getByRole("button", { name: /^clip/ }).waitFor();
+  await serverHas(studio, `/api/projects/${otherId}/yarn`, (list) => list.some((y) => y.name === "clip" && y.projectId === "library"));
+  await page.getByRole("button", { name: /^brand-logo/ }).click();
+  const drawer = page.getByRole("dialog");
+  await drawer.getByText(/in the Library/).waitFor();
+  assert.equal(await drawer.getByRole("button", { name: "Move to the Brief" }).count(), 0, "the Library has no Brief");
+  await drawer.getByRole("button", { name: "Move into a project" }).click();
+  const take = page.getByRole("dialog", { name: /Move brand-logo into a project/ });
+  await take.getByRole("combobox", { name: "Project" }).click();
+  await page.getByRole("option", { name: "Yarn e2e" }).click();
+  await take.getByRole("button", { name: "Move" }).click();
+  await page.getByText(/Moved brand-logo into Yarn e2e/).waitFor();
+  await page.getByRole("button", { name: /^brand-logo/ }).waitFor({ state: "detached" });
+  assert.ok((await j("GET", `/api/projects/${projectId}/yarn?library=0`)).body.some((y) => y.name === "brand-logo"), "back in its project");
+  assert.equal((await j("GET", "/api/projects")).body.some((p) => p.id === "library"), false, "the Library is never a project in the list");
+});
+
+for (const theme of ["day", "night"]) {
+  test(`no serious accessibility violations on the Library in ${theme}`, async () => {
+    await page.goto(`${studio.url}/library`);
+    await page.getByRole("button", { name: /^clip/ }).waitFor();
+    await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
+    await page.waitForTimeout(400);
+    assert.deepEqual(await axeProblems(page), []);
+  });
+}
 
 for (const theme of ["day", "night"]) {
   test(`no serious accessibility violations on the Yarn library in ${theme}`, async () => {

@@ -5,6 +5,7 @@ import { api, subscribeChanges } from "@knitted/core/client";
 import type { Part, Pattern, Swatch, Yarn } from "@knitted/core";
 import { Dialog, IconButton, Kbd, Tooltip, icons, useToast } from "@knitted/ui";
 import { manifestFamilies } from "@/lib/editor/fonts";
+import { useLive } from "@/lib/hooks";
 import { namesOf, useEditor } from "@/lib/editor/store";
 import { agentNow, whoChanged } from "@/lib/agent";
 import { Canvas } from "./Canvas";
@@ -110,13 +111,17 @@ export function EditorShell({ projectId, pattern, swatch, yarn, parts, patterns,
 
   const fonts = useMemo(() => manifestFamilies, []);
   if (!st.pattern || st.pattern.id !== pattern.id) return <div style={{ height: "100dvh", background: "var(--surface-sunken)" }} />;
+  // A Part open here cannot hold a Part, and is not saved as one: it is one.
+  const isPart = !!pattern.partId;
+  const tools = isPart ? TOOLS.filter((t) => t.id !== "parts") : TOOLS;
 
   return (
     <div style={{ height: "100dvh", display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
       <TopBar projectId={projectId} timeline={timeline} onTimeline={() => setTimeline((t) => !t)} onHistory={() => setHistory(true)} onShortcuts={() => setKeys(true)} onKnit={onKnit ?? (() => setKnit(true))} />
+      {isPart && <PartBanner partId={pattern.partId!} />}
       <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
         <nav aria-label="Tools" style={{ width: "var(--rail-w)", background: "var(--rail)", display: "flex", flexDirection: "column", alignItems: "center", paddingTop: "var(--space-2)", gap: 4, flexShrink: 0 }}>
-          {TOOLS.map(({ id, label, hint, Icon }) => {
+          {tools.map(({ id, label, hint, Icon }) => {
             const on = panel && tool === id;
             return (
               <Tooltip key={id} label={label} hint={hint} side="right">
@@ -152,7 +157,7 @@ export function EditorShell({ projectId, pattern, swatch, yarn, parts, patterns,
         {inspector ? (
           <div style={{ width: "var(--inspector-w)", background: "var(--surface-raised)", borderLeft: "1px solid var(--line)", overflowY: "auto", padding: "var(--space-4)", flexShrink: 0, position: "relative" }}>
             <IconButton label="Hide the Inspector" hint={`More room for the canvas. ${BOTH}`} onClick={() => showInspector(false)} style={{ position: "absolute", top: 8, right: 8, zIndex: 1 }}><PanelRightClose size={16} /></IconButton>
-            {st.mode === "fill" ? <FillForm /> : <Inspector fonts={fonts} onSavePart={() => setSavePart(true)} />}
+            {st.mode === "fill" ? <FillForm /> : <Inspector fonts={fonts} onSavePart={isPart ? undefined : () => setSavePart(true)} />}
           </div>
         ) : (
           <div style={{ width: 44, background: "var(--surface-raised)", borderLeft: "1px solid var(--line)", display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--space-3)", paddingTop: 8, flexShrink: 0 }}>
@@ -163,8 +168,8 @@ export function EditorShell({ projectId, pattern, swatch, yarn, parts, patterns,
       </div>
       <div className="sr-only" role="status" data-testid="editor-announcement">{st.announcement}</div>
       <HistoryDrawer open={history} onOpenChange={setHistory} />
-      <SavePartDialog open={savePart} onOpenChange={setSavePart} projectId={projectId} />
-      <KnitDialog open={knit} onOpenChange={setKnit} pattern={st.pattern} projectId={projectId} />
+      {!isPart && <SavePartDialog open={savePart} onOpenChange={setSavePart} projectId={projectId} />}
+      {!isPart && <KnitDialog open={knit} onOpenChange={setKnit} pattern={st.pattern} projectId={projectId} />}
       <Dialog open={keys} onOpenChange={setKeys} title="Keyboard shortcuts" wide>
         <dl style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "8px 24px", margin: 0 }}>
           {SHORTCUTS.map(([a, b]) => <div key={a} style={{ display: "contents" }}><dt className="body-sm">{a}</dt><dd style={{ margin: 0 }}><Kbd>{b}</Kbd></dd></div>)}
@@ -174,3 +179,15 @@ export function EditorShell({ projectId, pattern, swatch, yarn, parts, patterns,
   );
 }
 
+/** What is open is a Part: where it is used, and that every change goes there. */
+function PartBanner({ partId }: { partId: string }) {
+  const { data } = useLive(() => api.parts.get(partId), [partId]);
+  const n = data?.usage.length ?? 0;
+  const where = !data ? "" : n === 0 ? " Nothing uses it yet." : ` It is in ${n} ${n === 1 ? "pattern" : "patterns"}, which show each change at once.`;
+  return (
+    <div role="note" aria-label="Changing a part" className="body-sm" style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px var(--space-4)", background: "var(--surface-sunken)", borderBottom: "1px solid var(--line)", flexShrink: 0 }}>
+      <Package size={14} aria-hidden style={{ flexShrink: 0 }} />
+      <span>You are changing a part. Every change is saved to it.{where} A stitch with a slot name is a slot; lock one and the brand decides it.</span>
+    </div>
+  );
+}

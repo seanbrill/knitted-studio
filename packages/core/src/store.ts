@@ -11,8 +11,9 @@
 // document overwrite is how one writer silently erases another.
 
 import { rmSync } from "node:fs";
-import type { ActivityAction, Actor, Motion, Pattern, Project, Refusal, Size, Stitch } from "./types.ts";
-import { SIZES } from "./types.ts";
+import type { ActivityAction, Actor, Motion, PartSlot, Pattern, Project, Refusal, Size, Stitch } from "./types.ts";
+import { LIBRARY_ID, SIZES } from "./types.ts";
+import { partFromEditor } from "./parts-pure.ts";
 import { applyCommand, type Command } from "./commands.ts";
 import { openDb, tx, type Db } from "./db.ts";
 import { newId } from "./ids.ts";
@@ -87,12 +88,13 @@ export class Store {
   private count(table: string, projectId: string, unseen = false): number {
     if (!this.has(table)) return 0;
     // A project's Yarn is what is on its Yarn shelf: the Brief's reference is counted apart.
-    const live = table === "yarn" ? " and deleted_at is null and shelf = 'yarn'" : table === "knits" && unseen ? " and seen_at is null" : "";
+    const live = table === "yarn" ? " and deleted_at is null and shelf = 'yarn'" : table === "knits" && unseen ? " and seen_at is null" : table === "patterns" ? " and part_id is null" : "";
     return Number((this.db.prepare(`select count(*) as n from ${table} where project_id = ?${live}`).get(projectId) as { n: number }).n);
   }
 
   listProjects(opts: { archived?: boolean; deleted?: boolean } = {}): ProjectSummary[] {
-    const where = opts.deleted ? "deleted_at is not null" : `deleted_at is null and archived_at is ${opts.archived ? "not null" : "null"}`;
+    // The Library holds what every project shares: it is not a project of its own to list.
+    const where = `id != '${LIBRARY_ID}' and ` + (opts.deleted ? "deleted_at is not null" : `deleted_at is null and archived_at is ${opts.archived ? "not null" : "null"}`);
     const rows = this.db.prepare(`select * from projects where ${where} order by updated_at desc`).all() as Row[];
     return rows.map((r) => {
       const p = this.toProject(r);
@@ -101,10 +103,10 @@ export class Store {
     });
   }
 
-  /** A project's own live Yarn, as far as its picture needs it. A file that was deleted is not a picture. */
+  /** A project's own live Yarn, or the Library's, as far as its picture needs it. A file that was deleted is not a picture. */
   private pictureYarn(projectId: string, yarnId: string): { id: string; hash: string; kind: string; thumb: boolean } | undefined {
     if (!this.has("yarn")) return undefined;
-    const r = this.db.prepare("select id, hash, kind, meta from yarn where id = ? and project_id = ? and deleted_at is null").get(yarnId, projectId) as Row | undefined;
+    const r = this.db.prepare(`select id, hash, kind, meta from yarn where id = ? and project_id in (?, '${LIBRARY_ID}') and deleted_at is null`).get(yarnId, projectId) as Row | undefined;
     return r && { id: r.id as string, hash: r.hash as string, kind: r.kind as string, thumb: !!(JSON.parse(r.meta as string) as { thumb?: string }).thumb };
   }
 
@@ -214,6 +216,7 @@ export class Store {
       id: r.id as string, projectId: r.project_id as string, name: r.name as string, size: JSON.parse(r.size as string) as Size,
       durationMs: Number(r.duration_ms), stitches: doc.stitches, html: doc.html, css: doc.css, motion: doc.motion,
       version: Number(r.version), folder: (r.folder as string) ?? "", updatedAt: r.updated_at as string,
+      ...(r.part_id ? { partId: r.part_id as string } : {}),
     };
   }
   private snapshot(p: Pattern): string {
@@ -231,8 +234,45 @@ export class Store {
     return id;
   }
 
+  /** A project's Patterns. A Part open in the editor is not one of them. */
   listPatterns(projectId: string): Pattern[] {
-    return (this.db.prepare("select * from patterns where project_id = ? order by created_at, rowid").all(projectId) as Row[]).map((r) => this.toPattern(r));
+    return (this.db.prepare("select * from patterns where project_id = ? and part_id is null order by created_at, rowid").all(projectId) as Row[]).map((r) => this.toPattern(r));
+  }
+
+  /**
+   * The pattern a Part is edited through: the Part's stitches in a frame its shape, hidden
+   * from Patterns. `base`: the Part's version now, so this sitting's changes make one version.
+   */
+  insertPartPattern(projectId: string, partId: string, base: number, name: string, size: Size, stitches: Stitch[]): Pattern {
+    const id = this.write(() => {
+      const pid = this.insertPattern(projectId, name, size, stitches);
+      this.db.prepare("update patterns set part_id = ?, part_base = ? where id = ?").run(partId, base, pid);
+      return pid;
+    });
+    return this.getPattern(id);
+  }
+
+  /** A change to a Part's pattern goes to the Part, as its next version. */
+  private syncPart(p: Pattern) {
+    const row = this.db.prepare("select builtin, kind, version from parts where id = ?").get(p.partId!) as Row | undefined;
+    if (!row || row.builtin || row.kind !== "stitches") return;
+    const base = (this.db.prepare("select part_base from patterns where id = ?").get(p.id) as Row | undefined)?.part_base;
+    const next = partFromEditor(p.stitches, p.size);
+    if (!next.stitches.length) return; // a Part keeps at least one stitch: the last one is not taken away
+    this.db.prepare("update parts set name = ?, data = ?, slots = ?, aspect = ?, version = max(version, ?), updated_at = ? where id = ?")
+      .run(p.name.slice(0, 80), JSON.stringify({ stitches: next.stitches }), JSON.stringify(next.slots), next.aspect, Number(base ?? row.version) + 1, now(), p.partId!);
+  }
+
+  /**
+   * Each Part in a pattern, with the Part's slots as they are now: a slot locked in the Part
+   * since it was added is locked in every pattern that uses it, before anyone accepts the update.
+   */
+  private withPartSlots(p: Pattern): Pattern {
+    const ids = [...new Set(p.stitches.filter((s) => s.kind === "part" && s.partId).map((s) => s.partId!))];
+    if (!ids.length) return p;
+    const rows = this.db.prepare(`select id, slots from parts where id in (${ids.map(() => "?").join(",")})`).all(...ids) as Row[];
+    const slots = new Map(rows.map((r) => [r.id as string, JSON.parse(r.slots as string) as PartSlot[]]));
+    return { ...p, stitches: p.stitches.map((s) => (s.kind === "part" && slots.has(s.partId!) ? { ...s, partSlots: slots.get(s.partId!) } : s)) };
   }
 
   getPattern(id: string): Pattern {
@@ -288,7 +328,7 @@ export class Store {
    */
   apply(patternId: string, cmd: Command, actor: Actor, opts: { expectVersion?: number; label?: string; coalesce?: boolean } = {}): ApplyResult {
     return this.write(() => {
-      const cur = this.getPattern(patternId);
+      const cur = this.withPartSlots(this.getPattern(patternId));
       if (opts.expectVersion !== undefined && opts.expectVersion !== cur.version) {
         throw new ConflictError("This pattern changed while you were editing it. Reload to see the latest.", cur.version);
       }
@@ -303,6 +343,7 @@ export class Store {
       this.db.prepare("update patterns set name = ?, size = ?, duration_ms = ?, doc = ?, version = version + 1, updated_at = ? where id = ?")
         .run(next.name, JSON.stringify(next.size), next.durationMs, JSON.stringify({ stitches: next.stitches, html: next.html, css: next.css, motion: next.motion }), t, patternId);
       const saved = this.getPattern(patternId);
+      if (saved.partId) this.syncPart(saved);
       const label = opts.label ?? (cmd.type === "batch" ? "Edit" : cmd.type);
 
       const last = this.db.prepare("select id, author, label, created_at from pattern_revisions where pattern_id = ? order by created_at desc, rowid desc limit 1")
@@ -340,6 +381,7 @@ export class Store {
       this.db.prepare("update patterns set name = ?, size = ?, duration_ms = ?, doc = ?, version = version + 1, updated_at = ? where id = ?")
         .run(snap.name, JSON.stringify(snap.size), snap.durationMs, JSON.stringify({ stitches: snap.stitches, html: snap.html, css: snap.css, motion: snap.motion }), now(), patternId);
       const saved = this.getPattern(patternId);
+      if (saved.partId) this.syncPart(saved);
       this.db.prepare("insert into pattern_revisions (id, pattern_id, snapshot, author, label, created_at) values (?, ?, ?, ?, 'Restored', ?)")
         .run(newId("rv"), patternId, this.snapshot(saved), actor, now());
       this.touchProject(cur.projectId);

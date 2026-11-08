@@ -3,7 +3,7 @@
   "groups": [
     { "id": "patterns", "name": "Patterns", "line": "Set the layout once. Lock what the brand decided." },
     { "id": "swatches", "name": "Swatches", "line": "One brand kit, shared by every Pattern." },
-    { "id": "yarn", "name": "Yarn", "line": "Your photos, logos, video and copy, kept per project." },
+    { "id": "yarn", "name": "Yarn", "line": "Your photos, logos, video and copy, per project or shared by them all." },
     { "id": "parts", "name": "Parts", "line": "Small reusable pieces that drop into many Patterns." },
     { "id": "motion", "name": "Motion", "line": "Animation that is built frame by frame, so it eases like real motion." },
     { "id": "voice", "name": "Voice", "line": "Voiceover that is made on your own computer." },
@@ -18,7 +18,8 @@
     { "id": "batch-knit", "group": "patterns", "status": "shipped", "name": "Batch knitting in the studio", "summary": "Knit many posts from one Pattern in one go, from a table you paste in. Your model can ask for variants too." },
     { "id": "swatch-editor", "group": "swatches", "status": "shipped", "name": "The Swatch editor", "summary": "Colours, fonts, logos and a written voice for one brand, in one place. Start one from the brand's website." },
     { "id": "yarn-uploads", "group": "yarn", "status": "shipped", "name": "Yarn uploads", "summary": "Drop in photos, logos, video, sound, fonts and PDFs, sorted into folders. Every file lives in a folder you can open." },
-    { "id": "parts", "group": "parts", "status": "shipped", "name": "Parts", "summary": "A lower-third, a logo sting or a quote block, made once and dropped into many Patterns." },
+    { "id": "library", "group": "yarn", "status": "shipped", "name": "The Library", "summary": "Files every project shares, like a logo or a font you use for every brand. They are in each project's Yarn, beside its own, for you and your model." },
+    { "id": "parts", "group": "parts", "status": "shipped", "name": "Parts", "summary": "A lower-third, a logo sting or a quote block, made once and dropped into many Patterns. Change one in the editor and every Pattern that uses it follows." },
     { "id": "render-engine", "group": "motion", "status": "shipped", "name": "The frame-by-frame render engine", "summary": "A Pattern is a page with a timeline. The engine sets the time, takes a picture of each frame and lets ffmpeg do the encoding. The desktop app brings what it needs." },
     { "id": "motion-editor", "group": "motion", "status": "shipped", "name": "Motion in the editor", "summary": "Entrances, exits and loops on a timeline, scenes that change, and sound you can hear while you scrub, before you knit." },
     { "id": "local-voiceover", "group": "voice", "status": "shipped", "name": "Local voiceover", "summary": "Turn a script into a voiceover with captions, in your computer's own voice or a speech server you run, with music under it." },

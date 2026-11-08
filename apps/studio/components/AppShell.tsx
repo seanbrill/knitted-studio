@@ -7,10 +7,11 @@ import { CommandPalette, IconButton, LogoMark, Wordmark, icons, useTheme, type C
 import { ModelAtWork } from "./ModelAtWork";
 import { ModelPresence } from "./ModelPresence";
 
-const { LayoutGrid, Settings, Moon, Sun, Plus, Command, Sparkles, ChartNoAxesColumn } = icons;
+const { LayoutGrid, Settings, Moon, Sun, Plus, Command, Sparkles, ChartNoAxesColumn, Library } = icons;
 
 const NAV = [
   { href: "/", label: "Projects", Icon: LayoutGrid, match: (p: string) => p === "/" || p.startsWith("/projects") },
+  { href: "/library", label: "Library", Icon: Library, match: (p: string) => p.startsWith("/library") },
   { href: "/ask", label: "Ask", Icon: Sparkles, match: (p: string) => p.startsWith("/ask") },
   { href: "/insights", label: "Insights", Icon: ChartNoAxesColumn, match: (p: string) => p.startsWith("/insights") },
   { href: "/settings", label: "Settings", Icon: Settings, match: (p: string) => p.startsWith("/settings") },
@@ -38,6 +39,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const actions: CommandAction[] = useMemo(
     () => [
       { id: "go-projects", label: "Go to Projects", group: "Pages", icon: <LayoutGrid size={15} />, keywords: "home start", run: () => router.push("/") },
+      { id: "go-library", label: "Go to the Library", group: "Pages", icon: <Library size={15} />, keywords: "shared yarn files logos every project global assets", run: () => router.push("/library") },
       { id: "go-ask", label: "Ask your model", group: "Pages", icon: <Sparkles size={15} />, keywords: "chat model claude", run: () => router.push("/ask") },
       { id: "go-insights", label: "Go to Insights", group: "Pages", icon: <ChartNoAxesColumn size={15} />, keywords: "analytics numbers views posts what works", run: () => router.push("/insights") },
       { id: "go-settings", label: "Go to Settings", group: "Pages", icon: <Settings size={15} />, run: () => router.push("/settings") },

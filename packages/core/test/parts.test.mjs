@@ -3,7 +3,7 @@ import test from "node:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BUILTIN_PARTS, ValidationError, createPart, deletePart, duplicatePart, ensureBuiltinParts, exportPart, importPart, listParts, openStore, partUsage, setPartScope, updatePart } from "../src/node.ts";
+import { BUILTIN_PARTS, ValidationError, createPart, deletePart, duplicatePart, editPart, ensureBuiltinParts, exportPart, getPart, importPart, listParts, openStore, partUsage, setPartScope, updatePart } from "../src/node.ts";
 import { applyCommand, detachInstance, fillTemplate, hasLintErrors, instanceOf, lintCodePart, partFromStitches, uniqueSlotName } from "../src/index.ts";
 import { pageFor } from "../../render/src/pure.mjs";
 
@@ -114,6 +114,78 @@ test("a part can move to the library and become available in other projects", ()
   assert.equal(listParts(store, other.id).some((p) => p.name === "Shared"), false);
   setPartScope(store, part.id, null);
   assert.equal(listParts(store, other.id).some((p) => p.name === "Shared"), true);
+});
+
+// ── a Part edited in the editor ─────────────────────────────────────────────
+test("a part opens in the editor as a pattern of its shape, hidden from Patterns, its locked slots locked", () => {
+  const part = createPart(store, project.id, { name: "Card", stitches: sel(), slots: [{ name: "headline", kind: "text", locked: true }], aspect: 2 });
+  const before = store.listPatterns(project.id).length;
+  const p = editPart(store, part.id, project.id);
+  assert.equal(p.partId, part.id);
+  assert.deepEqual([p.size.w, p.size.h], [1080, 540], "a frame the part's shape");
+  assert.equal(p.stitches.find((s) => s.slot === "headline").locked, true);
+  assert.equal(store.listPatterns(project.id).length, before, "not one of the project's Patterns");
+  assert.equal(store.listProjects().find((x) => x.id === project.id).counts.patterns, before, "nor counted as one");
+  assert.equal(editPart(store, part.id, project.id).id, p.id, "opened again, it is the same pattern, history and all");
+});
+
+test("every change in the editor is the part's, and one sitting is one version", () => {
+  const part = createPart(store, project.id, { name: "Badge", stitches: sel(), slots: [{ name: "headline", kind: "text", locked: false }], aspect: 4 });
+  const p = editPart(store, part.id, project.id);
+  const text = p.stitches.find((s) => s.kind === "text");
+  store.apply(p.id, { type: "updateStitch", id: text.id, patch: { content: "Fresh" } }, "human");
+  store.apply(p.id, { type: "updateStitch", id: text.id, patch: { locked: true } }, "human");
+  store.apply(p.id, { type: "setMeta", name: "Badge, new" }, "human");
+  let now = getPart(store, part.id);
+  assert.equal(now.version, 2, "three changes in one sitting are one version");
+  assert.equal(now.name, "Badge, new");
+  assert.deepEqual(now.slots, [{ name: "headline", kind: "text", default: "Fresh", locked: true }], "a locked stitch is a locked slot");
+  assert.equal(now.stitches.every((s) => s.locked === false), true, "the part keeps its stitches unlocked: locks are its slots'");
+  const again = editPart(store, part.id, project.id);
+  assert.equal(again.id, p.id);
+  store.apply(again.id, { type: "setSize", size: { name: "Custom", w: 1080, h: 1080 } }, "human");
+  now = getPart(store, part.id);
+  assert.equal(now.version, 3, "the next sitting is the next version");
+  assert.equal(now.aspect, 1, "its frame is its shape");
+  store.apply(again.id, { type: "batch", commands: again.stitches.map((s) => ({ type: "removeStitch", id: s.id })) }, "human");
+  assert.equal(getPart(store, part.id).stitches.length, 2, "a part is never emptied: the last stitches stay until something replaces them");
+});
+
+test("a slot locked in the part is locked in every pattern that uses it, before the update is accepted", () => {
+  const part = createPart(store, project.id, { name: "Quote", stitches: sel(), slots: [{ name: "headline", kind: "text", locked: false }], aspect: 4 });
+  const pat = store.createPattern(project.id, { name: "Uses quote" });
+  store.apply(pat.id, { type: "addStitch", stitch: instanceOf(part, { x: 0, y: 0, w: 0.5, h: 0.1 }, "quote") }, "human");
+  assert.equal(store.apply(pat.id, { type: "fillSlot", slot: "quote.headline", content: "Before" }, "model").changed, true);
+  const p = editPart(store, part.id, project.id);
+  store.apply(p.id, { type: "updateStitch", id: p.stitches.find((s) => s.slot === "headline").id, patch: { locked: true } }, "human");
+  const no = store.apply(pat.id, { type: "fillSlot", slot: "quote.headline", content: "After" }, "model");
+  assert.equal(no.changed, false);
+  assert.match(no.refusals[0].why, /lock/i);
+  assert.equal(store.apply(pat.id, { type: "fillSlot", slot: "quote.headline", content: "The owner may" }, "human").changed, true);
+});
+
+test("a part changed some other way opens fresh; starters and code parts are not edited here; deleting one takes its pattern", () => {
+  const part = createPart(store, project.id, { name: "Strip", stitches: sel(), aspect: 3 });
+  const first = editPart(store, part.id, project.id);
+  updatePart(store, part.id, { stitches: sel().slice(0, 1) });
+  const second = editPart(store, part.id, project.id);
+  assert.notEqual(second.id, first.id);
+  assert.equal(second.stitches.length, 1);
+  assert.throws(() => store.getPattern(first.id), /not here/);
+  ensureBuiltinParts(store);
+  const starter = listParts(store, project.id).find((p) => p.builtin);
+  assert.throws(() => editPart(store, starter.id, project.id), /Edit a copy/);
+  const code = createPart(store, project.id, { name: "Code", kind: "code", html: "<b>{{t}}</b>", slots: [{ name: "t", kind: "text", locked: false }] });
+  assert.throws(() => editPart(store, code.id, project.id), /edited as code/);
+  deletePart(store, part.id);
+  assert.throws(() => store.getPattern(second.id), /not here/);
+});
+
+test("a library part is edited in the project it was opened from", () => {
+  const part = createPart(store, null, { name: "Everywhere", stitches: sel(), aspect: 2 });
+  const other = store.createProject({ name: "Other brand" });
+  assert.equal(editPart(store, part.id, other.id).projectId, other.id);
+  assert.equal(editPart(store, part.id, project.id).projectId, project.id, "opened from another project, it moves there");
 });
 
 test("export then import round-trips a part, and bad or newer files are refused", () => {

@@ -182,6 +182,12 @@ export interface Size {
   h: number;
 }
 
+/**
+ * The Library: what every project shares, as a project of its own that is never listed with
+ * the others. Its Yarn shows in every project's Yarn, beside the project's own.
+ */
+export const LIBRARY_ID = "library";
+
 export const SIZES: Size[] = [
   { name: "Story", w: 1080, h: 1920 },
   { name: "Post", w: 1080, h: 1350 },
@@ -216,6 +222,8 @@ export interface Pattern {
   /** The folder it is filed in, in the project's Patterns. "" is the top. Not part of its history. */
   folder: string;
   updatedAt: string;
+  /** Set when this is a Part open in the editor: every change goes to that Part. Not in Patterns. */
+  partId?: string;
 }
 
 export interface Project {
@@ -245,7 +253,7 @@ export type Actor =
 export type ActivityAction =
   | "project.created" | "project.renamed" | "project.picture" | "project.duplicated" | "project.deleted"
   | "pattern.created" | "pattern.duplicated" | "pattern.deleted" | "edit.refused"
-  | "yarn.imported" | "yarn.changed" | "yarn.deleted" | "swatch.created" | "part.created"
+  | "yarn.imported" | "yarn.changed" | "yarn.deleted" | "yarn.shared" | "swatch.created" | "part.created"
   | "folder.created" | "folder.filed" | "folder.renamed" | "folder.deleted"
   | "brief.built" | "brief.changed" | "brief.synced";
 

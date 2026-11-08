@@ -7,7 +7,8 @@ type Ctx = { params: Promise<{ id: string }> };
 
 export const GET = route(async (req: Request, { params }: Ctx) => {
   const q = new URL(req.url).searchParams;
-  return ok(listYarn(store(), (await params).id, { kind: q.get("kind") ?? undefined, q: q.get("q") ?? undefined, tag: q.get("tag") ?? undefined, deleted: q.get("deleted") === "1", shelf: cleanShelf(q.get("shelf")) }));
+  // `?library=0`: the project's own files, without the Library's every project shares.
+  return ok(listYarn(store(), (await params).id, { kind: q.get("kind") ?? undefined, q: q.get("q") ?? undefined, tag: q.get("tag") ?? undefined, deleted: q.get("deleted") === "1", shelf: cleanShelf(q.get("shelf")), library: q.get("library") !== "0" }));
 });
 
 /**

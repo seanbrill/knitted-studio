@@ -3,8 +3,8 @@
 import { newId } from "./ids.ts";
 import { BUILTIN_PARTS, BUILTIN_VERSION } from "./builtin-parts.ts";
 import { NotFoundError, ValidationError, type Store } from "./store.ts";
-import type { Actor, Part, PartCategory, PartKind, PartSlot, Stitch } from "./types.ts";
-import { hasLintErrors, lintCodePart } from "./parts-pure.ts";
+import type { Actor, Part, PartCategory, PartKind, PartSlot, Pattern, Stitch } from "./types.ts";
+import { editorFromPart, hasLintErrors, lintCodePart, partFromEditor } from "./parts-pure.ts";
 import { cleanFolder, fileInto } from "./folders.ts";
 
 type Row = Record<string, unknown>;
@@ -97,7 +97,7 @@ export function updatePart(store: Store, id: string, patch: Partial<PartInput>):
 
 /** Where a Part is used, across the patterns of every project. */
 export function partUsage(store: Store, id: string): { patternId: string; patternName: string; projectId: string }[] {
-  const rows = store.db.prepare("select id, name, project_id, doc from patterns where doc like ?").all(`%"partId":"${id}"%`) as { id: string; name: string; project_id: string; doc: string }[];
+  const rows = store.db.prepare("select id, name, project_id, doc from patterns where part_id is null and doc like ?").all(`%"partId":"${id}"%`) as { id: string; name: string; project_id: string; doc: string }[];
   return rows.filter((r) => (JSON.parse(r.doc).stitches as Stitch[]).some((s) => s.partId === id)).map((r) => ({ patternId: r.id, patternName: r.name, projectId: r.project_id }));
 }
 
@@ -105,8 +105,36 @@ export function deletePart(store: Store, id: string): { usedIn: number } {
   const p = getPart(store, id);
   if (p.builtin) throw new ValidationError("The starter parts cannot be deleted.");
   const usedIn = partUsage(store, id).length;
-  store.write(() => store.db.prepare("delete from parts where id = ?").run(id));
+  store.write(() => {
+    store.db.prepare("delete from patterns where part_id = ?").run(id);
+    store.db.prepare("delete from parts where id = ?").run(id);
+  });
   return { usedIn };
+}
+
+/**
+ * Open a Part in the pattern editor. It is edited through a pattern of its own, hidden from
+ * Patterns, in `projectId` (a library Part is edited in the brand of the project it was opened
+ * from). Every change made there is the Part's, and one sitting is one new version. The pattern
+ * is kept between sittings, with its history, unless the Part was changed some other way since.
+ */
+export function editPart(store: Store, id: string, projectId: string): Pattern {
+  const part = getPart(store, id);
+  if (part.builtin) throw new ValidationError("The starter parts are read-only. Edit a copy to make it yours.");
+  if (part.kind !== "stitches") throw new ValidationError("A part written in code is edited as code, on the Parts page.");
+  const home = part.projectId ?? projectId;
+  store.getProject(home);
+  const row = store.db.prepare("select id, project_id from patterns where part_id = ? order by updated_at desc limit 1").get(id) as Row | undefined;
+  if (row && row.project_id === home) {
+    const p = store.getPattern(row.id as string);
+    if (JSON.stringify(partFromEditor(p.stitches, p.size).stitches) === JSON.stringify(part.stitches) && p.name === part.name) {
+      store.write(() => store.db.prepare("update patterns set part_base = ? where id = ?").run(part.version, p.id));
+      return p;
+    }
+  }
+  if (row) store.write(() => store.db.prepare("delete from patterns where part_id = ?").run(id));
+  const view = editorFromPart(part);
+  return store.insertPartPattern(home, id, part.version, part.name, view.size, view.stitches);
 }
 
 /** The copy goes next to the original, in its folder, or into `folder` when one is given. */

@@ -71,7 +71,7 @@
   },
   {
     "name": "list_yarn",
-    "summary": "List the files (Yarn) in a project: images, video, audio, fonts, PDFs and saved copy. Filter by kind, tag, a search word or a folder. Use a Yarn name or id when filling an image slot. With reference: true, the Brief's reference instead: files about the business to look at with view_yarn, like pictures of its website.",
+    "summary": "List the files (Yarn) in a project: images, video, audio, fonts, PDFs and saved copy. Filter by kind, tag, a search word or a folder. Use a Yarn name or id when filling an image slot. The Library's files, which every project shares (a logo, a font used for every brand), come after the project's own, marked library: true, unless a folder is given. With reference: true, the Brief's reference instead: files about the business to look at with view_yarn, like pictures of its website.",
     "params": [
       {
         "name": "projectId",
@@ -162,6 +162,12 @@
         "type": "boolean",
         "required": false,
         "description": "true for the Brief's reference instead of Yarn: files to look at and read about the business, like a menu, a brochure or pictures of its website, that are not for putting in a pattern"
+      },
+      {
+        "name": "library",
+        "type": "boolean",
+        "required": false,
+        "description": "Into the Library, which every project shares, instead of this project's Yarn: for what every brand uses"
       }
     ]
   },
@@ -204,6 +210,36 @@
         "type": "boolean",
         "required": false,
         "description": "true for the Brief's reference instead of Yarn: files to look at and read about the business, like a menu, a brochure or pictures of its website, that are not for putting in a pattern"
+      },
+      {
+        "name": "library",
+        "type": "boolean",
+        "required": false,
+        "description": "Into the Library, which every project shares, instead of this project's Yarn: for what every brand uses"
+      }
+    ]
+  },
+  {
+    "name": "share_yarn",
+    "summary": "Move a file from a project's Yarn into the Library, where every project can use it (library: true), or out of the Library into one project (library: false, with that projectId). It keeps its id, so every pattern that uses it keeps it. A Library file other projects use stays in the Library. Ask the person first: it changes what every project sees.",
+    "params": [
+      {
+        "name": "yarnId",
+        "type": "string",
+        "required": true,
+        "description": "From list_yarn"
+      },
+      {
+        "name": "library",
+        "type": "boolean",
+        "required": true,
+        "description": "true: into the Library. false: out of it, into projectId"
+      },
+      {
+        "name": "projectId",
+        "type": "string",
+        "required": false,
+        "description": "For library: false, the project it goes into"
       }
     ]
   },
@@ -876,6 +912,24 @@
         "type": "string",
         "required": false,
         "description": "The folder the part goes in, as a path from the top of its section, like Royalty free music/Lo-fi. Made when it is not there. Left out, the top."
+      }
+    ]
+  },
+  {
+    "name": "edit_part",
+    "summary": "Change one of the project's own parts, or a library part, everywhere it is used. Returns the patternId the part is edited through: read and change it with the usual pattern tools (get_pattern, update_stitch, apply_batch and the rest), and every change goes to the part, as its next version. The pattern's frame is the part's own box, and its size is the part's shape. A stitch with a slot name is a slot of the part; a slot the brand locked stays locked. Patterns that use the part show the change at once and offer the person to accept it. The starter parts and parts written in code are not edited this way: duplicate a starter first.",
+    "params": [
+      {
+        "name": "partId",
+        "type": "string",
+        "required": true,
+        "description": "From list_parts"
+      },
+      {
+        "name": "projectId",
+        "type": "string",
+        "required": true,
+        "description": "The project id, like pj_01..."
       }
     ]
   },

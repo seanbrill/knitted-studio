@@ -45,10 +45,10 @@ export function Inspector({ fonts, onSavePart }: { fonts: string[]; onSavePart?:
     return (
       <aside aria-label="Inspector" className="inspector">
         <p className="eyebrow">Nothing selected</p>
-        <p className="body-sm" style={{ color: "var(--ink-muted)", marginTop: 12 }}>Pick a stitch on the canvas. Dashed outlines are locked by the pattern; solid ones are yours to change.</p>
-        <Section title="Pattern" hint="Its name, and the size it is knitted at.">
+        <p className="body-sm" style={{ color: "var(--ink-muted)", marginTop: 12 }}>{pattern.partId ? "Pick a stitch on the canvas. A locked one with a slot name is a slot the brand decides, wherever the part is used." : "Pick a stitch on the canvas. Dashed outlines are locked by the pattern; solid ones are yours to change."}</p>
+        <Section title={pattern.partId ? "Part" : "Pattern"} hint={pattern.partId ? "Its name, and its shape." : "Its name, and the size it is knitted at."}>
           <Field label="Name" htmlFor="pat-name"><Input id="pat-name" defaultValue={pattern.name} key={pattern.name} onBlur={(e) => e.target.value.trim() && e.target.value !== pattern.name && st.dispatch({ type: "setMeta", name: e.target.value }, { label: "Rename" })} /></Field>
-          <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>{pattern.size.name}, {W} x {H}. {pattern.stitches.length} stitches.</p>
+          <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>{pattern.partId ? `${W} x ${H}` : `${pattern.size.name}, ${W} x ${H}`}. {pattern.stitches.length === 1 ? "1 stitch" : `${pattern.stitches.length} stitches`}.</p>
         </Section>
       </aside>
     );

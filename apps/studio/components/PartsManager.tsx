@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { api } from "@knitted/core/client";
 import { foldersIn, hasLintErrors, isInside, lintCodePart, nameOf, type Part, type PartCategory } from "@knitted/core";
 import { Button, Chip, ConfirmDialog, Dialog, EmptyState, Field, Input, Select, Skeleton, Textarea, icons, useToast } from "@knitted/ui";
@@ -9,18 +10,20 @@ import { PartThumb } from "./editor/PartThumb";
 import { FolderCrumbs, FolderDialogs, FolderList, NewFolderButton, useFolders } from "./Folders";
 import { ViewBar, commonSorts, layout, useView } from "./Views";
 
-const { Plus, Upload, Download, Copy, Trash2, AlertTriangle, FolderInput } = icons;
+const { Plus, Upload, Download, Copy, Trash2, AlertTriangle, FolderInput, Pencil } = icons;
 const CATS: { value: PartCategory; label: string }[] = [{ value: "text", label: "Text" }, { value: "media", label: "Media" }, { value: "motion", label: "Motion" }, { value: "frame", label: "Frame" }, { value: "cta", label: "Call to action" }, { value: "other", label: "Other" }];
 const STARTER_HTML = `<div class="card">\n  <span class="k">{{kicker}}</span>\n  <strong>{{title}}</strong>\n</div>`;
 const STARTER_CSS = `.card{position:absolute;inset:0;display:grid;align-content:center;gap:6px;padding:8%;background:#17110b;color:#fffbf6;font:700 5.5vw system-ui;border-radius:12px;animation:in 600ms ease-out both}\n.k{font:500 2.4vw ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;color:#ff9254}\n@keyframes in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}`;
 
 export function PartsManager({ projectId }: { projectId: string }) {
   const toast = useToast();
+  const router = useRouter();
   const { data: parts, refresh } = useLive(() => api.parts.list(projectId), [projectId]);
   const { data: swatches } = useLive(() => api.swatches.list(projectId), [projectId]);
   const { data: project } = useLive(() => api.projects.get(projectId), [projectId]);
   const swatch = swatches?.find((s) => s.id === project?.swatchId) ?? swatches?.[0];
   const [creating, setCreating] = useState(false);
+  const [coding, setCoding] = useState<Part | null>(null);
   const [del, setDel] = useState<{ part: Part; usedIn: number } | null>(null);
   const file = useRef<HTMLInputElement>(null);
   // Folders sort the parts that are yours. The starter parts stay as they come.
@@ -31,6 +34,17 @@ export function PartsManager({ projectId }: { projectId: string }) {
   const [cat, setCat] = useState<"all" | PartCategory>("all");
 
   const act = async (fn: () => Promise<unknown>, msg?: string) => { try { await fn(); await refresh(); if (msg) toast(msg); } catch (e) { toast((e as Error).message); } };
+  // A Part of stitches opens in the editor, where every change is the Part's. One in code opens
+  // as code. A starter is never changed: a copy of it is made, in the folder the person is in.
+  const edit = async (p: Part) => {
+    if (p.kind === "code") { setCoding(p); return; }
+    try {
+      const mine = p.builtin ? await api.parts.action(p.id, "duplicate", projectId, kit.here) : p;
+      if (mine.kind === "code") { setCoding(mine); return; }
+      const pat = await api.parts.edit(mine.id, projectId);
+      router.push(`/projects/${pat.projectId}/patterns/${pat.id}`);
+    } catch (e) { toast((e as Error).message); }
+  };
   const download = async (p: Part) => {
     const j = await api.parts.action(p.id, "export");
     const url = URL.createObjectURL(new Blob([JSON.stringify(j, null, 2)], { type: "application/json" }));
@@ -57,6 +71,7 @@ export function PartsManager({ projectId }: { projectId: string }) {
             {p.slots.length > 0 && <p className="body-sm" style={{ margin: "2px 0 0" }}>{p.slots.map((s) => <Chip key={s.name} className="code">{s.name}{s.locked ? " locked" : ""}</Chip>)}</p>}
           </div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <Button size="sm" aria-label={`${p.builtin ? "Edit a copy of" : "Edit"} ${p.name}`} tip={p.builtin ? "A starter stays as it comes: this makes a copy of your own and opens it." : p.kind === "code" ? "Its markup and CSS." : "Opens it in the editor. Every pattern that uses it shows the change."} onClick={() => edit(p)}><Pencil size={12} aria-hidden /> {p.builtin ? "Edit a copy" : "Edit"}</Button>
             {/* A starter part's copy goes in the folder the person is in; one of theirs, next to it. */}
             <Button size="sm" onClick={() => act(() => api.parts.action(p.id, "duplicate", projectId, p.builtin ? kit.here : undefined), `Duplicated ${p.name}${p.builtin && kit.here ? ` into ${nameOf(kit.here)}` : ""}`)}><Copy size={12} aria-hidden /> Duplicate</Button>
             {editable && <Button size="sm" aria-label={`Move to folder, ${p.name}`} onClick={() => kit.askMove([p], p.name)}><FolderInput size={12} aria-hidden /> Move to folder</Button>}
@@ -100,6 +115,7 @@ export function PartsManager({ projectId }: { projectId: string }) {
         {builtin.length ? grid(builtin, false) : <p className="body-sm" style={{ color: "var(--ink-muted)" }}>No starter parts match.</p>}
       </section>
       <CodePartDialog open={creating} onOpenChange={setCreating} projectId={projectId} folder={kit.here} swatch={swatch} onDone={refresh} />
+      {coding && <CodePartDialog key={coding.id} part={coding} open onOpenChange={(o) => !o && setCoding(null)} projectId={projectId} folder={coding.folder} swatch={swatch} onDone={() => { void refresh(); toast(`Saved ${coding.name}. Every pattern that uses it shows the change.`); }} />}
       <ConfirmDialog open={!!del} onOpenChange={(o) => !o && setDel(null)} title={`Delete ${del?.part.name ?? "part"}?`}
         description={del?.usedIn ? `It is used in ${del.usedIn} ${del.usedIn === 1 ? "pattern" : "patterns"}. Those will show a missing-part gap until you replace it.` : "Nothing uses it."} confirmLabel="Delete part"
         onConfirm={async () => { await api.parts.remove(del!.part.id); await refresh(); toast("Deleted"); }} />
@@ -108,16 +124,23 @@ export function PartsManager({ projectId }: { projectId: string }) {
   );
 }
 
-function CodePartDialog({ open, onOpenChange, projectId, folder, swatch, onDone }: { open: boolean; onOpenChange: (o: boolean) => void; projectId: string; folder: string; swatch: Parameters<typeof PartThumb>[0]["swatch"]; onDone: () => void }) {
-  const [name, setName] = useState(""); const [category, setCategory] = useState<PartCategory>("motion");
-  const [html, setHtml] = useState(STARTER_HTML); const [css, setCss] = useState(STARTER_CSS);
-  const [slotText, setSlotText] = useState("kicker, title"); const [aspect, setAspect] = useState("2"); const [err, setErr] = useState<string | undefined>();
+/** A Part written in code: a new one, or `part` to change. A slot kept by name keeps its default and its lock. */
+function CodePartDialog({ part, open, onOpenChange, projectId, folder, swatch, onDone }: { part?: Part; open: boolean; onOpenChange: (o: boolean) => void; projectId: string; folder: string; swatch: Parameters<typeof PartThumb>[0]["swatch"]; onDone: () => void }) {
+  const [name, setName] = useState(part?.name ?? ""); const [category, setCategory] = useState<PartCategory>(part?.category ?? "motion");
+  const [html, setHtml] = useState(part?.html ?? STARTER_HTML); const [css, setCss] = useState(part?.css ?? STARTER_CSS);
+  const [slotText, setSlotText] = useState(part ? part.slots.map((s) => s.name).join(", ") : "kicker, title"); const [aspect, setAspect] = useState(String(part ? +part.aspect.toFixed(3) : 2)); const [err, setErr] = useState<string | undefined>();
   const lint = useMemo(() => lintCodePart(html, css), [html, css]);
-  const slots = slotText.split(",").map((s) => s.trim()).filter(Boolean).map((n) => ({ name: n, kind: "text" as const, locked: false, default: n === "title" ? "Make it knitted" : n === "kicker" ? "New this week" : "" }));
+  const slots = slotText.split(",").map((s) => s.trim()).filter(Boolean).map((n) => part?.slots.find((s) => s.name === n) ?? ({ name: n, kind: "text" as const, locked: false, default: n === "title" ? "Make it knitted" : n === "kicker" ? "New this week" : "" }));
   const draft = { id: "draft", projectId, builtin: false, name: name || "Draft", description: "", category, tags: [], kind: "code" as const, stitches: [], html, css, slots, aspect: Number(aspect) || 2, durationMs: 0, version: 1, folder, createdAt: "", updatedAt: "" };
-  const save = async () => { try { await api.parts.create(projectId, { name, category, kind: "code", html, css, slots, aspect: Number(aspect) || 2, folder }); onOpenChange(false); setName(""); setErr(undefined); onDone(); } catch (e) { setErr((e as Error).message); } };
+  const save = async () => {
+    try {
+      const b = { name, category, kind: "code", html, css, slots, aspect: Number(aspect) || 2 };
+      if (part) await api.parts.update(part.id, b); else await api.parts.create(projectId, { ...b, folder });
+      onOpenChange(false); if (!part) setName(""); setErr(undefined); onDone();
+    } catch (e) { setErr((e as Error).message); }
+  };
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} wide title="New code part" description="Markup and CSS in a sandbox: no scripts, no network. Use {{slot}} where a value goes. Animate with CSS, which the engine drives frame by frame."
+    <Dialog open={open} onOpenChange={onOpenChange} wide title={part ? `Edit ${part.name}` : "New code part"} description={`Markup and CSS in a sandbox: no scripts, no network. Use {{slot}} where a value goes. Animate with CSS, which the engine drives frame by frame.${part ? " Every pattern that uses it shows the change." : ""}`}
       actions={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" disabled={hasLintErrors(lint) || !name.trim()} onClick={save}>Save part</Button></>}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 240px", gap: "var(--space-5)" }}>
         <div style={{ display: "grid", gap: "var(--space-3)" }}>

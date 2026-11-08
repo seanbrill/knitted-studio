@@ -4,7 +4,7 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import sharp from "sharp";
 import { manifest as fontManifest } from "@knitted/fonts";
-import { COLOR_ROLES, type Actor, type ColorRole, type FontRef, type LogoUse, type Swatch, type SwatchColor, type Yarn } from "./types.ts";
+import { COLOR_ROLES, LIBRARY_ID, type Actor, type ColorRole, type FontRef, type LogoUse, type Swatch, type SwatchColor, type Yarn } from "./types.ts";
 import { FALLBACK_SWATCH } from "./tokens.ts";
 import { isHex } from "./contrast.ts";
 import { newId } from "./ids.ts";
@@ -349,7 +349,7 @@ export async function createSwatchFromProposal(store: Store, projectId: string, 
   const logos: SwatchData["logos"] = [];
   for (const l of input.logos ?? []) {
     const y = getYarn(store, l.yarnId);
-    if (y.projectId !== projectId || y.kind !== "image" || y.deletedAt) throw new ValidationError("A logo has to be an image in this project's Yarn.");
+    if ((y.projectId !== projectId && y.projectId !== LIBRARY_ID) || y.kind !== "image" || y.deletedAt) throw new ValidationError("A logo has to be an image in this project's Yarn, or in the Library.");
     logos.push({ yarnId: y.id, use: l.use });
   }
   if (input.logo) {
