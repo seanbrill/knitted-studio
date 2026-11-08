@@ -12,7 +12,7 @@ import { formatBytes, timeAgo, useLive } from "@/lib/hooks";
 import { useUploads, type UploadItem } from "@/lib/uploads";
 import { FolderCrumbs, FolderDialogs, FolderList, InFolder, NewFolderButton, counted, useFolders } from "./Folders";
 import { TagFilter, ViewBar, commonSorts, layout, useView, type SortBy } from "./Views";
-import { AskModelButton, aboutYarn } from "./AskModel";
+import { AskModelButton, aboutDrawing, aboutYarn } from "./AskModel";
 import { PickBox, SelectionBar, TagDialog, picking, useSelection } from "./Selection";
 
 const { Upload, Plus, Search, FileText, Music, Film, Type, Image: ImageIcon, X, AlertTriangle, Trash2, Download, Link2: LinkIcon, RotateCcw, FolderInput, FilePdf, Crop, BookOpen, Monitor, Smartphone, ChevronLeft, ChevronRight, Play, Library, Images, Copy, ExternalLink } = icons;
@@ -191,6 +191,7 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
         {heading ? <h2 className="h2">{words.title}</h2> : <h3 className="h3" style={{ margin: 0 }}>{words.title}</h3>}
         <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
           <NewFolderButton kit={kit} />
+          {shelf === "yarn" && projectId !== LIBRARY_ID && <AskModelButton about={aboutDrawing(projectId, kit.here || undefined)} />}
           {shelf === "yarn" && <Link className="btn btn-secondary" href={`/stock?to=${projectId}`}><Images size={14} aria-hidden /> Free stock</Link>}
           <Button tip="Fetch one file from a public web address" onClick={() => setUrlOpen(true)}><LinkIcon size={14} aria-hidden /> From a link</Button>
           <Button tip={shelf === "reference" ? "Write down something to know about the business" : "Save words to use again: headlines, captions, taglines, hashtags"} onClick={() => setCopyOpen(true)}><FileText size={14} aria-hidden /> {words.copy}</Button>
@@ -354,6 +355,7 @@ function YarnDrawer({ id, projectId, onClose, onChanged, onDelete, onMove, onCro
           </Field>
           {y.meta.warnings?.map((w) => <p key={w} className="field-error" style={{ margin: 0 }}><AlertTriangle size={14} aria-hidden /> {w}</p>)}
           {y.meta.stock && <StockCredit credit={y.meta.stock} />}
+          {y.meta.made && <MadeNote made={y.meta.made} />}
           <dl className="body-sm" style={{ display: "grid", gridTemplateColumns: "100px 1fr", gap: "6px 12px", margin: 0 }}>
             {y.meta.site && <><dt style={{ color: "var(--ink-muted)" }}>Page</dt><dd style={{ margin: 0, wordBreak: "break-all" }}><a className="link" href={y.meta.site.url} target="_blank" rel="noreferrer">{y.meta.site.url}</a>, on a {y.meta.site.device === "mobile" ? "phone" : "desktop"}, {timeAgo(y.meta.site.at)}</dd></>}
             {y.meta.from && <><dt style={{ color: "var(--ink-muted)" }}>Cut from</dt><dd style={{ margin: 0 }}>{y.meta.from.name}{y.meta.from.page ? `, page ${y.meta.from.page}` : ""}</dd></>}
@@ -559,6 +561,18 @@ function StockCredit({ credit: c }: { credit: NonNullable<Yarn["meta"]["stock"]>
         <a className="link body-sm" href={c.page} target="_blank" rel="noreferrer" style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>{c.provider === "openverse" ? "Its page" : `Its page on ${src}`} <ExternalLink size={12} aria-hidden /></a>
         {c.licenseUrl && <a className="link body-sm" href={c.licenseUrl} target="_blank" rel="noreferrer" style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>{c.license} <ExternalLink size={12} aria-hidden /></a>}
       </div>
+    </section>
+  );
+}
+
+// A file made here: who drew or made it, from what, and what was asked for.
+function MadeNote({ made: m }: { made: NonNullable<Yarn["meta"]["made"]> }) {
+  return (
+    <section aria-label="How it was made" style={{ display: "grid", gap: 6, padding: "var(--space-3)", borderRadius: "var(--radius-md)", background: "var(--surface-sunken)" }}>
+      <p className="eyebrow" style={{ margin: 0 }}>{m.by === "model" ? "Drawn by your model" : `Made by ${m.provider ?? "a provider"}${m.model ? `, ${m.model}` : ""}`}, {timeAgo(m.at)}</p>
+      {m.prompt && <p className="body-sm" style={{ margin: 0 }}>&ldquo;{m.prompt}&rdquo;</p>}
+      {m.from?.length ? <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>From {m.from.map((f) => f.name).join(", ")}</p> : null}
+      {m.costUsd ? <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>It cost ${m.costUsd.toFixed(2)}.</p> : null}
     </section>
   );
 }

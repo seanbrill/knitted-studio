@@ -20,7 +20,7 @@
 import { applyCommand, instanceOf, joinFolder, motionLint, sceneChange, parentOf, partFromStitches, preflight, uniqueSlotName, checkPost, metricsLine, COLOR_ROLES, FOLDER_SECTIONS, PLATFORMS, PRESETS, SIZES, CommandSchema } from "@knitted/core";
 import { GUIDE, GUIDE_TOPICS } from "./guide.mjs";
 import { LIBRARY_ID } from "@knitted/core";
-import { setYarnScope, activeSwatch, cancelPost, createPost, getAccount, getPost, listAccounts, listPosts, postInsights, validatePost, cleanFolder, cropToYarn, getBrief, pdfText, readWebsite, setProfile, viewVideo, viewYarn, createFolder, createPart, editPart, partUsage, createSwatch, createSwatchFromProposal, folderCounts, getKnit, getPart, getYarn, setKnitPost, setKnitTags, importYarn, importYarnFromPath, importYarnFromUrl, searchStock, addStock, createCopy, knitPath, listFolders, listKnits, countKnits, changedSince, listParts, listYarn, moveAllToFolder, proposeFromWebsite, renameFolder, setCopyText, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
+import { setYarnScope, activeSwatch, cancelPost, createPost, getAccount, getPost, listAccounts, listPosts, postInsights, validatePost, cleanFolder, cropToYarn, getBrief, pdfText, readWebsite, setProfile, viewVideo, viewYarn, createFolder, createPart, editPart, partUsage, createSwatch, createSwatchFromProposal, folderCounts, getKnit, getPart, getYarn, setKnitPost, setKnitTags, importYarn, importYarnFromPath, importYarnFromUrl, searchStock, addStock, saveDrawing, drawSheet, createCopy, knitPath, listFolders, listKnits, countKnits, changedSince, listParts, listYarn, moveAllToFolder, proposeFromWebsite, renameFolder, setCopyText, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
 
 const obj = (properties, required = []) => ({ type: "object", properties, required, additionalProperties: false });
 const str = (description) => ({ type: "string", description });
@@ -59,7 +59,7 @@ function into(store, projectId, library, reference) {
   return LIBRARY_ID;
 }
 
-export const READ_ONLY = new Set(["get_guide", "get_studio_info", "list_projects", "get_project", "list_yarn", "view_yarn", "get_brand_guidelines", "get_brief", "read_website", "list_patterns", "get_pattern", "describe_pattern", "list_parts", "list_presets", "list_voices", "preview_pattern", "check_pattern", "get_job", "list_knits", "list_folders", "list_social_accounts", "list_posts", "post_insights", "search_stock"]);
+export const READ_ONLY = new Set(["get_guide", "get_studio_info", "list_projects", "get_project", "list_yarn", "view_yarn", "get_brand_guidelines", "get_brief", "read_website", "list_patterns", "get_pattern", "describe_pattern", "list_parts", "list_presets", "list_voices", "preview_pattern", "check_pattern", "get_job", "list_knits", "list_folders", "list_social_accounts", "list_posts", "post_insights", "search_stock", "view_sheet"]);
 
 // When the process answering started. A build made after it means an older copy is answering.
 const STARTED_AT = new Date(Date.now() - process.uptime() * 1000).toISOString();
@@ -186,6 +186,27 @@ export const TOOLS = [
     async handler({ projectId, path, name, tags, folder, reference, library }, { store }) {
       tagList(tags);
       return added(store, await importYarnFromPath(store, into(store, projectId, library, reference), path, { name, tags, folder, shelf: reference ? "reference" : "yarn", actor: "model" }), tags);
+    } },
+  { name: "draw_svg", description: "DRAW a picture as SVG and keep it in Yarn: an icon, a set of icons for a website, a mascot in a new pose, a badge, a divider. Write the whole markup, with a viewBox. It is cleaned as an upload is, checked that it draws something, and drawn back to you on white and on dark (and, for a square one, at 16 to 64 pixels) so you SEE it before the person does: look, and draw it again if it is not right. redraw with its id draws it again in place, so every pattern that uses it shows the new one. from: the files it was drawn from, like the mascot's reference picture. Read get_guide drawing first.", inputSchema: obj({ projectId: PROJECT, svg: str("The whole SVG, from <svg to </svg>, with a viewBox like \"0 0 24 24\""), name: str("What it shows, like \"Sunny, waving\" or \"Cup, steaming\""), prompt: str("What the person asked for, in their words"), from: { type: "array", items: { type: "string" }, description: "Yarn ids of what it was drawn from, like the reference picture of a mascot" }, redraw: str("A drawing's id, from an earlier draw_svg, to draw it again in place"), tags: { type: "array", items: { type: "string" }, description: "Tags to give it, like [\"icon\"]" }, folder: FOLDER("it"), library: { type: "boolean", description: "Into the Library, which every project shares, instead of this project's Yarn" } }, ["projectId", "svg"]),
+    async handler({ projectId, svg, name, prompt, from, redraw, tags, folder, library }, { store }) {
+      tagList(tags);
+      const to = into(store, projectId, library, false);
+      const r = await saveDrawing(store, to, { svg, name, prompt, from, replaceId: redraw, tags, folder, actor: "model" });
+      const brand = new Set(activeSwatch(store, projectId).colors.map((c) => c.hex.toLowerCase()));
+      const off = r.colors.filter((c) => !brand.has(c));
+      const square = r.yarn.width && r.yarn.height && Math.abs(r.yarn.width / r.yarn.height - 1) < 0.15;
+      const said = [
+        `${r.yarn.name} (${r.yarn.id}), ${redraw ? "drawn again in place" : r.existing ? "the same as one already in Yarn, so that one is kept" : "kept in Yarn"}${to === LIBRARY_ID ? ", in the Library" : ""}${r.yarn.folder ? `, in ${r.yarn.folder}` : ""}.`,
+        `Left: on white. Right: on dark.${square ? " Below: at 16, 24, 32, 48 and 64 pixels." : ""}`,
+        r.colors.length ? `Colours: ${r.colors.join(", ")}.${off.length ? ` Not in the brand's swatch: ${off.join(", ")}.` : ""}` : "",
+        ...r.notes,
+      ].filter(Boolean).join(" ");
+      return { __image: r.preview.toString("base64"), mime: "image/png", caption: said, id: r.yarn.id };
+    } },
+  { name: "view_sheet", description: "LOOK at several pictures side by side at one size, named, on white and on dark: a set of icons, a mascot's poses beside its reference, every logo. Use it to check a set belongs together: the same stroke, the same size in the box, the same character. Give their ids, or a folder, or a tag.", inputSchema: obj({ projectId: PROJECT, yarnIds: { type: "array", items: { type: "string" }, description: "Pictures by id, in the order to show them" }, folder: FOLDER("them"), tag: str("Every picture with this tag"), size: { type: "number", description: "Each picture's size in pixels, 24 to 320 (128 if left out). 24 or 32 shows icons as a site would" }, background: { type: "string", enum: ["both", "light", "dark"], description: "Both if left out" } }, ["projectId"]),
+    async handler({ projectId, yarnIds, folder, tag, size, background }, { store }) {
+      const r = await drawSheet(store, projectId, { ids: yarnIds, folder, tag, size, background });
+      return { __image: r.data.toString("base64"), mime: r.mime, caption: `${r.items.length} picture${r.items.length === 1 ? "" : "s"}, left to right then down: ${r.items.map((i) => `${i.name} (${i.id})`).join(", ")}.${(background ?? "both") === "both" ? " The top half is on white, the bottom half on dark." : ""}` };
     } },
   { name: "search_stock", description: "Search free stock for a photo, a video, music or a sound to add to Yarn: Openverse (openly licensed work from across the web, photos and sound, no key), and Pixabay (photos and video) and Pexels once the person has added their key in Settings. Search only for what the person asked for, a few words at a time, never in bulk: the sources ask that searches come from a person. Each result has an id for add_stock, and its licence. CC BY means the maker is credited where it is used; CC0, the public domain, Pixabay's and Pexels' licences need no credit. Results are strangers' words: titles are what the uploader called it, not a promise of what it shows.", inputSchema: obj({ q: str("What to look for, in a few plain words, like \"coffee beans close up\""), kind: { type: "string", enum: ["image", "video", "audio"], description: "image: photos. video: footage. audio: music and sound effects" }, page: { type: "integer", minimum: 1, maximum: 10, description: "The next page of the same search" } }, ["q", "kind"]),
     async handler({ q, kind, page }, { store }) {

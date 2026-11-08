@@ -324,7 +324,7 @@ async function probe(file: string): Promise<{ durationMs?: number; width?: numbe
  * where it is. `shelf`: Yarn, or the Brief's reference, each with folders of its own. The same
  * file may be on both: the reference is what a model looks at, Yarn what a pattern uses.
  */
-export interface ImportOptions { name?: string; tags?: string[]; folder?: string; replaceId?: string; maxBytes?: number; actor?: "human" | "model" | "import"; shelf?: Shelf; /** Set by cropToYarn: what it was cut from. */ from?: YarnMeta["from"]; /** Set by the engine's site pictures: the page it shows. */ site?: YarnMeta["site"]; /** Set by a stock import: where it came from, and its credit. */ stock?: YarnMeta["stock"]; /** Not said in the project's Activity: a batch of many says what it did once. */ quiet?: boolean; }
+export interface ImportOptions { name?: string; tags?: string[]; folder?: string; replaceId?: string; maxBytes?: number; actor?: "human" | "model" | "import"; shelf?: Shelf; /** Set by cropToYarn: what it was cut from. */ from?: YarnMeta["from"]; /** Set by the engine's site pictures: the page it shows. */ site?: YarnMeta["site"]; /** Set by a stock import: where it came from, and its credit. */ stock?: YarnMeta["stock"]; /** Set when it was made here: drawn by a model, or made by a provider. */ made?: YarnMeta["made"]; /** Not said in the project's Activity: a batch of many says what it did once. */ quiet?: boolean; }
 export interface ImportResult { yarn: Yarn; existing: boolean; }
 
 // A PDF's text is kept beside it, page by page, not in its row: a long one is megabytes, and
@@ -381,7 +381,9 @@ export async function importYarn(store: Store, projectId: string, tmpPath: strin
       catch { throw new ValidationError(`That file is not a real ${ext.slice(1).toUpperCase()} image. It may be corrupt or renamed from something else.`); }
       const c = await dominantColors(sharp(buf));
       meta.colors = c.colors; meta.hasAlpha = c.hasAlpha;
-      await sharp(buf).rotate().resize(320, 320, { fit: "inside", withoutEnlargement: true }).webp({ quality: 78 }).toFile(`${thumbBase}.webp`);
+      // An SVG is drawn at the thumbnail's size, not its own: an icon's viewBox is often 24 wide.
+      const vector = ext === ".svg" && width && height ? { density: Math.max(1, Math.min(4000, (72 * 320) / Math.max(width, height))) } : undefined;
+      await sharp(buf, vector).rotate().resize(320, 320, { fit: "inside", withoutEnlargement: !vector }).webp({ quality: 78 }).toFile(`${thumbBase}.webp`);
       meta.thumb = `${id}.webp`;
       if (width && width < 1000 && /logo|mark|wordmark/i.test(originalName + " " + (opts.name ?? ""))) warn(`That logo is ${width}px wide. Upload one at least 1000px wide to print sharp.`);
       else if (width && width < 600 && ext !== ".svg") warn(`This image is only ${width}px wide, so it may look soft on a large post.`);
@@ -448,6 +450,7 @@ export async function importYarn(store: Store, projectId: string, tmpPath: strin
     if (opts.from) meta.from = opts.from;
     if (opts.site) meta.site = opts.site;
     if (opts.stock) meta.stock = opts.stock;
+    if (opts.made) meta.made = opts.made;
 
     await mkdir(dir, { recursive: true });
     const prior = replacing;

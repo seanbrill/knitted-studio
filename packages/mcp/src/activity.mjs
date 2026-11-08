@@ -44,6 +44,10 @@ const SAY = {
   crop_to_yarn: (a, c) => `Cutting ${a.name ? quote(a.name) : "a part"} out of ${c.yarn ? quote(c.yarn) : "a picture"}`,
   import_yarn: (a, c) => (a.yarnId ? `Changing the saved text ${quote(c.yarn ?? a.name ?? "")}` : a.text ? `Saving text, ${quote(a.name ?? "Saved text")}` : `Bringing ${a.name ? quote(a.name) : fileOf(a.url)} into ${a.reference ? "the reference" : a.library ? "the Library" : "Yarn"}`),
   import_yarn_file: (a) => `Bringing ${quote(a.name ?? String(a.path ?? "").split(/[\\/]/).pop())} into ${a.reference ? "the reference" : a.library ? "the Library" : "Yarn"} from this computer`,
+  search_stock: (a) => `Searching free stock for ${quote(String(a.q ?? ""))}`,
+  add_stock: (a) => `Adding ${a.name ? quote(a.name) : "a stock file"} to ${a.library ? "the Library" : "Yarn"}`,
+  draw_svg: (a) => (a.redraw ? `Drawing ${a.name ? quote(a.name) : "a drawing"} again` : `Drawing ${a.name ? quote(a.name) : "a picture"}`),
+  view_sheet: (a) => `Looking at ${Array.isArray(a.yarnIds) ? `${a.yarnIds.length} pictures` : a.folder ? `the pictures in ${quote(a.folder)}` : a.tag ? `the pictures tagged ${a.tag}` : "pictures"} side by side`,
   share_yarn: (a, c) => `Moving ${c.yarn ? quote(c.yarn) : "a file"} ${a.library ? "into the Library, for every project" : "out of the Library"}`,
   tag_yarn: (a, c) => `Tagging ${c.yarn ? quote(c.yarn) : "a file"}${Array.isArray(a.tags) && a.tags.length ? ` ${a.tags.join(", ")}` : ""}`,
   rename: (a, c) => `Renaming ${a.folder ? `the folder ${quote(a.folder)}` : c.pattern ? c.pattern.name : c.yarn ? quote(c.yarn) : "something"} to ${quote(a.name)}`,
@@ -128,6 +132,7 @@ export function endOf(name, a, out, store) {
   if (name === "create_project" && out?.id) where.projectId = out.id;
   if ((name === "create_pattern" || name === "duplicate_pattern") && out?.id) { where.patternId = out.id; where.stitchIds = undefined; }
   if (name === "add_stitch" && out?.id) where.stitchIds = [out.id];
+  if ((name === "add_stock" || name === "draw_svg") && out?.id) where.yarnId = out.id;
   if ((name === "import_yarn" || name === "import_yarn_file" || name === "crop_to_yarn") && out?.id) { where.yarnId = out.id; where.section = out.in === "reference" || a.reference ? "reference" : undefined; }
   if (name === "propose_swatch" && out?.id) where.swatchId = out.id;
   if (name === "create_part" && out?.id) where.partId = out.id;

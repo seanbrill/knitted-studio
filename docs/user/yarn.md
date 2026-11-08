@@ -60,6 +60,18 @@ The Library is what every project shares: a logo, a font or a photo you use for 
 - On the Library page, **Move into a project** takes a file back into one project. A file that other projects use stays in the Library.
 - The Brief's reference is about one business, so its files do not go in the Library.
 
+## Drawing with your model
+
+Your model can draw pictures as SVG and keep them in Yarn: an icon set for your website, your mascot in new poses, a badge, a divider. SVG stays sharp at any size.
+
+- Choose **Draw with your model** on a project's Yarn page, and say what to draw. Your model works in a chat of its own while you carry on.
+- To draw from a picture, like your mascot, upload the picture first and name it in what you ask. On the picture, **Ask your model** has ideas such as *Draw it as SVG in three new poses*.
+- Your model sees each drawing on white, on dark, and at icon sizes before you do, and puts a set side by side to check it belongs together.
+- A drawing is marked **Drawn by your model**, with what you asked for and what it was drawn from, and tagged *drawn*.
+- When your model draws one again, it keeps its place: every Pattern that uses it shows the new one. It never draws over a file you uploaded.
+
+Your model uses `draw_svg` and `view_sheet` for this. It cannot make photos or video this way.
+
 ## Free stock
 
 When a brand has no photo, footage, music or sound effect for something, **Stock** in the side bar finds free ones. **Free stock** on a project's Yarn page opens it for that project.

@@ -1,13 +1,13 @@
 [
   {
     "name": "get_guide",
-    "summary": "How to use knitted well, a topic at a time: the numbers and habits that make work look designed, not merely generated. Read start first, then the topic before your first task of that kind. Topics: start, patterns, motion, voice, yarn, knitting, brief, parts, posts, copywriting, organizing.",
+    "summary": "How to use knitted well, a topic at a time: the numbers and habits that make work look designed, not merely generated. Read start first, then the topic before your first task of that kind. Topics: start, patterns, motion, voice, yarn, drawing, knitting, brief, parts, posts, copywriting, organizing.",
     "params": [
       {
         "name": "topic",
         "type": "string",
         "required": false,
-        "description": "Leave out for start. One of start, patterns, motion, voice, yarn, knitting, brief, parts, posts, copywriting, organizing."
+        "description": "Leave out for start. One of start, patterns, motion, voice, yarn, drawing, knitting, brief, parts, posts, copywriting, organizing."
       }
     ]
   },
@@ -216,6 +216,108 @@
         "type": "boolean",
         "required": false,
         "description": "Into the Library, which every project shares, instead of this project's Yarn: for what every brand uses"
+      }
+    ]
+  },
+  {
+    "name": "draw_svg",
+    "summary": "DRAW a picture as SVG and keep it in Yarn: an icon, a set of icons for a website, a mascot in a new pose, a badge, a divider. Write the whole markup, with a viewBox. It is cleaned as an upload is, checked that it draws something, and drawn back to you on white and on dark (and, for a square one, at 16 to 64 pixels) so you SEE it before the person does: look, and draw it again if it is not right. redraw with its id draws it again in place, so every pattern that uses it shows the new one. from: the files it was drawn from, like the mascot's reference picture. Read get_guide drawing first.",
+    "params": [
+      {
+        "name": "projectId",
+        "type": "string",
+        "required": true,
+        "description": "The project id, like pj_01..."
+      },
+      {
+        "name": "svg",
+        "type": "string",
+        "required": true,
+        "description": "The whole SVG, from <svg to </svg>, with a viewBox like \"0 0 24 24\""
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "required": false,
+        "description": "What it shows, like \"Sunny, waving\" or \"Cup, steaming\""
+      },
+      {
+        "name": "prompt",
+        "type": "string",
+        "required": false,
+        "description": "What the person asked for, in their words"
+      },
+      {
+        "name": "from",
+        "type": "string[]",
+        "required": false,
+        "description": "Yarn ids of what it was drawn from, like the reference picture of a mascot"
+      },
+      {
+        "name": "redraw",
+        "type": "string",
+        "required": false,
+        "description": "A drawing's id, from an earlier draw_svg, to draw it again in place"
+      },
+      {
+        "name": "tags",
+        "type": "string[]",
+        "required": false,
+        "description": "Tags to give it, like [\"icon\"]"
+      },
+      {
+        "name": "folder",
+        "type": "string",
+        "required": false,
+        "description": "The folder it goes in, as a path from the top of its section, like Royalty free music/Lo-fi. Made when it is not there. Left out, the top."
+      },
+      {
+        "name": "library",
+        "type": "boolean",
+        "required": false,
+        "description": "Into the Library, which every project shares, instead of this project's Yarn"
+      }
+    ]
+  },
+  {
+    "name": "view_sheet",
+    "summary": "LOOK at several pictures side by side at one size, named, on white and on dark: a set of icons, a mascot's poses beside its reference, every logo. Use it to check a set belongs together: the same stroke, the same size in the box, the same character. Give their ids, or a folder, or a tag.",
+    "params": [
+      {
+        "name": "projectId",
+        "type": "string",
+        "required": true,
+        "description": "The project id, like pj_01..."
+      },
+      {
+        "name": "yarnIds",
+        "type": "string[]",
+        "required": false,
+        "description": "Pictures by id, in the order to show them"
+      },
+      {
+        "name": "folder",
+        "type": "string",
+        "required": false,
+        "description": "The folder them goes in, as a path from the top of its section, like Royalty free music/Lo-fi. Made when it is not there. Left out, the top."
+      },
+      {
+        "name": "tag",
+        "type": "string",
+        "required": false,
+        "description": "Every picture with this tag"
+      },
+      {
+        "name": "size",
+        "type": "number",
+        "required": false,
+        "description": "Each picture's size in pixels, 24 to 320 (128 if left out). 24 or 32 shows icons as a site would"
+      },
+      {
+        "name": "background",
+        "type": "string",
+        "required": false,
+        "description": "Both if left out. One of both, light, dark."
       }
     ]
   },

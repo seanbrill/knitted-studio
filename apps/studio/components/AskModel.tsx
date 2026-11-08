@@ -13,7 +13,7 @@ import { Button, Dialog, Field, Textarea, icons, useToast } from "@knitted/ui";
 const { Sparkles } = icons;
 
 /** What is being changed, as the model is told it, and a few things a person often asks for. */
-export interface About { projectId: string; patternId?: string; name: string; what: string; context: string; ideas: string[] }
+export interface About { projectId: string; patternId?: string; name: string; what: string; context: string; ideas: string[]; /** Something new to draw, not a thing to change. */ make?: boolean }
 
 export function aboutKnit(k: KnitRecord): About {
   const size = `${k.format.toUpperCase()} at ${k.width}x${k.height}${k.durationMs ? `, ${(k.durationMs / 1000).toFixed(1)} seconds long` : ""}`;
@@ -39,11 +39,22 @@ export function aboutPattern(p: Pattern): About {
 export function aboutYarn(y: Yarn): About {
   const how = y.kind === "copy"
     ? "To change its words, give import_yarn its yarnId and the new text."
-    : "Look at it first with view_yarn. You can rename it, tag it, move it to a folder, or cut a picture out of it with crop_to_yarn.";
+    : `Look at it first with view_yarn. You can rename it, tag it, move it to a folder, or cut a picture out of it with crop_to_yarn.${y.kind === "image" ? " To draw new pictures from it, like a mascot in new poses or icons in its style, read get_guide drawing and use draw_svg with from: its id." : ""}`;
   return {
     projectId: y.projectId, name: y.name, what: y.kind === "copy" ? "this saved text" : "this file",
     context: `This is about the Yarn "${y.name}" (${y.id}), ${y.kind === "copy" ? "saved text" : `a ${y.kind}`}. ${how}`,
-    ideas: y.kind === "copy" ? ["Make it shorter", "Write three more like it", "Say it in our voice"] : ["Give it a better name and tags", "Cut out the product", "Put it in the right folder"],
+    ideas: y.kind === "copy" ? ["Make it shorter", "Write three more like it", "Say it in our voice"]
+      : y.kind === "image" ? ["Give it a better name and tags", "Cut out the product", "Draw it as SVG in three new poses"]
+      : ["Give it a better name and tags", "Put it in the right folder"],
+  };
+}
+
+/** Something new to draw for a project, as SVG: icons, a mascot's poses, a badge. */
+export function aboutDrawing(projectId: string, folder?: string): About {
+  return {
+    projectId, name: "A drawing", what: "a drawing", make: true,
+    context: `The person wants something drawn for this project, as SVG. Read get_guide drawing first. Look at what it should match (view_yarn on any reference they name, get_brand_guidelines for the colours), then draw it with draw_svg, and look at what comes back. For a set, keep one system, put it in one folder${folder ? ` (they are in the folder "${folder}")` : ""}, and check it with view_sheet. Say what you drew and where it is.`,
+    ideas: ["Icons for our website: menu, search, cart, account, phone, map pin", "Our mascot waving, pointing and giving a thumbs up", "A divider and a corner flourish in our colours"],
   };
 }
 
@@ -59,7 +70,7 @@ export function aboutPart(p: Part, projectId: string): About {
 export function AskModelButton({ about, size, variant = "secondary" }: { about: About; size?: "sm" | "md"; variant?: "secondary" | "ghost" }) {
   const [open, setOpen] = useState(false);
   return <>
-    <Button size={size} variant={variant} tip={`Say what should change, and your model changes ${about.what}`} onClick={() => setOpen(true)}><Sparkles size={14} aria-hidden /> Ask your model</Button>
+    <Button size={size} variant={variant} tip={about.make ? "Say what to draw: icons, a mascot in new poses, a badge. Your model draws it as SVG, here in Yarn" : `Say what should change, and your model changes ${about.what}`} onClick={() => setOpen(true)}><Sparkles size={14} aria-hidden /> {about.make ? "Draw with your model" : "Ask your model"}</Button>
     <AskModelDialog about={open ? about : null} onOpenChange={setOpen} />
   </>;
 }
@@ -79,7 +90,7 @@ export function AskModelDialog({ about, onOpenChange }: { about: About | null; o
   const send = async () => {
     if (!about) return;
     const want = text.trim();
-    if (!want) { setErr("Say what should change."); return; }
+    if (!want) { setErr(about.make ? "Say what to draw." : "Say what should change."); return; }
     setBusy(true);
     try {
       const { chat } = await api.chats.start({ projectId: about.projectId, patternId: about.patternId, prompt: `${about.context}\n\nWhat I want: ${want}` });
@@ -88,10 +99,10 @@ export function AskModelDialog({ about, onOpenChange }: { about: About | null; o
     } catch (e) { setErr((e as Error).message); setBusy(false); }
   };
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} title={`Ask your model to change ${about?.what ?? "it"}`} description={about ? `${about.name}. Say what you want; your model does it in a chat of its own, and you can keep working.` : undefined}
+    <Dialog open={open} onOpenChange={onOpenChange} title={about?.make ? "Ask your model to draw" : `Ask your model to change ${about?.what ?? "it"}`} description={about ? `${about.make ? "It is drawn as SVG and kept in Yarn" : about.name}. Say what you want; your model does it in a chat of its own, and you can keep working.` : undefined}
       actions={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" disabled={busy} onClick={send}><Sparkles size={14} aria-hidden /> {busy ? "Starting..." : "Ask"}</Button></>}>
       <form onSubmit={(e) => { e.preventDefault(); void send(); }} style={{ display: "grid", gap: "var(--space-3)" }}>
-        <Field label="What should change?" htmlFor="ask-change" error={err}>
+        <Field label={about?.make ? "What should it draw?" : "What should change?"} htmlFor="ask-change" error={err}>
           <Textarea id="ask-change" autoFocus rows={4} value={text} onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void send(); } }} />
         </Field>

@@ -715,3 +715,22 @@ test("change_scene: the old scene goes out, all gone by the moment, the new one 
   assert.equal(locked.refused.length, 1, "the brand's logo stays where the brand put it");
   assert.ok((await tools.list_presets()).some((x) => x.id === "shrink-out" && x.kind === "out"));
 });
+
+test("draw_svg: the model sees what it drew, the colours off the brand, and can draw it again in place; view_sheet only looks", async () => {
+  const { READ_ONLY } = await import("@knitted/mcp/tools");
+  const svg = '<svg viewBox="0 0 24 24" fill="none" stroke="#FF00AA" stroke-width="2"><circle cx="12" cy="12" r="8"/></svg>';
+  const r = await tools.draw_svg({ projectId: project.id, svg, name: "Ring", prompt: "a ring icon", folder: "Icons" });
+  const png = Buffer.from(r.__image, "base64");
+  assert.equal(r.mime, "image/png");
+  assert.equal(png.subarray(1, 4).toString(), "PNG");
+  assert.match(r.caption, /^Ring \(yn_[^)]+\), kept in Yarn, in Icons\./);
+  assert.match(r.caption, /Left: on white\. Right: on dark\. Below: at 16, 24, 32, 48 and 64 pixels\./);
+  assert.match(r.caption, /Not in the brand's swatch: #ff00aa/);
+  const again = await tools.draw_svg({ projectId: project.id, svg: svg.replace('stroke-width="2"', 'stroke-width="3"'), redraw: r.id });
+  assert.equal(again.id, r.id);
+  assert.match(again.caption, /drawn again in place/);
+  await assert.rejects(tools.draw_svg({ projectId: project.id, svg: "<svg><circle r='4'/></svg>" }), /viewBox/);
+  const sheet = await tools.view_sheet({ projectId: project.id, folder: "Icons" });
+  assert.match(sheet.caption, /^1 picture, left to right then down: Ring \(/);
+  assert.ok(READ_ONLY.has("view_sheet") && !READ_ONLY.has("draw_svg"));
+});

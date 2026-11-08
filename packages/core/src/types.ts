@@ -74,6 +74,21 @@ export interface Yarn {
 }
 
 /** Where a stock file came from, kept with it: the credit is the line to give when it is used. */
+/** How a file was made: by whom, from what it was asked for, and what it was drawn from. */
+export interface MadeBy {
+  /** "model": drawn by the person's model, as SVG. "provider": made by an image or video service. */
+  by: "model" | "provider";
+  provider?: string;
+  model?: string;
+  /** What was asked for, in the words given. */
+  prompt?: string;
+  /** Files it was made from, like a mascot's reference picture. */
+  from?: { id: string; name: string }[];
+  at: string;
+  /** What it cost, in US dollars, where a provider charges. */
+  costUsd?: number;
+}
+
 export interface StockCredit {
   provider: string; id: string; page: string; author?: string; authorUrl?: string;
   license: string; licenseUrl?: string; credit: string; at: string;
@@ -101,6 +116,8 @@ export interface YarnMeta {
   site?: { url: string; device: "desktop" | "mobile"; at: string };
   /** Free stock, from a source like Pexels: where it came from, who made it, its licence, and the credit to give. */
   stock?: StockCredit;
+  /** Made here rather than brought in: drawn by a model as SVG, or made by a provider from a prompt. */
+  made?: MadeBy;
   /** Plain-language problems found at import, shown beside the file. */
   warnings?: string[];
 }

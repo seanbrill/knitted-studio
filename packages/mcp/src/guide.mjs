@@ -105,7 +105,31 @@ Yarn holds pictures, video, sound, fonts, PDFs and saved text. The Brief's refer
 - A slot takes a Yarn name or id, or "tag:product" for the first file with that tag.
 - import_yarn brings a file from a public link; import_yarn_file one from this computer.
 - The Library is what every project shares: its files are in every project's Yarn, after the project's own, marked library: true. With library: true, import_yarn and import_yarn_file put a file there, for what every brand uses. share_yarn moves a file into the Library, or out into the one project that uses it; ask the person first.
+- For an icon, a set of icons, a mascot in a new pose or a badge, draw it with draw_svg (get_guide drawing). view_sheet shows a set side by side.
 - For a photo, footage, music or a sound effect the brand does not have, search_stock finds free ones and add_stock adds the few the person will use, with their credit and licence. Search for what was asked, not in bulk. A CC BY one needs its maker credited where it is used: put its credit line in the post's caption.`,
+
+  drawing: `# Drawing: SVG you make
+
+When the person asks for icons, a mascot in a new pose, a badge, a sticker or a divider, draw it as SVG with draw_svg. It is kept in Yarn like an upload, and goes in a picture slot like any picture.
+
+Before drawing:
+1. Look at what it must match. view_yarn the reference (the mascot, the logo, the website), and get_brand_guidelines for the brand's colours. Draw in those colours.
+2. For a set, decide the system first and keep to it in every piece: the grid (24 for icons), the stroke (2), round or square caps and joins, the corner radius, line or solid, and how much of the box the art fills (about 20 of 24, centred). Say the system to the person in a line.
+
+Drawing well:
+- Always a viewBox: "0 0 24 24" for an icon, "0 0 512 512" for a mascot or an illustration. Width and height are not needed.
+- Plain shapes on the grid: circle, rect, line, path with arcs. Whole or half units. No stroke thinner than 1.5 on a 24 grid: it vanishes at small sizes.
+- Colour: an icon set for a website takes stroke="currentColor" or fill="currentColor", so the site colours it (it shows black here). For a pattern in knitted, use the brand's colour: a picture slot does not recolour a drawing. Ink that is dark disappears on a dark post: make a light version too ("Cup, light").
+- No <text>: it is drawn in whatever font the viewer has. Words go in the pattern. No pictures inside, no scripts (they are taken out).
+- A mascot: rebuild it from shapes, matching the reference's proportions, colours and face. Group its parts with ids (<g id="head">, <g id="arm-left">), so a new pose turns a part (transform="rotate(-35 210 260)") instead of drawing a new character. Draw one pose, compare it with the reference in view_sheet (give both ids), fix it, then draw the rest from the same markup.
+- Keep each one small: a few KB for an icon.
+
+Checking, every time:
+- draw_svg shows it on white and on dark, and a square one at 16 to 64 pixels. Look before going on. Does it read at 24? Is it centred? Does it vanish on dark?
+- view_sheet shows a set side by side at one size: the same stroke weight, the same size in the box, the same corners. Fix the odd one out with draw_svg and redraw: its id. It keeps its id, so every pattern that uses it changes too.
+- Name each for what it shows ("Sunny, waving"; "Cup, steaming"), put a set in one folder ("Icons/Cafe"), and give from: the reference ids. Tags are added for you ("drawn").
+
+The person sees each drawing marked as drawn by their model, with what they asked for.`,
 
   knitting: `# Knitting: making the files
 
