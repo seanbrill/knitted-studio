@@ -1,16 +1,18 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
-  "next": {
-    "title": "Make photos and video with your own key, priced before you make them",
-    "items": [
-      "Make, on a project's Yarn page: say what to make, choose its shape, how many and the quality, and see what it will cost before you make it. It lands in Yarn while you carry on.",
-      "Add an OpenAI or Google Gemini key in Settings, Generate. OpenAI makes photos; Google makes photos and video, with sound.",
-      "Make a photo from this, on any picture in Yarn: a new photo from your product or your mascot, or a short video that starts from it.",
-      "Each file says who made it, from what, what you asked for and what it cost, and counts toward your limits in Settings, Spending.",
-      "Your model can make them too, with generate_image and generate_video, and asks the price first."
-    ]
-  },
   "entries": [
+    {
+      "version": "0.1.23",
+      "date": "2026-11-08",
+      "title": "Make photos and video with your own key, priced before you make them",
+      "items": [
+        "Make, on a project's Yarn page: say what to make, choose its shape, how many and the quality, and see what it will cost before you make it. It lands in Yarn while you carry on.",
+        "Add an OpenAI or Google Gemini key in Settings, Generate. OpenAI makes photos; Google makes photos and video, with sound.",
+        "Make a photo from this, on any picture in Yarn: a new photo from your product or your mascot, or a short video that starts from it.",
+        "Each file says who made it, from what, what you asked for and what it cost, and counts toward your limits in Settings, Spending.",
+        "Your model can make them too, with generate_image and generate_video, and asks the price first."
+      ]
+    },
     {
       "version": "0.1.22",
       "date": "2026-11-07",
