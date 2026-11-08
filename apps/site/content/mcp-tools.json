@@ -1,13 +1,13 @@
 [
   {
     "name": "get_guide",
-    "summary": "How to use knitted well, a topic at a time: the numbers and habits that make work look designed, not merely generated. Read start first, then the topic before your first task of that kind. Topics: start, patterns, motion, voice, yarn, drawing, knitting, brief, parts, posts, copywriting, organizing.",
+    "summary": "How to use knitted well, a topic at a time: the numbers and habits that make work look designed, not merely generated. Read start first, then the topic before your first task of that kind. Topics: start, patterns, motion, voice, yarn, drawing, making, knitting, brief, parts, posts, copywriting, organizing.",
     "params": [
       {
         "name": "topic",
         "type": "string",
         "required": false,
-        "description": "Leave out for start. One of start, patterns, motion, voice, yarn, drawing, knitting, brief, parts, posts, copywriting, organizing."
+        "description": "Leave out for start. One of start, patterns, motion, voice, yarn, drawing, making, knitting, brief, parts, posts, copywriting, organizing."
       }
     ]
   },
@@ -276,6 +276,168 @@
         "type": "boolean",
         "required": false,
         "description": "Into the Library, which every project shares, instead of this project's Yarn"
+      }
+    ]
+  },
+  {
+    "name": "generate_image",
+    "summary": "MAKE photos with the person's own image provider (OpenAI or Google, set in Settings, Generate), and keep them in Yarn: a product on a new background, a scene for a post, a lifestyle shot. from: pictures in Yarn to work from, like the product or the mascot, so it is theirs and not an invented one. It COSTS the person money: estimate: true says the price without making anything; say it, and ask before spending more than a dollar in a go. It waits until they are made (a minute or two) and shows them to you. Read get_guide making first. For an icon or a flat drawing, draw_svg is free and sharper. For a real photo of something common, search_stock is free.",
+    "params": [
+      {
+        "name": "projectId",
+        "type": "string",
+        "required": true,
+        "description": "The project id, like pj_01..."
+      },
+      {
+        "name": "prompt",
+        "type": "string",
+        "required": true,
+        "description": "What to make: the subject, the setting, the light, the framing, what to keep from the pictures in from"
+      },
+      {
+        "name": "from",
+        "type": "string[]",
+        "required": false,
+        "description": "Up to 6 Yarn ids of pictures to work from"
+      },
+      {
+        "name": "count",
+        "type": "number",
+        "required": false,
+        "description": "How many, 1 to 4 (1 if left out)"
+      },
+      {
+        "name": "aspect",
+        "type": "string",
+        "required": false,
+        "description": "1:1 if left out. 4:5 for a feed post, 9:16 for a story. One of 1:1, 4:5, 9:16, 16:9, 3:2, 2:3."
+      },
+      {
+        "name": "quality",
+        "type": "string",
+        "required": false,
+        "description": "good if left out. draft to try ideas cheaply; best costs several times more. One of draft, good, best."
+      },
+      {
+        "name": "transparent",
+        "type": "boolean",
+        "required": false,
+        "description": "OpenAI only: a see-through background, for a cut-out"
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "required": false,
+        "description": "What to call it; a number is added to each of several"
+      },
+      {
+        "name": "tags",
+        "type": "string[]",
+        "required": false,
+        "description": ""
+      },
+      {
+        "name": "folder",
+        "type": "string",
+        "required": false,
+        "description": "The folder them goes in, as a path from the top of its section, like Royalty free music/Lo-fi. Made when it is not there. Left out, the top."
+      },
+      {
+        "name": "library",
+        "type": "boolean",
+        "required": false,
+        "description": "Into the Library instead"
+      },
+      {
+        "name": "estimate",
+        "type": "boolean",
+        "required": false,
+        "description": "Only say what it would make and cost"
+      },
+      {
+        "name": "wait",
+        "type": "boolean",
+        "required": false,
+        "description": "Default true: wait until they are made"
+      }
+    ]
+  },
+  {
+    "name": "generate_video",
+    "summary": "MAKE a short video clip, 3 to 15 seconds, with the person's Google Gemini key (set in Settings, Generate), and keep it in Yarn: the mascot waving, the product turning, a scene to open a reel. It always has sound, steered in the prompt. from: one picture to start from (or two: the first frame and the last). It COSTS the person money, about 7 cents a second at good quality: ALWAYS run it with estimate: true first, tell the person the price, and make it only when they agree. It waits up to five minutes, then shows you frames of it. Read get_guide making first.",
+    "params": [
+      {
+        "name": "projectId",
+        "type": "string",
+        "required": true,
+        "description": "The project id, like pj_01..."
+      },
+      {
+        "name": "prompt",
+        "type": "string",
+        "required": true,
+        "description": "What happens, shot by shot: the subject, the movement, the camera, the light, and the sound"
+      },
+      {
+        "name": "from",
+        "type": "string[]",
+        "required": false,
+        "description": "One or two Yarn ids of pictures: the first frame, and the last"
+      },
+      {
+        "name": "seconds",
+        "type": "number",
+        "required": false,
+        "description": "3 to 15 (6 if left out)"
+      },
+      {
+        "name": "aspect",
+        "type": "string",
+        "required": false,
+        "description": "9:16 if left out. One of 9:16, 16:9."
+      },
+      {
+        "name": "quality",
+        "type": "string",
+        "required": false,
+        "description": "draft is 360p, good 720p, best 1080p. One of draft, good, best."
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "required": false,
+        "description": "What to call it"
+      },
+      {
+        "name": "tags",
+        "type": "string[]",
+        "required": false,
+        "description": ""
+      },
+      {
+        "name": "folder",
+        "type": "string",
+        "required": false,
+        "description": "The folder it goes in, as a path from the top of its section, like Royalty free music/Lo-fi. Made when it is not there. Left out, the top."
+      },
+      {
+        "name": "library",
+        "type": "boolean",
+        "required": false,
+        "description": "Into the Library instead"
+      },
+      {
+        "name": "estimate",
+        "type": "boolean",
+        "required": false,
+        "description": "Only say what it would make and cost"
+      },
+      {
+        "name": "wait",
+        "type": "boolean",
+        "required": false,
+        "description": "Default true: wait until it is made"
       }
     ]
   },
@@ -1317,7 +1479,7 @@
   },
   {
     "name": "get_job",
-    "summary": "Check on a job: a knit, a voiceover or pictures of a website. Give waitSeconds to wait for it to finish, rather than calling again and again: every call re-reads the whole conversation, which costs the person.",
+    "summary": "Check on a job: a knit, a voiceover, pictures of a website, or photos or a video being made. Give waitSeconds to wait for it to finish, rather than calling again and again: every call re-reads the whole conversation, which costs the person.",
     "params": [
       {
         "name": "jobId",

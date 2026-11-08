@@ -25,3 +25,4 @@ export * from "./usage.ts";
 export * from "./social.ts";
 export * from "./stock.ts";
 export * from "./draw.ts";
+export * from "./generate.ts";

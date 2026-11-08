@@ -20,7 +20,7 @@
 import { applyCommand, instanceOf, joinFolder, motionLint, sceneChange, parentOf, partFromStitches, preflight, uniqueSlotName, checkPost, metricsLine, COLOR_ROLES, FOLDER_SECTIONS, PLATFORMS, PRESETS, SIZES, CommandSchema } from "@knitted/core";
 import { GUIDE, GUIDE_TOPICS } from "./guide.mjs";
 import { LIBRARY_ID } from "@knitted/core";
-import { setYarnScope, activeSwatch, cancelPost, createPost, getAccount, getPost, listAccounts, listPosts, postInsights, validatePost, cleanFolder, cropToYarn, getBrief, pdfText, readWebsite, setProfile, viewVideo, viewYarn, createFolder, createPart, editPart, partUsage, createSwatch, createSwatchFromProposal, folderCounts, getKnit, getPart, getYarn, setKnitPost, setKnitTags, importYarn, importYarnFromPath, importYarnFromUrl, searchStock, addStock, saveDrawing, drawSheet, createCopy, knitPath, listFolders, listKnits, countKnits, changedSince, listParts, listYarn, moveAllToFolder, proposeFromWebsite, renameFolder, setCopyText, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
+import { setYarnScope, activeSwatch, cancelPost, createPost, getAccount, getPost, listAccounts, listPosts, postInsights, validatePost, cleanFolder, cropToYarn, getBrief, pdfText, readWebsite, setProfile, viewVideo, viewYarn, createFolder, createPart, editPart, partUsage, createSwatch, createSwatchFromProposal, folderCounts, getKnit, getPart, getYarn, setKnitPost, setKnitTags, importYarn, importYarnFromPath, importYarnFromUrl, searchStock, addStock, saveDrawing, drawSheet, planGeneration, startGeneration, createCopy, knitPath, listFolders, listKnits, countKnits, changedSince, listParts, listYarn, moveAllToFolder, proposeFromWebsite, renameFolder, setCopyText, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
 
 const obj = (properties, required = []) => ({ type: "object", properties, required, additionalProperties: false });
 const str = (description) => ({ type: "string", description });
@@ -69,6 +69,25 @@ const tagList = (tags) => { if (tags !== undefined && !(Array.isArray(tags) && t
 function added(store, r, tags) {
   const y = r.existing && tags?.length ? updateYarn(store, r.yarn.id, { tags: [...r.yarn.tags, ...tags] }) : r.yarn;
   return { id: y.id, name: y.name, kind: y.kind, tags: y.tags, ...filed(y), existing: r.existing };
+}
+
+/** generate_image and generate_video: plan it, make it as a job, wait, and show what came back. */
+async function generate(store, kind, { projectId, prompt, from, count, aspect, quality, seconds, transparent, name, tags, folder, library, estimate, wait = true }) {
+  tagList(tags);
+  const input = { kind, prompt, from, count, aspect, quality, seconds, transparent, name, tags, folder, actor: "model" };
+  if (estimate) { const plan = await planGeneration(store, input); return { would: plan.say, costUsd: Math.round(plan.cost * 100) / 100, provider: plan.provider, model: plan.model }; }
+  const { job, plan } = await startGeneration(store, into(store, projectId, library, false), input);
+  if (!wait) return { jobId: job.id, making: plan.say, next: "get_job with waitSeconds until it is done" };
+  const j = await settled(store, job.id, 5 * 60_000);
+  if (j.status === "failed") throw new Error(j.error ?? "It could not be made.");
+  if (j.status !== "done") return { jobId: j.id, status: j.status, making: plan.say, next: "Still making: get_job with waitSeconds: 120" };
+  const made = j.result.yarn;
+  const said = `Made ${plan.say.replace(/, for about .*/, "")}: ${made.map((y) => `${y.name} (${y.id})`).join(", ")}. It cost $${j.result.cost.toFixed(2)}.`;
+  try {
+    if (kind === "video") { const v = await viewVideo(store, made[0].id, { frames: 6 }); return { __image: v.data.toString("base64"), mime: v.mime, caption: `${said} Six frames from across it.`, id: made[0].id }; }
+    const sheet = await drawSheet(store, into(store, projectId, library, false), { ids: made.map((y) => y.id), size: 320, background: "light" });
+    return { __image: sheet.data.toString("base64"), mime: sheet.mime, caption: `${said} Look closer with view_yarn.`, id: made[0].id };
+  } catch { return { made, costUsd: j.result.cost, said }; }
 }
 
 /** import_yarn with a yarnId: a piece of copy gets new text, and the name, tags and folder given. */
@@ -203,6 +222,10 @@ export const TOOLS = [
       ].filter(Boolean).join(" ");
       return { __image: r.preview.toString("base64"), mime: "image/png", caption: said, id: r.yarn.id };
     } },
+  { name: "generate_image", description: "MAKE photos with the person's own image provider (OpenAI or Google, set in Settings, Generate), and keep them in Yarn: a product on a new background, a scene for a post, a lifestyle shot. from: pictures in Yarn to work from, like the product or the mascot, so it is theirs and not an invented one. It COSTS the person money: estimate: true says the price without making anything; say it, and ask before spending more than a dollar in a go. It waits until they are made (a minute or two) and shows them to you. Read get_guide making first. For an icon or a flat drawing, draw_svg is free and sharper. For a real photo of something common, search_stock is free.", inputSchema: obj({ projectId: PROJECT, prompt: str("What to make: the subject, the setting, the light, the framing, what to keep from the pictures in from"), from: { type: "array", items: { type: "string" }, description: "Up to 6 Yarn ids of pictures to work from" }, count: { type: "number", description: "How many, 1 to 4 (1 if left out)" }, aspect: { type: "string", enum: ["1:1", "4:5", "9:16", "16:9", "3:2", "2:3"], description: "1:1 if left out. 4:5 for a feed post, 9:16 for a story" }, quality: { type: "string", enum: ["draft", "good", "best"], description: "good if left out. draft to try ideas cheaply; best costs several times more" }, transparent: { type: "boolean", description: "OpenAI only: a see-through background, for a cut-out" }, name: str("What to call it; a number is added to each of several"), tags: { type: "array", items: { type: "string" } }, folder: FOLDER("them"), library: { type: "boolean", description: "Into the Library instead" }, estimate: { type: "boolean", description: "Only say what it would make and cost" }, wait: { type: "boolean", description: "Default true: wait until they are made" } }, ["projectId", "prompt"]),
+    async handler(a, { store }) { return generate(store, "image", a); } },
+  { name: "generate_video", description: "MAKE a short video clip, 3 to 15 seconds, with the person's Google Gemini key (set in Settings, Generate), and keep it in Yarn: the mascot waving, the product turning, a scene to open a reel. It always has sound, steered in the prompt. from: one picture to start from (or two: the first frame and the last). It COSTS the person money, about 7 cents a second at good quality: ALWAYS run it with estimate: true first, tell the person the price, and make it only when they agree. It waits up to five minutes, then shows you frames of it. Read get_guide making first.", inputSchema: obj({ projectId: PROJECT, prompt: str("What happens, shot by shot: the subject, the movement, the camera, the light, and the sound"), from: { type: "array", items: { type: "string" }, description: "One or two Yarn ids of pictures: the first frame, and the last" }, seconds: { type: "number", description: "3 to 15 (6 if left out)" }, aspect: { type: "string", enum: ["9:16", "16:9"], description: "9:16 if left out" }, quality: { type: "string", enum: ["draft", "good", "best"], description: "draft is 360p, good 720p, best 1080p" }, name: str("What to call it"), tags: { type: "array", items: { type: "string" } }, folder: FOLDER("it"), library: { type: "boolean", description: "Into the Library instead" }, estimate: { type: "boolean", description: "Only say what it would make and cost" }, wait: { type: "boolean", description: "Default true: wait until it is made" } }, ["projectId", "prompt"]),
+    async handler(a, { store }) { return generate(store, "video", a); } },
   { name: "view_sheet", description: "LOOK at several pictures side by side at one size, named, on white and on dark: a set of icons, a mascot's poses beside its reference, every logo. Use it to check a set belongs together: the same stroke, the same size in the box, the same character. Give their ids, or a folder, or a tag.", inputSchema: obj({ projectId: PROJECT, yarnIds: { type: "array", items: { type: "string" }, description: "Pictures by id, in the order to show them" }, folder: FOLDER("them"), tag: str("Every picture with this tag"), size: { type: "number", description: "Each picture's size in pixels, 24 to 320 (128 if left out). 24 or 32 shows icons as a site would" }, background: { type: "string", enum: ["both", "light", "dark"], description: "Both if left out" } }, ["projectId"]),
     async handler({ projectId, yarnIds, folder, tag, size, background }, { store }) {
       const r = await drawSheet(store, projectId, { ids: yarnIds, folder, tag, size, background });
@@ -522,7 +545,7 @@ export const TOOLS = [
       if (browserGate(r.error)) r.error += CHECK_STILL_WORKS;
       return r;
     } },
-  { name: "get_job", description: "Check on a job: a knit, a voiceover or pictures of a website. Give waitSeconds to wait for it to finish, rather than calling again and again: every call re-reads the whole conversation, which costs the person.", inputSchema: obj({ jobId: str("From knit_pattern, synthesize_voiceover or capture_website"), waitSeconds: { type: "number", minimum: 0, maximum: 300, description: "Wait up to this long for it to finish before answering" } }, ["jobId"]),
+  { name: "get_job", description: "Check on a job: a knit, a voiceover, pictures of a website, or photos or a video being made. Give waitSeconds to wait for it to finish, rather than calling again and again: every call re-reads the whole conversation, which costs the person.", inputSchema: obj({ jobId: str("From knit_pattern, synthesize_voiceover or capture_website"), waitSeconds: { type: "number", minimum: 0, maximum: 300, description: "Wait up to this long for it to finish before answering" } }, ["jobId"]),
     async handler({ jobId, waitSeconds = 0 }, { store }) { const j = waitSeconds > 0 ? await settled(store, jobId, Math.min(300, waitSeconds) * 1000) : store.getJob(jobId); return { jobId: j.id, status: j.status, progress: j.progress && { done: j.progress.done, total: j.progress.total, current: j.progress.current }, result: j.result, error: j.error }; } },
   { name: "cancel_job", description: "Stop a running job.", inputSchema: obj({ jobId: str("The job id") }, ["jobId"]),
     async handler({ jobId }, { store, engine }) { return { status: engine.cancelJob(store, jobId).status }; } },

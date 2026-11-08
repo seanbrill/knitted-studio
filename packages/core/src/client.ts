@@ -12,6 +12,7 @@ import type { SpendLimits, UsageSummary } from "./usage.ts";
 import type { PostChange, SocialAccount, SocialPost } from "./social.ts";
 import type { Platform } from "./social-pure.ts";
 import type { StockItem, StockKind, StockProvider, StockSource } from "./stock-pure.ts";
+import type { GenAspect, GenKind, GenProvider, GenQuality, GenSource } from "./gen-pure.ts";
 import type { Insights } from "./social-insights.ts";
 
 export interface ProjectSummary extends Project { counts: { patterns: number; yarn: number; knits: number; newKnits: number }; cover: { id: string; hash: string } | null; }
@@ -175,6 +176,16 @@ export const api = {
     /** The next message. `patternId`: the pattern open in the editor, which the message is about. */
     send: (id: string, b: { prompt: string; mode?: "edit" | "suggest"; patternId?: string }) => call<AgentJob>("POST", `/api/chats/${id}/messages`, b),
     remove: (id: string) => call<{ ok: true }>("DELETE", `/api/chats/${id}`),
+  },
+  /** Photos and video made by a provider, on the person's own key. */
+  generate: {
+    config: () => call<GenConfig>("GET", "/api/generate/config"),
+    saveKey: (provider: GenProvider, b: { apiKey?: string; clearKey?: boolean }) => call<GenConfig>("PUT", "/api/generate/config", { provider, ...b }),
+    choose: (choice: Partial<GenConfig["choice"]>) => call<GenConfig>("PUT", "/api/generate/config", { choice }),
+    test: (provider: GenProvider) => call<{ ok: true } | { ok: false; why: string }>("POST", "/api/generate/test", { provider }),
+    estimate: (projectId: string, b: GenRequest) => call<{ plan: GenPlanView }>("POST", `/api/projects/${projectId}/generate`, { ...b, estimate: true }),
+    start: (projectId: string, b: GenRequest) => call<{ job: GenJob; plan: GenPlanView }>("POST", `/api/projects/${projectId}/generate`, b),
+    job: (id: string) => call<GenJob>("GET", `/api/jobs/${id}`),
   },
   /** Free stock: photos, video and sound from Openverse, Pixabay and Pexels. */
   stock: {
@@ -365,6 +376,10 @@ export interface VoiceConfig {
 }
 
 type KeyStatus = { present: boolean; source: "environment" | "keychain" | "none"; backend: string | null; canStore: boolean };
+export interface GenConfig { sources: (GenSource & { key: KeyStatus })[]; choice: { image: { provider: GenProvider; model: string } | null; video: { provider: GenProvider; model: string } | null } }
+export interface GenRequest { kind: GenKind; prompt: string; from?: string[]; count?: number; aspect?: GenAspect; quality?: GenQuality; seconds?: number; transparent?: boolean; name?: string; folder?: string; tags?: string[] }
+export interface GenJob { id: string; status: JobItem["status"]; error: string | null; progress: { step: "asking" | "keeping" | "done"; say: string } | null; result: { yarn: { id: string; name: string }[]; cost: number } | null }
+export interface GenPlanView { kind: GenKind; provider: GenProvider; model: string; count: number; aspect: GenAspect; quality: GenQuality; seconds: number; cost: number; say: string }
 export interface StockConfig { sources: (StockSource & { key: KeyStatus | null })[] }
 /** What a search found, and how each source answered: `state` none means it was not asked (no key, or not that kind). */
 export interface StockSearch { items: StockItem[]; sources: { provider: StockProvider; name: string; state: "ok" | "error" | "no-key" | "none"; note?: string; more: boolean }[] }

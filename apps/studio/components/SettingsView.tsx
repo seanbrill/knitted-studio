@@ -11,8 +11,9 @@ import { SpendSettings } from "./SpendSettings";
 import { VoiceSettings } from "./VoiceSettings";
 import { SocialSettings } from "./SocialSettings";
 import { StockSettings } from "./StockSettings";
+import { GenerateSettings } from "./GenerateSettings";
 
-const TABS = ["appearance", "storage", "model", "spending", "voice", "social", "stock", "about"];
+const TABS = ["appearance", "storage", "model", "spending", "voice", "social", "stock", "generate", "about"];
 
 export function SettingsView() {
   return <Suspense><SettingsInner /></Suspense>;
@@ -39,6 +40,7 @@ function SettingsInner() {
           { value: "voice", label: "Voice" },
           { value: "social", label: "Social" },
           { value: "stock", label: "Stock" },
+          { value: "generate", label: "Generate" },
           { value: "about", label: "About" },
         ]}
       >
@@ -61,6 +63,7 @@ function SettingsInner() {
           <TabPanel value="voice"><VoiceSettings /></TabPanel>
           <TabPanel value="social"><SocialSettings /></TabPanel>
           <TabPanel value="stock"><StockSettings /></TabPanel>
+          <TabPanel value="generate"><GenerateSettings /></TabPanel>
           <TabPanel value="about">
             <p className="body">knitted.studio is open source under the MIT licence.</p>
             <p className="body-sm" style={{ color: "var(--ink-muted)", marginTop: "var(--space-2)" }}>Version {process.env.KNITTED_VERSION}</p>

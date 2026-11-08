@@ -70,7 +70,21 @@ Your model can draw pictures as SVG and keep them in Yarn: an icon set for your 
 - A drawing is marked **Drawn by your model**, with what you asked for and what it was drawn from, and tagged *drawn*.
 - When your model draws one again, it keeps its place: every Pattern that uses it shows the new one. It never draws over a file you uploaded.
 
-Your model uses `draw_svg` and `view_sheet` for this. It cannot make photos or video this way.
+Your model uses `draw_svg` and `view_sheet` for this. Drawing makes SVG only; for photos and video, see the next section.
+
+## Making photos and video
+
+With a key of your own from OpenAI or Google, you and your model can make photos and short videos from a description and your own pictures. Each one is charged to your key.
+
+- Add a key in **Settings**, **Generate**. OpenAI makes photos. Google Gemini makes photos and video, and needs a key on its paid tier. When both have keys, you choose which makes what.
+- Choose **Make** on a project's Yarn page. Say what to make, then choose its shape (square, 4:5 for a feed, 9:16 for a story, 16:9 wide), how many and the quality. The price shows before you make it.
+- To work from your own pictures, like your product or your mascot, open one and choose **Make a photo from this**. A video can start from one picture, and end on a second.
+- It is made while you carry on, and lands in Yarn tagged *made*. Its details say who made it, from what, what you asked for and what it cost.
+- Leave words out of what you ask. Put the headline in the Pattern, where you can change it.
+- It counts toward your limits in **Settings**, **Spending**, and stops when a limit is reached.
+- Everything made this way carries an invisible mark saying it was made with AI. Some platforms ask for AI-made posts to be labelled.
+
+Your model uses `generate_image` and `generate_video`, and can ask what one will cost before it makes it.
 
 ## Free stock
 

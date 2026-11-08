@@ -47,6 +47,8 @@ const SAY = {
   search_stock: (a) => `Searching free stock for ${quote(String(a.q ?? ""))}`,
   add_stock: (a) => `Adding ${a.name ? quote(a.name) : "a stock file"} to ${a.library ? "the Library" : "Yarn"}`,
   draw_svg: (a) => (a.redraw ? `Drawing ${a.name ? quote(a.name) : "a drawing"} again` : `Drawing ${a.name ? quote(a.name) : "a picture"}`),
+  generate_image: (a) => (a.estimate ? "Pricing photos" : `Making ${Number(a.count) > 1 ? `${a.count} photos` : "a photo"}${Array.isArray(a.from) && a.from.length ? " from your pictures" : ""}`),
+  generate_video: (a) => (a.estimate ? "Pricing a video" : `Making a ${a.seconds ?? 6}-second video`),
   view_sheet: (a) => `Looking at ${Array.isArray(a.yarnIds) ? `${a.yarnIds.length} pictures` : a.folder ? `the pictures in ${quote(a.folder)}` : a.tag ? `the pictures tagged ${a.tag}` : "pictures"} side by side`,
   share_yarn: (a, c) => `Moving ${c.yarn ? quote(c.yarn) : "a file"} ${a.library ? "into the Library, for every project" : "out of the Library"}`,
   tag_yarn: (a, c) => `Tagging ${c.yarn ? quote(c.yarn) : "a file"}${Array.isArray(a.tags) && a.tags.length ? ` ${a.tags.join(", ")}` : ""}`,
@@ -132,7 +134,7 @@ export function endOf(name, a, out, store) {
   if (name === "create_project" && out?.id) where.projectId = out.id;
   if ((name === "create_pattern" || name === "duplicate_pattern") && out?.id) { where.patternId = out.id; where.stitchIds = undefined; }
   if (name === "add_stitch" && out?.id) where.stitchIds = [out.id];
-  if ((name === "add_stock" || name === "draw_svg") && out?.id) where.yarnId = out.id;
+  if ((name === "add_stock" || name === "draw_svg" || name === "generate_image" || name === "generate_video") && out?.id) where.yarnId = out.id;
   if ((name === "import_yarn" || name === "import_yarn_file" || name === "crop_to_yarn") && out?.id) { where.yarnId = out.id; where.section = out.in === "reference" || a.reference ? "reference" : undefined; }
   if (name === "propose_swatch" && out?.id) where.swatchId = out.id;
   if (name === "create_part" && out?.id) where.partId = out.id;

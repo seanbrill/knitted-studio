@@ -105,6 +105,7 @@ Yarn holds pictures, video, sound, fonts, PDFs and saved text. The Brief's refer
 - A slot takes a Yarn name or id, or "tag:product" for the first file with that tag.
 - import_yarn brings a file from a public link; import_yarn_file one from this computer.
 - The Library is what every project shares: its files are in every project's Yarn, after the project's own, marked library: true. With library: true, import_yarn and import_yarn_file put a file there, for what every brand uses. share_yarn moves a file into the Library, or out into the one project that uses it; ask the person first.
+- A new photo or clip of the brand's own product or mascot, made by the person's provider: generate_image and generate_video (get_guide making). They cost money; draw_svg and search_stock do not.
 - For an icon, a set of icons, a mascot in a new pose or a badge, draw it with draw_svg (get_guide drawing). view_sheet shows a set side by side.
 - For a photo, footage, music or a sound effect the brand does not have, search_stock finds free ones and add_stock adds the few the person will use, with their credit and licence. Search for what was asked, not in bulk. A CC BY one needs its maker credited where it is used: put its credit line in the post's caption.`,
 
@@ -130,6 +131,31 @@ Checking, every time:
 - Name each for what it shows ("Sunny, waving"; "Cup, steaming"), put a set in one folder ("Icons/Cafe"), and give from: the reference ids. Tags are added for you ("drawn").
 
 The person sees each drawing marked as drawn by their model, with what they asked for.`,
+
+  making: `# Making photos and video
+
+generate_image and generate_video make new photos and clips with the person's own provider key, set in Settings, Generate. They cost the person real money, so choose the cheapest way that serves the post:
+- An icon, a badge, a flat illustration, a mascot in a new pose: draw_svg. It is free, and stays sharp.
+- A real photo of something common (coffee, a beach, hands typing): search_stock. It is free.
+- The brand's own product, mascot or place in a new scene, or something no stock has: generate_image, from their pictures.
+- Movement nothing else has: generate_video.
+
+Money:
+1. Run it with estimate: true first and say the price in a line ("4 photos, about 20 cents").
+2. Ask before anything over a dollar in a go, and ALWAYS before a video.
+3. Try an idea with one draft photo before four at best quality. Each one is kept in Yarn, and nothing made can be taken back.
+
+Prompts that work:
+- Say the subject, the setting, the light, the framing and the lens like a photographer would: "the latte from the reference on a white marble counter, morning window light from the left, shot from above, shallow depth of field, room for a headline at the top".
+- With from, say what to keep: "keep the mascot exactly as in the picture: its face, its proportions, its colours". A reference makes it theirs instead of an invented one.
+- For a video, say what happens in order, how the camera moves, and the sound ("soft cafe chatter, a cup set down at 2 seconds"). One clear action per clip.
+- Leave words out of the picture: set them in the pattern, where they are sharp and can change.
+- Never ask for a real person's likeness, or for brands that are not the person's.
+
+After:
+- generate_image shows what it made. Look at each with view_yarn before using it: hands, text and logos are where they go wrong.
+- Name them for what they show and put them in a folder.
+- Everything made carries an invisible mark saying it was made with AI. Some platforms ask for AI-made posts to be labelled: say so when it is the main picture of a post.`,
 
   knitting: `# Knitting: making the files
 
