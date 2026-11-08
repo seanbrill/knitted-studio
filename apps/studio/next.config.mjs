@@ -15,7 +15,7 @@ export default {
   // Standalone tracing must start at the repo root or workspace packages are
   // silently missing from the output.
   outputFileTracingRoot: join(here, "../.."),
-  transpilePackages: ["@knitted/agent", "@knitted/mcp", "@knitted/core", "@knitted/ui", "@knitted/render", "@knitted/engine"],
+  transpilePackages: ["@knitted/agent", "@knitted/mcp", "@knitted/core", "@knitted/ui", "@knitted/render", "@knitted/engine", "@knitted/social"],
   devIndicators: false,
   // Settings, About shows the version a release is named for (scripts/release.mjs). A model
   // asks get_studio_info when this build was made, to tell an older copy still running.

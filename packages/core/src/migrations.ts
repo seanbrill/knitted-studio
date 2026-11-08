@@ -283,4 +283,53 @@ export const MIGRATIONS: Migration[] = [
       create index usage_at on usage (at);
     `,
   },
+  {
+    version: 13,
+    name: "social",
+    // The person's own accounts on Instagram, TikTok, LinkedIn, Threads, X and YouTube, and
+    // what is posted to them. Tokens are never here: they live in the OS's secret store, by
+    // the account's id. A post keeps the knits it is of as a list, so a carousel is one post;
+    // a knit deleted before its post goes out fails that post, in words, at its time.
+    sql: `
+      create table social_accounts (
+        id text primary key,
+        platform text not null,
+        external_id text not null,
+        name text not null default '',
+        handle text not null default '',
+        avatar text,
+        scopes text not null default '[]',
+        status text not null default 'ok',
+        note text,
+        expires_at text,
+        connected_at text not null,
+        updated_at text not null,
+        unique (platform, external_id)
+      );
+      create table social_posts (
+        id text primary key,
+        project_id text not null references projects(id) on delete cascade,
+        account_id text references social_accounts(id) on delete set null,
+        platform text not null,
+        knit_ids text not null default '[]',
+        caption text not null default '',
+        title text not null default '',
+        options text not null default '{}',
+        scheduled_at text,
+        status text not null,
+        external_id text,
+        url text,
+        error text,
+        attempts integer not null default 0,
+        posted_at text,
+        by text not null default 'human',
+        metrics text,
+        metrics_at text,
+        created_at text not null,
+        updated_at text not null
+      );
+      create index social_posts_due on social_posts (status, scheduled_at);
+      create index social_posts_project on social_posts (project_id, created_at);
+    `,
+  },
 ];

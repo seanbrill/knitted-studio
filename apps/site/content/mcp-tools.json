@@ -1160,6 +1160,101 @@
     ]
   },
   {
+    "name": "list_social_accounts",
+    "summary": "The person's social accounts knitted can post to (connected in Settings, Social), each with what its platform takes, and whether you may schedule posts or only make drafts. An account with status reconnect cannot post until the person connects it again.",
+    "params": []
+  },
+  {
+    "name": "schedule_post",
+    "summary": "Post knits to the person's accounts: one post per account, of one knit, or several as a carousel. With `at`, at that time; without, as soon as it can. Unless the person lets you schedule (list_social_accounts says), these are drafts for them to schedule. Each platform's limits are checked first and every refusal is said, so fix and send again. Write the caption with the guide topics posts and copywriting: the caption as posted, hashtags in it. TikTok needs options.tiktok.privacy, one of the account's choices, which only the person should pick: leave TikTok to them unless they told you which. YouTube needs a title.",
+    "params": [
+      {
+        "name": "knitIds",
+        "type": "string[]",
+        "required": true,
+        "description": "The knits, by id from list_knits, in the order they are shown. One video, or pictures"
+      },
+      {
+        "name": "accountIds",
+        "type": "string[]",
+        "required": true,
+        "description": "The accounts, by id from list_social_accounts"
+      },
+      {
+        "name": "caption",
+        "type": "string",
+        "required": true,
+        "description": "The words as posted, hashtags included"
+      },
+      {
+        "name": "captions",
+        "type": "object",
+        "required": false,
+        "description": "A caption for one platform instead, by platform: {\"x\": \"shorter\"}"
+      },
+      {
+        "name": "title",
+        "type": "string",
+        "required": false,
+        "description": "YouTube's title, up to 100 characters"
+      },
+      {
+        "name": "at",
+        "type": "string",
+        "required": false,
+        "description": "When, as an ISO time with its offset, like 2026-11-20T09:00:00-05:00. Left out, now"
+      },
+      {
+        "name": "draft",
+        "type": "boolean",
+        "required": false,
+        "description": "true to make drafts even if you may schedule"
+      },
+      {
+        "name": "options",
+        "type": "object",
+        "required": false,
+        "description": "Each platform's own choices, by platform: tiktok {privacy, comments, duet, stitch}, youtube {privacy: public, unlisted or private, madeForKids}, linkedin {visibility: PUBLIC or CONNECTIONS}, instagram {shareToFeed}"
+      }
+    ]
+  },
+  {
+    "name": "list_posts",
+    "summary": "A project's posts, newest first: drafts, scheduled, posted (with a link), failed and missed (with why). Give status to see only some.",
+    "params": [
+      {
+        "name": "projectId",
+        "type": "string",
+        "required": true,
+        "description": "The project id, like pj_01..."
+      },
+      {
+        "name": "status",
+        "type": "string[]",
+        "required": false,
+        "description": ""
+      },
+      {
+        "name": "limit",
+        "type": "number",
+        "required": false,
+        "description": ""
+      }
+    ]
+  },
+  {
+    "name": "cancel_post",
+    "summary": "Stop a draft or scheduled post from going out. One already posted stays on its platform.",
+    "params": [
+      {
+        "name": "postId",
+        "type": "string",
+        "required": true,
+        "description": "The post, by id from list_posts"
+      }
+    ]
+  },
+  {
     "name": "list_folders",
     "summary": "How a project's things are sorted: each section (patterns, yarn, parts, swatches, knits, reference) has folders of its own, which can hold folders. Each folder is a path like Royalty free music/Lo-fi, with how many things are in it, not counting the folders inside. Give a section for just that one.",
     "params": [

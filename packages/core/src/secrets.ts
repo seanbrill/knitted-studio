@@ -65,9 +65,23 @@ function dpapi(dir: string): SecretStore {
   };
 }
 
+// For tests: KNITTED_SECRETS_DIR keeps each secret as a file in that folder, so a test run
+// of the whole studio never writes to the Keychain of the person running it.
+function folder(dir: string): SecretStore {
+  const file = (k: string) => join(dir, `${k.replace(/[^a-z0-9_-]/gi, "_")}.secret`);
+  return {
+    name: "a folder for tests",
+    available: async () => true,
+    async get(key) { try { return (await readFile(file(key), "utf8")) || null; } catch { return null; } },
+    async set(key, value) { await mkdir(dir, { recursive: true }); await writeFile(file(key), value, { mode: 0o600 }); },
+    async remove(key) { await rm(file(key), { force: true }); },
+  };
+}
+
 /** The backend for this machine, or null. `override` is for tests. */
 export async function secretBackend(dir: string, override?: SecretStore): Promise<SecretStore | null> {
   if (override) return override;
+  if (process.env.KNITTED_SECRETS_DIR) return folder(process.env.KNITTED_SECRETS_DIR);
   for (const b of [keychain, libsecret, dpapi(dir)]) if (await b.available()) return b;
   return null;
 }

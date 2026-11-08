@@ -3,7 +3,7 @@
 
 const ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"; // Crockford base32
 
-export type IdPrefix = "pj" | "pt" | "yn" | "sw" | "rv" | "ac" | "jb" | "kn" | "pa" | "ch" | "us";
+export type IdPrefix = "pj" | "pt" | "yn" | "sw" | "rv" | "ac" | "jb" | "kn" | "pa" | "ch" | "us" | "sa" | "sp";
 
 export function newId(prefix: IdPrefix, now = Date.now()): string {
   let t = "";

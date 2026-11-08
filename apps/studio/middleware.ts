@@ -8,6 +8,8 @@
 //   - Except the MCP address, /api/mcp/<key>: Claude Code and other MCP clients
 //     cannot have the token, so the key in the address lets them in instead, and
 //     its route checks it (app/api/mcp/[key]/route.ts).
+//   - And a social platform's sign-in coming back (GET /api/social/callback), which
+//     its route checks against the one-time state it made.
 //   - The Host header must be the loopback address, which stops DNS rebinding,
 //     where a hostile site points its own name at 127.0.0.1.
 
@@ -21,6 +23,9 @@ export function middleware(req: NextRequest) {
   const host = (req.headers.get("host") ?? "").replace(/:\d+$/, "");
   if (host !== "127.0.0.1" && host !== "localhost") return deny(421, "That address is not allowed.");
   if (req.nextUrl.pathname.startsWith("/api/mcp/")) return NextResponse.next();
+  // A platform's sign-in coming back, in the person's own browser, which has no token. The
+  // route does nothing for a sign-in knitted did not start (app/api/social/callback).
+  if (req.method === "GET" && /^\/api\/social\/callback\/?$/.test(req.nextUrl.pathname)) return NextResponse.next();
   const given = req.cookies.get("knitted_token")?.value ?? req.headers.get("x-knitted-token");
   if (given !== token) return deny(401, "This is the knitted desktop app. Open it from the app, not a browser.");
   return NextResponse.next();

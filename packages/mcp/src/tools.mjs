@@ -17,9 +17,9 @@
 //    propose_swatch adds a NEW swatch the person may choose to use; it never changes
 //    one, and never makes one the project's.
 
-import { applyCommand, instanceOf, joinFolder, motionLint, parentOf, partFromStitches, preflight, uniqueSlotName, COLOR_ROLES, FOLDER_SECTIONS, PRESETS, SIZES, CommandSchema } from "@knitted/core";
+import { applyCommand, instanceOf, joinFolder, motionLint, parentOf, partFromStitches, preflight, uniqueSlotName, checkPost, COLOR_ROLES, FOLDER_SECTIONS, PLATFORMS, PRESETS, SIZES, CommandSchema } from "@knitted/core";
 import { GUIDE, GUIDE_TOPICS } from "./guide.mjs";
-import { activeSwatch, cleanFolder, cropToYarn, getBrief, pdfText, readWebsite, setProfile, viewVideo, viewYarn, createFolder, createPart, createSwatch, createSwatchFromProposal, folderCounts, getKnit, getPart, getYarn, setKnitPost, setKnitTags, importYarn, importYarnFromPath, importYarnFromUrl, createCopy, knitPath, listFolders, listKnits, countKnits, changedSince, listParts, listYarn, moveAllToFolder, proposeFromWebsite, renameFolder, setCopyText, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
+import { activeSwatch, cancelPost, createPost, getAccount, getPost, listAccounts, listPosts, validatePost, cleanFolder, cropToYarn, getBrief, pdfText, readWebsite, setProfile, viewVideo, viewYarn, createFolder, createPart, createSwatch, createSwatchFromProposal, folderCounts, getKnit, getPart, getYarn, setKnitPost, setKnitTags, importYarn, importYarnFromPath, importYarnFromUrl, createCopy, knitPath, listFolders, listKnits, countKnits, changedSince, listParts, listYarn, moveAllToFolder, proposeFromWebsite, renameFolder, setCopyText, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
 
 const obj = (properties, required = []) => ({ type: "object", properties, required, additionalProperties: false });
 const str = (description) => ({ type: "string", description });
@@ -50,7 +50,7 @@ async function settled(store, jobId, ms) {
   return j;
 }
 
-export const READ_ONLY = new Set(["get_guide", "get_studio_info", "list_projects", "get_project", "list_yarn", "view_yarn", "get_brand_guidelines", "get_brief", "read_website", "list_patterns", "get_pattern", "describe_pattern", "list_parts", "list_presets", "list_voices", "preview_pattern", "check_pattern", "get_job", "list_knits", "list_folders"]);
+export const READ_ONLY = new Set(["get_guide", "get_studio_info", "list_projects", "get_project", "list_yarn", "view_yarn", "get_brand_guidelines", "get_brief", "read_website", "list_patterns", "get_pattern", "describe_pattern", "list_parts", "list_presets", "list_voices", "preview_pattern", "check_pattern", "get_job", "list_knits", "list_folders", "list_social_accounts", "list_posts"]);
 
 // When the process answering started. A build made after it means an older copy is answering.
 const STARTED_AT = new Date(Date.now() - process.uptime() * 1000).toISOString();
@@ -471,6 +471,64 @@ export const TOOLS = [
       if (audioId) { const y = getYarn(store, audioId); if (y.projectId !== k.projectId || y.kind !== "audio") throw new Error(`${y.name} is not a sound in this knit's project. Pick one with list_yarn, kind audio.`); }
       const out = setKnitPost(store, knitId, { ...(caption !== undefined ? { caption } : {}), ...(hashtags ? { hashtags } : {}), ...(audioId !== undefined ? { audioId } : {}), ...(audioWhy !== undefined ? { audioWhy } : {}), by: "model" });
       return { id: out.id, post: out.post };
+    } },
+
+  // ── posting ──
+  // To the person's own accounts, connected in Settings, Social. The model makes drafts
+  // unless the person has let it schedule; the studio's scheduler posts them at their time.
+  { name: "list_social_accounts", description: "The person's social accounts knitted can post to (connected in Settings, Social), each with what its platform takes, and whether you may schedule posts or only make drafts. An account with status reconnect cannot post until the person connects it again.", inputSchema: obj({}),
+    async handler(_, { store }) {
+      const may = !!store.getSetting("social", {}).modelMaySchedule;
+      const takes = (p) => { const i = PLATFORMS[p]; return `${i.images ? `up to ${i.images} pictures or ` : ""}one video${p === "x" || p === "threads" || p === "linkedin" ? ", or words alone" : ""}; captions up to ${i.caption}${i.title ? `, and a title up to ${i.title}` : ""}`; };
+      return {
+        mayYouSchedule: may,
+        ...(may ? {} : { note: "You make drafts: the person schedules them from the project's Posts. They can let you schedule in Settings, Social." }),
+        accounts: listAccounts(store).map((a) => ({ id: a.id, platform: a.platform, handle: a.handle || null, name: a.name, status: a.status, ...(a.note ? { note: a.note } : {}), ...(a.expiresAt ? { signInEnds: a.expiresAt } : {}), takes: takes(a.platform) })),
+        ...(listAccounts(store).length ? {} : { none: "No accounts are connected. The person connects them in Settings, Social." }),
+      };
+    } },
+  { name: "schedule_post", description: "Post knits to the person's accounts: one post per account, of one knit, or several as a carousel. With `at`, at that time; without, as soon as it can. Unless the person lets you schedule (list_social_accounts says), these are drafts for them to schedule. Each platform's limits are checked first and every refusal is said, so fix and send again. Write the caption with the guide topics posts and copywriting: the caption as posted, hashtags in it. TikTok needs options.tiktok.privacy, one of the account's choices, which only the person should pick: leave TikTok to them unless they told you which. YouTube needs a title.", inputSchema: obj({
+      knitIds: { type: "array", items: { type: "string" }, description: "The knits, by id from list_knits, in the order they are shown. One video, or pictures" },
+      accountIds: { type: "array", items: { type: "string" }, description: "The accounts, by id from list_social_accounts" },
+      caption: str("The words as posted, hashtags included"),
+      captions: { type: "object", description: "A caption for one platform instead, by platform: {\"x\": \"shorter\"}", additionalProperties: { type: "string" } },
+      title: str("YouTube's title, up to 100 characters"),
+      at: str("When, as an ISO time with its offset, like 2026-11-20T09:00:00-05:00. Left out, now"),
+      draft: { type: "boolean", description: "true to make drafts even if you may schedule" },
+      options: { type: "object", description: "Each platform's own choices, by platform: tiktok {privacy, comments, duet, stitch}, youtube {privacy: public, unlisted or private, madeForKids}, linkedin {visibility: PUBLIC or CONNECTIONS}, instagram {shareToFeed}", additionalProperties: { type: "object" } },
+    }, ["knitIds", "accountIds", "caption"]),
+    async handler({ knitIds, accountIds, caption, captions, title, at, draft, options }, { store }) {
+      if (!accountIds?.length) throw new Error("Give accountIds: the accounts to post to, from list_social_accounts.");
+      if (!knitIds?.length) throw new Error("Give knitIds: the knits to post, from list_knits.");
+      const may = !!store.getSetting("social", {}).modelMaySchedule;
+      const asDraft = !!draft || !may;
+      const projectId = getKnit(store, knitIds[0]).projectId;
+      const each = accountIds.map((accountId) => {
+        const a = getAccount(store, accountId);
+        return { a, p: { projectId, accountId, knitIds, caption: captions?.[a.platform] ?? caption, title, options: options?.[a.platform] ?? {}, at: at ?? null, draft: asDraft, by: "model" } };
+      });
+      const problems = [];
+      for (const { a, p } of each) { try { validatePost(store, p, !asDraft); } catch (e) { problems.push(`${PLATFORMS[a.platform].name}: ${e.message}`); } }
+      if (problems.length) throw new Error(problems.join(" "));
+      const made = each.map(({ a, p }) => {
+        const post = createPost(store, p);
+        const notes = checkPost(a.platform, knitIds.map((id) => { const k = getKnit(store, id); return { kind: k.kind, width: k.width, height: k.height, durationMs: k.durationMs }; }), p.caption, title ?? "").notes;
+        return { id: post.id, platform: a.platform, account: a.handle || a.name, status: post.status, ...(post.scheduledAt ? { at: post.scheduledAt } : {}), ...(notes.length ? { notes } : {}) };
+      });
+      return { posts: made, ...(asDraft && !draft ? { note: "Made as drafts: the person schedules them from the project's Posts, or lets you schedule in Settings, Social." } : {}) };
+    } },
+  { name: "list_posts", description: "A project's posts, newest first: drafts, scheduled, posted (with a link), failed and missed (with why). Give status to see only some.", inputSchema: obj({ projectId: PROJECT, status: { type: "array", items: { type: "string", enum: ["draft", "scheduled", "posting", "posted", "failed", "cancelled", "missed"] } }, limit: { type: "number" } }, ["projectId"]),
+    async handler({ projectId, status, limit }, { store }) {
+      store.getProject(projectId);
+      const posts = listPosts(store, { projectId, status, limit: Math.max(1, Math.min(100, Number(limit) || 30)) });
+      return { posts: posts.map((p) => ({ id: p.id, platform: p.platform, status: p.status, knitIds: p.knitIds, caption: p.caption.length > 160 ? `${p.caption.slice(0, 160)}...` : p.caption, ...(p.title ? { title: p.title } : {}), ...(p.scheduledAt ? { at: p.scheduledAt } : {}), ...(p.url ? { url: p.url } : {}), ...(p.error ? { why: p.error } : {}), by: p.by })) };
+    } },
+  { name: "cancel_post", description: "Stop a draft or scheduled post from going out. One already posted stays on its platform.", inputSchema: obj({ postId: str("The post, by id from list_posts") }, ["postId"]),
+    async handler({ postId }, { store }) {
+      const p = getPost(store, postId);
+      if (p.options.uploaded) throw new Error("It is already on YouTube, waiting for its time: the person cancels it in Posts, which takes it off YouTube.");
+      const out = cancelPost(store, postId);
+      return { id: out.id, status: out.status };
     } },
 
   // ── folders ──

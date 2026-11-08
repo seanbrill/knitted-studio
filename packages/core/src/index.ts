@@ -18,3 +18,5 @@ export * from "./parts-pure.ts";
 export * from "./folders-pure.ts";
 export * from "./motion.ts";
 export * from "./captions.ts";
+export * from "./social-pure.ts";
+export type { SocialAccount, SocialPost, PostMetrics, PostChange } from "./social.ts";

@@ -63,6 +63,8 @@ export function route<A extends unknown[]>(fn: (...args: A) => Promise<Response>
       if (k.kind === "conflict") return fail(409, "conflict", k.message, { currentVersion: k.currentVersion });
       // A voice that could not be made says why, in the voice server's own words.
       if ((e as Error)?.name === "VoiceError") return fail(502, "voice", k.message);
+      // A platform's refusal, or a setup still to finish, in words: the platform's own problem when it answered.
+      if ((e as Error)?.name === "SocialError") return fail((e as { status?: number }).status ? 502 : 400, "social", k.message, { reconnect: !!(e as { reconnect?: boolean }).reconnect });
       console.error(e);
       return fail(500, "internal", "Something broke on our side. Your work is saved; try again.");
     }

@@ -660,3 +660,24 @@ test("synthesize_voiceover waits for its job and get_job can wait, so a model ne
   assert.equal(g.status, "done");
   assert.ok(Date.now() - t0 < 3000, "it answers when the job ends, not when the wait runs out");
 });
+
+test("posting: the model makes drafts until the person lets it schedule, and every platform's refusal is said first", async () => {
+  const { insertKnit, saveAccount } = await import("@knitted/core/node");
+  const knit = insertKnit(store, { projectId: project.id, patternId: null, patternName: "P", jobId: null, batchId: null, label: "Post", file: "p.png", kind: "image", format: "png", width: 1080, height: 1080, bytes: 1, durationMs: null, hash: "post", report: {} });
+  const x = saveAccount(store, { platform: "x", externalId: "42", name: "Knit", handle: "knit", avatar: null, scopes: [], expiresAt: null });
+  const tt = saveAccount(store, { platform: "tiktok", externalId: "7", name: "Knit", handle: "knittok", avatar: null, scopes: [], expiresAt: null });
+  const listed = await tools.list_social_accounts({});
+  assert.equal(listed.mayYouSchedule, false);
+  assert.match(listed.accounts.find((a) => a.platform === "x").takes, /up to 4 pictures or one video, or words alone; captions up to 280/);
+  const bad = await tools.schedule_post({ knitIds: [knit.id], accountIds: [x.id, tt.id], caption: "Hi" }).catch((e) => e);
+  assert.match(String(bad.message ?? bad), /TikTok: TikTok takes videos only/);
+  const drafts = await tools.schedule_post({ knitIds: [knit.id], accountIds: [x.id], caption: "Hi", at: new Date(Date.now() + 3600_000).toISOString() });
+  assert.equal(drafts.posts[0].status, "draft");
+  assert.match(drafts.note, /drafts/);
+  store.setSetting("social", { modelMaySchedule: true });
+  const sched = await tools.schedule_post({ knitIds: [knit.id], accountIds: [x.id], caption: "Hi", at: new Date(Date.now() + 3600_000).toISOString() });
+  assert.equal(sched.posts[0].status, "scheduled");
+  const listedPosts = await tools.list_posts({ projectId: project.id });
+  assert.equal(listedPosts.posts.length, 2);
+  assert.equal((await tools.cancel_post({ postId: sched.posts[0].id })).status, "cancelled");
+});

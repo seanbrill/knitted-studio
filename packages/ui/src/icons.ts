@@ -11,3 +11,5 @@ export { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, LocateF
 export { BookOpen, Globe, Crop, RefreshCw, ArrowUpDown, Monitor, Smartphone, ChevronLeft, File as FilePdf } from "lucide-react";
 // Tags past the first few, in a menu.
 export { Tag } from "lucide-react";
+// Posting to social accounts: send, at a time, and a link out to the post.
+export { Send, CalendarClock, ExternalLink } from "lucide-react";

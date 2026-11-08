@@ -9,6 +9,8 @@ import type { SiteProposal } from "./site.ts";
 import type { KnitIssue, KnitRecord } from "./knits.ts";
 import type { Command } from "./commands.ts";
 import type { SpendLimits, UsageSummary } from "./usage.ts";
+import type { PostChange, SocialAccount, SocialPost } from "./social.ts";
+import type { Platform } from "./social-pure.ts";
 
 export interface ProjectSummary extends Project { counts: { patterns: number; yarn: number; knits: number; newKnits: number }; cover: { id: string; hash: string } | null; }
 export interface ActivityItem { id: string; projectId: string | null; actor: string; action: string; subject: string | null; detail: unknown; createdAt: string; }
@@ -168,6 +170,28 @@ export const api = {
     send: (id: string, b: { prompt: string; mode?: "edit" | "suggest"; patternId?: string }) => call<AgentJob>("POST", `/api/chats/${id}/messages`, b),
     remove: (id: string) => call<{ ok: true }>("DELETE", `/api/chats/${id}`),
   },
+  /** The person's accounts on social platforms, their developer apps, and the media host. */
+  social: {
+    config: () => call<SocialConfigView>("GET", "/api/social/config"),
+    save: (b: SocialConfigChange) => call<SocialConfigView>("PUT", "/api/social/config", b),
+    accounts: () => call<SocialAccount[]>("GET", "/api/social/accounts"),
+    disconnect: (id: string) => call<{ ok: true }>("DELETE", `/api/social/accounts/${id}`),
+    /** Where to send the person to sign in: opened in their browser. */
+    connect: (platform: Platform) => call<{ url: string }>("POST", `/api/social/connect/${platform}`, {}),
+    /** What the site's page showed to paste, when the browser could not come back by itself. */
+    paste: (text: string) => call<SocialAccount>("POST", "/api/social/callback", { text }),
+    /** TikTok's choices for this account now: who may see a post, and what it may allow. */
+    creator: (accountId: string) => call<TikTokCreator>("GET", `/api/social/accounts/${accountId}/creator`),
+    testHost: () => call<{ url: string }>("POST", "/api/social/host/test", {}),
+  },
+  posts: {
+    list: (projectId: string) => call<SocialPost[]>("GET", `/api/projects/${projectId}/posts`),
+    /** A post to each account. `captions` and `options`: by platform, where one differs. `at` null: now. */
+    create: (projectId: string, b: NewPosts) => call<SocialPost[]>("POST", `/api/projects/${projectId}/posts`, b),
+    update: (id: string, b: PostChange) => call<SocialPost>("PATCH", `/api/posts/${id}`, b),
+    cancel: (id: string) => call<SocialPost>("POST", `/api/posts/${id}/cancel`, {}),
+    remove: (id: string) => call<{ ok: true }>("DELETE", `/api/posts/${id}`),
+  },
   fonts: () => call<{ family: string; category: string; file: string; style: string; weight: [number, number]; license: string }[]>("GET", "/api/fonts"),
   storage: () => call<{ root: string; bytes: number; projects: number }>("GET", "/api/storage"),
   backups: {
@@ -281,6 +305,30 @@ export interface JobItem {
 export const knitFileUrl = (k: { id: string }, download = false) => `/api/knits/${k.id}/file${download ? "?download=1" : ""}`;
 export type { KnitRecord, KnitIssue };
 export type { SpendLimits, UsageSummary };
+
+export type { SocialAccount, SocialPost, PostChange, Platform };
+export interface SocialConfigView {
+  apps: Record<Platform, { clientId: string; secret: boolean }>;
+  host: {
+    kind: "none" | "s3" | "filefreak";
+    s3: { endpoint: string; region: string; bucket: string; keyId: string; publicBase: string; prefix: string; secret: boolean };
+    filefreak: { folder: string; apiKey: boolean };
+  };
+  modelMaySchedule: boolean;
+  /** This server's port: the redirect TikTok and YouTube come back to has it. */
+  port: number;
+}
+export interface SocialConfigChange {
+  apps?: Partial<Record<Platform, { clientId?: string; clientSecret?: string; clearSecret?: boolean }>>;
+  host?: { kind?: "none" | "s3" | "filefreak"; s3?: Partial<{ endpoint: string; region: string; bucket: string; keyId: string; publicBase: string; prefix: string; secret: string }>; filefreak?: Partial<{ folder: string; apiKey: string }> };
+  modelMaySchedule?: boolean;
+}
+export interface TikTokCreator { creator_nickname?: string; creator_username?: string; creator_avatar_url?: string; privacy_level_options?: string[]; comment_disabled?: boolean; duet_disabled?: boolean; stitch_disabled?: boolean; max_video_post_duration_sec?: number }
+export interface NewPosts {
+  accountIds: string[]; knitIds: string[]; caption: string; title?: string;
+  captions?: Partial<Record<Platform, string>>; options?: Partial<Record<Platform, Record<string, unknown>>>;
+  at?: string | null; draft?: boolean;
+}
 
 export interface VoiceConfig {
   provider: "system" | "openai" | "piper"; voice: string; speed: number; baseUrl: string; model: string;

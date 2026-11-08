@@ -1,0 +1,14 @@
+{
+  "name": "@knitted/social",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.mjs"
+  },
+  "dependencies": {
+    "@filefreak.io/sdk": "^0.10.1",
+    "@knitted/core": "*",
+    "sharp": "^0.35.5"
+  }
+}

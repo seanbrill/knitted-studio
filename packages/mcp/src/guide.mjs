@@ -136,7 +136,14 @@ Each platform reads differently:
 - LinkedIn: about 210 characters show before "see more", so the first two lines carry it; first person, a real lesson or result, no hashtag walls (3 at most); links cost reach, so put one in only when the post is about it.
 - X: 280 characters in all, link and hashtags included; one idea; 0 to 2 hashtags.
 - Threads: up to 500 characters; conversational; one topic tag at most.
-- YouTube: a title under 70 characters that says what the video shows (100 at most), then a description whose first line repeats the hook; #Shorts is not needed for a vertical video under 3 minutes.`,
+- YouTube: a title under 70 characters that says what the video shows (100 at most), then a description whose first line repeats the hook; #Shorts is not needed for a vertical video under 3 minutes.
+
+Posting them. list_social_accounts says which accounts the person connected, what each takes, and whether you may schedule or only make drafts. schedule_post makes one post per account, of one knit or several as a carousel, now or at a time; list_posts shows how they went, and cancel_post stops one.
+- Post what was asked for, to the accounts asked for. Never post more often than the person said, and never to an account they did not name.
+- A time is the person's: ask when, unless they said. Use their time zone, with its offset.
+- Each platform's caption fits it: give captions for the ones that need a shorter one (X) rather than one cut off.
+- TikTok asks the person to pick who sees each post: leave TikTok to them unless they said.
+- Instagram and Threads fetch the files from the person's media host: if schedule_post says there is none, tell them to set one up in Settings, Social.`,
 
   copywriting: `# Copywriting: words that are true and land
 

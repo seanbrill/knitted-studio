@@ -12,6 +12,7 @@ import { KnitQueue } from "./KnitQueue";
 import { TagFilter, ViewBar, layout, useView, type SortBy } from "./Views";
 import { AskModelButton, aboutKnit } from "./AskModel";
 import { PickBox, SelectionBar, TagDialog, picking, useSelection } from "./Selection";
+import { PostDialog } from "./PostDialog";
 
 const KNIT_SORTS: SortBy<KnitRecord>[] = [
   { value: "newest", label: "Newest first", key: (k) => k.createdAt, desc: true },
@@ -20,7 +21,7 @@ const KNIT_SORTS: SortBy<KnitRecord>[] = [
   { value: "size", label: "Biggest first", key: (k) => k.bytes, desc: true },
 ];
 
-const { Download, Trash2, AlertTriangle, Copy, FolderInput, X, Check } = icons;
+const { Download, Trash2, AlertTriangle, Copy, FolderInput, X, Check, Send } = icons;
 
 export function KnitsView({ projectId }: { projectId: string }) {
   const toast = useToast();
@@ -63,6 +64,8 @@ export function KnitsView({ projectId }: { projectId: string }) {
   const sel = useSelection(here);
   const [tagging, setTagging] = useState(false);
   const [bulkDelete, setBulkDelete] = useState(false);
+  // What is being posted: the open knit, or the picked ones together.
+  const [posting, setPosting] = useState<KnitRecord[] | null>(null);
   const pickedNew = sel.picked.filter((k) => !k.seenAt);
   // A folder downloads as a zip of it and the folders in it, each a folder in the zip.
   const anything = kit.here ? kit.countIn(kit.here) > 0 : (knits ?? []).length > 0;
@@ -95,6 +98,7 @@ export function KnitsView({ projectId }: { projectId: string }) {
       <SelectionBar sel={sel} total={here.length}>
         <Button size="sm" onClick={() => kit.askMove(sel.picked, `${sel.count} ${sel.count === 1 ? "knit" : "knits"}`)}><FolderInput size={13} aria-hidden /> Move to folder</Button>
         <Button size="sm" onClick={() => setTagging(true)}>Add tag</Button>
+        <Button size="sm" onClick={() => setPosting(sel.picked)}><Send size={13} aria-hidden /> Post together</Button>
         <a className="btn btn-secondary btn-sm" href={`/api/projects/${projectId}/knits/zip?ids=${sel.picked.map((k) => k.id).join(",")}`}><Download size={13} aria-hidden /> Download</a>
         {pickedNew.length > 0 && <Button size="sm" onClick={async () => { for (const k of pickedNew) await api.knit.seen(k.id); await refresh(); }}><Check size={13} aria-hidden /> Mark seen</Button>}
         <Button size="sm" variant="danger" onClick={() => setBulkDelete(true)}><Trash2 size={13} aria-hidden /> Delete</Button>
@@ -164,6 +168,7 @@ export function KnitsView({ projectId }: { projectId: string }) {
           <Button variant="ghost" onClick={() => { setDel(open); setOpen(null); }}><Trash2 size={14} aria-hidden /> Delete</Button>
           <Button onClick={() => { kit.askMove([open], open.label); setOpen(null); }}><FolderInput size={14} aria-hidden /> Move to folder</Button>
           <AskModelButton about={aboutKnit(open)} />
+          <Button onClick={() => { setPosting([open]); setOpen(null); }}><Send size={14} aria-hidden /> Post</Button>
           {open.kind === "image" && <Button onClick={async () => { try { const blob = await (await fetch(knitFileUrl(open))).blob(); await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]); toast("Copied. Paste it anywhere."); } catch { toast("Your browser would not copy that. Use Download instead."); } }}><Copy size={14} aria-hidden /> Copy</Button>}
           <a className="btn btn-primary" href={knitFileUrl(open, true)}><Download size={14} aria-hidden /> Download</a>
         </>)}>
@@ -187,6 +192,7 @@ export function KnitsView({ projectId }: { projectId: string }) {
         onConfirm={async () => { for (const k of sel.picked) await api.knit.remove(k.id); sel.clear(); await refresh(); toast("Deleted"); }} />
       <ConfirmDialog open={!!del} onOpenChange={(o) => !o && setDel(null)} title="Delete this knit?" description="The file is removed from disk. You can knit it again from the pattern." confirmLabel="Delete file" onConfirm={async () => { await api.knit.remove(del!.id); await refresh(); toast("Deleted"); }} />
       <FolderDialogs kit={kit} />
+      {posting && <PostDialog key={posting.map((k) => k.id).join()} projectId={projectId} knits={posting} open onOpenChange={(o) => !o && setPosting(null)} />}
     </div>
   );
 }

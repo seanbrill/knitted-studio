@@ -20,6 +20,7 @@ const TABS = [
   { href: "/swatch", label: "Swatch", what: "The brand: its colours, fonts, logo and voice. Every pattern draws with it." },
   { href: "/parts", label: "Parts", what: "Pieces to reuse in any pattern, like a lower third, a quote or a price tag." },
   { href: "/knits", label: "Knits", what: "The finished files: every picture and video knitted from your patterns." },
+  { href: "/posts", label: "Posts", what: "What is posted to your accounts, scheduled, or waiting as a draft." },
 ];
 
 function ActiveSwatchChip({ projectId, swatchId }: { projectId: string; swatchId: string | null }) {
