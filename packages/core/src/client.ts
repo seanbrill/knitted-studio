@@ -11,6 +11,7 @@ import type { Command } from "./commands.ts";
 import type { SpendLimits, UsageSummary } from "./usage.ts";
 import type { PostChange, SocialAccount, SocialPost } from "./social.ts";
 import type { Platform } from "./social-pure.ts";
+import type { StockItem, StockKind, StockProvider, StockSource } from "./stock-pure.ts";
 import type { Insights } from "./social-insights.ts";
 
 export interface ProjectSummary extends Project { counts: { patterns: number; yarn: number; knits: number; newKnits: number }; cover: { id: string; hash: string } | null; }
@@ -174,6 +175,15 @@ export const api = {
     /** The next message. `patternId`: the pattern open in the editor, which the message is about. */
     send: (id: string, b: { prompt: string; mode?: "edit" | "suggest"; patternId?: string }) => call<AgentJob>("POST", `/api/chats/${id}/messages`, b),
     remove: (id: string) => call<{ ok: true }>("DELETE", `/api/chats/${id}`),
+  },
+  /** Free stock: photos, video and sound from Openverse, Pixabay and Pexels. */
+  stock: {
+    config: () => call<StockConfig>("GET", "/api/stock/config"),
+    saveKey: (provider: StockProvider, b: { apiKey?: string; clearKey?: boolean }) => call<StockConfig>("PUT", "/api/stock/config", { provider, ...b }),
+    search: (q: { q: string; kind: StockKind; page?: number }) =>
+      call<StockSearch>("GET", `/api/stock/search?${new URLSearchParams({ q: q.q, kind: q.kind, page: String(q.page ?? 1) })}`),
+    /** Into a project's Yarn, or the Library's (`to`: LIBRARY_ID). The same file again is the one there. */
+    add: (b: { id: string; kind: StockKind; to: string; folder?: string; name?: string }) => call<{ yarn: Yarn; existing: boolean }>("POST", "/api/stock/add", b),
   },
   /** The person's accounts on social platforms, their developer apps, and the media host. */
   social: {
@@ -353,6 +363,11 @@ export interface VoiceConfig {
   options?: Record<string, unknown>;
   key: { present: boolean; source: "environment" | "keychain" | "none"; backend: string | null; canStore: boolean };
 }
+
+type KeyStatus = { present: boolean; source: "environment" | "keychain" | "none"; backend: string | null; canStore: boolean };
+export interface StockConfig { sources: (StockSource & { key: KeyStatus | null })[] }
+/** What a search found, and how each source answered: `state` none means it was not asked (no key, or not that kind). */
+export interface StockSearch { items: StockItem[]; sources: { provider: StockProvider; name: string; state: "ok" | "error" | "no-key" | "none"; note?: string; more: boolean }[] }
 
 export interface ModelConfig {
   model: string; maxTurns: number; maxKnits: number; models: { id: string; label: string }[];

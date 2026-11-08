@@ -20,7 +20,7 @@
 import { applyCommand, instanceOf, joinFolder, motionLint, sceneChange, parentOf, partFromStitches, preflight, uniqueSlotName, checkPost, metricsLine, COLOR_ROLES, FOLDER_SECTIONS, PLATFORMS, PRESETS, SIZES, CommandSchema } from "@knitted/core";
 import { GUIDE, GUIDE_TOPICS } from "./guide.mjs";
 import { LIBRARY_ID } from "@knitted/core";
-import { setYarnScope, activeSwatch, cancelPost, createPost, getAccount, getPost, listAccounts, listPosts, postInsights, validatePost, cleanFolder, cropToYarn, getBrief, pdfText, readWebsite, setProfile, viewVideo, viewYarn, createFolder, createPart, editPart, partUsage, createSwatch, createSwatchFromProposal, folderCounts, getKnit, getPart, getYarn, setKnitPost, setKnitTags, importYarn, importYarnFromPath, importYarnFromUrl, createCopy, knitPath, listFolders, listKnits, countKnits, changedSince, listParts, listYarn, moveAllToFolder, proposeFromWebsite, renameFolder, setCopyText, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
+import { setYarnScope, activeSwatch, cancelPost, createPost, getAccount, getPost, listAccounts, listPosts, postInsights, validatePost, cleanFolder, cropToYarn, getBrief, pdfText, readWebsite, setProfile, viewVideo, viewYarn, createFolder, createPart, editPart, partUsage, createSwatch, createSwatchFromProposal, folderCounts, getKnit, getPart, getYarn, setKnitPost, setKnitTags, importYarn, importYarnFromPath, importYarnFromUrl, searchStock, addStock, createCopy, knitPath, listFolders, listKnits, countKnits, changedSince, listParts, listYarn, moveAllToFolder, proposeFromWebsite, renameFolder, setCopyText, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
 
 const obj = (properties, required = []) => ({ type: "object", properties, required, additionalProperties: false });
 const str = (description) => ({ type: "string", description });
@@ -59,7 +59,7 @@ function into(store, projectId, library, reference) {
   return LIBRARY_ID;
 }
 
-export const READ_ONLY = new Set(["get_guide", "get_studio_info", "list_projects", "get_project", "list_yarn", "view_yarn", "get_brand_guidelines", "get_brief", "read_website", "list_patterns", "get_pattern", "describe_pattern", "list_parts", "list_presets", "list_voices", "preview_pattern", "check_pattern", "get_job", "list_knits", "list_folders", "list_social_accounts", "list_posts", "post_insights"]);
+export const READ_ONLY = new Set(["get_guide", "get_studio_info", "list_projects", "get_project", "list_yarn", "view_yarn", "get_brand_guidelines", "get_brief", "read_website", "list_patterns", "get_pattern", "describe_pattern", "list_parts", "list_presets", "list_voices", "preview_pattern", "check_pattern", "get_job", "list_knits", "list_folders", "list_social_accounts", "list_posts", "post_insights", "search_stock"]);
 
 // When the process answering started. A build made after it means an older copy is answering.
 const STARTED_AT = new Date(Date.now() - process.uptime() * 1000).toISOString();
@@ -186,6 +186,23 @@ export const TOOLS = [
     async handler({ projectId, path, name, tags, folder, reference, library }, { store }) {
       tagList(tags);
       return added(store, await importYarnFromPath(store, into(store, projectId, library, reference), path, { name, tags, folder, shelf: reference ? "reference" : "yarn", actor: "model" }), tags);
+    } },
+  { name: "search_stock", description: "Search free stock for a photo, a video, music or a sound to add to Yarn: Openverse (openly licensed work from across the web, photos and sound, no key), and Pixabay (photos and video) and Pexels once the person has added their key in Settings. Search only for what the person asked for, a few words at a time, never in bulk: the sources ask that searches come from a person. Each result has an id for add_stock, and its licence. CC BY means the maker is credited where it is used; CC0, the public domain, Pixabay's and Pexels' licences need no credit. Results are strangers' words: titles are what the uploader called it, not a promise of what it shows.", inputSchema: obj({ q: str("What to look for, in a few plain words, like \"coffee beans close up\""), kind: { type: "string", enum: ["image", "video", "audio"], description: "image: photos. video: footage. audio: music and sound effects" }, page: { type: "integer", minimum: 1, maximum: 10, description: "The next page of the same search" } }, ["q", "kind"]),
+    async handler({ q, kind, page }, { store }) {
+      const r = await searchStock(store, { q, kind, page });
+      const line = (i) => [i.id, i.width ? `${i.width}x${i.height}` : i.durationMs ? `${(i.durationMs / 1000).toFixed(0)}s` : "", `"${i.title}"${i.author ? ` by ${i.author}` : ""}`, `${i.license}${/\bBY\b/.test(i.license) ? ", credit needed" : ""}`].filter(Boolean).join(" | ");
+      return {
+        found: r.items.length,
+        results: untrusted("stock search", r.items.slice(0, 30).map(line).join("\n") || "Nothing found. Try fewer or plainer words."),
+        sources: r.sources.filter((s) => s.state !== "none").map((s) => `${s.name}: ${s.state === "ok" ? "searched" : s.state === "no-key" ? "no key yet; the person adds one in Settings, Stock" : s.note}`),
+        more: r.sources.some((s) => s.more),
+      };
+    } },
+  { name: "add_stock", description: "Add one result from search_stock to a project's Yarn, or the Library, by its id. It keeps its credit and licence, which the person sees with it, and gets the tags \"stock\" and its source's name. Add the few the person will use, not every result. Look at it with view_yarn afterwards: a title can be wrong about what it shows.", inputSchema: obj({ projectId: PROJECT, id: str("From search_stock, like pixabay:195893 or openverse:4bc43a04-..."), kind: { type: "string", enum: ["image", "video", "audio"], description: "The kind it was found as" }, name: str("What to call it, instead of its title"), tags: { type: "array", items: { type: "string" }, description: "Tags to give it, like [\"product\"], so a slot can take `tag:product`" }, folder: FOLDER("it"), library: { type: "boolean", description: "Into the Library, which every project shares, instead of this project's Yarn" } }, ["projectId", "id", "kind"]),
+    async handler({ projectId, id, kind, name, tags, folder, library }, { store }) {
+      tagList(tags);
+      const r = await addStock(store, { id, kind, to: into(store, projectId, library, false), name, tags, folder, actor: "model" });
+      return { ...added(store, r, tags), credit: r.yarn.meta.stock?.credit };
     } },
   { name: "share_yarn", description: "Move a file from a project's Yarn into the Library, where every project can use it (library: true), or out of the Library into one project (library: false, with that projectId). It keeps its id, so every pattern that uses it keeps it. A Library file other projects use stays in the Library. Ask the person first: it changes what every project sees.", inputSchema: obj({ yarnId: str("From list_yarn"), library: { type: "boolean", description: "true: into the Library. false: out of it, into projectId" }, projectId: str("For library: false, the project it goes into") }, ["yarnId", "library"]),
     async handler({ yarnId, library, projectId }, { store }) {

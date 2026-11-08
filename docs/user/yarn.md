@@ -60,6 +60,26 @@ The Library is what every project shares: a logo, a font or a photo you use for 
 - On the Library page, **Move into a project** takes a file back into one project. A file that other projects use stays in the Library.
 - The Brief's reference is about one business, so its files do not go in the Library.
 
+## Free stock
+
+When a brand has no photo, footage, music or sound effect for something, **Stock** in the side bar finds free ones. **Free stock** on a project's Yarn page opens it for that project.
+
+- Type a few plain words, like *coffee beans close up*, and choose **Photos**, **Videos** or **Sound**.
+- **Openverse** works with no key. It finds openly licensed photos, music and sound from across the web.
+- **Pixabay** adds photos and video once you add a free key of your own, in **Settings**, **Stock**. The key is kept in your computer's own secret store and only sent to Pixabay.
+- **Pexels** works with a key you already have. Pexels is not giving out new keys for now.
+- **Add to**, above the results, says where a file goes: a project, or the Library for every project. Choose **Add** on a result, or open it to look first.
+
+Only work a business may use freely is shown: CC0, the public domain, CC BY, and Pixabay's and Pexels' own licences. Freesound is not a source, because its API is free only for non-commercial use. Its CC0 and CC BY sounds come through Openverse.
+
+A file you add keeps its credit and licence. Open it in Yarn to see them, with **Copy the credit** and a link to its page.
+
+- **Credit the maker where you use it** means its licence is CC BY. Put the credit in the post's caption.
+- **Free to use, no credit needed** means CC0, the public domain, Pixabay or Pexels. A credit is still kind.
+- Openverse does not check the licences it finds. Open the file's page before a post that matters.
+
+Your model can search with `search_stock` and add the few you will use with `add_stock`.
+
 ## Good Yarn
 
 - Upload logos at least 1000 pixels wide so they print sharp. A file named as a logo that is narrower gets a warning.

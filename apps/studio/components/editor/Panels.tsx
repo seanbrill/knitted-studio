@@ -99,7 +99,7 @@ export function YarnPanel({ projectId, onYarnChanged }: { projectId: string; onY
       <PanelHead title="Yarn" />
       <Button block onClick={() => input.current?.click()}><Upload size={14} aria-hidden /> Upload</Button>
       <input ref={input} type="file" multiple hidden aria-label="Upload Yarn" onChange={(e) => { void upload([...(e.target.files ?? [])]); e.target.value = ""; }} />
-      <p className="body-sm" style={{ color: "var(--ink-muted)", margin: "8px 0 12px" }}>Click to add or swap. Drag onto the canvas to place it exactly{kit.folders?.length ? ", or onto a folder to file it" : ""}.</p>
+      <p className="body-sm" style={{ color: "var(--ink-muted)", margin: "8px 0 12px" }}>Click to add or swap. Drag onto the canvas to place it exactly{kit.folders?.length ? ", or onto a folder to file it" : ""}. <Link className="link" href={`/stock?to=${projectId}`}>Find free stock</Link></p>
       <PanelFolders kit={kit} empty={visual.length === 0 && copy.length === 0} />
       {items.length === 0 && !kit.folders?.length ? <EmptyState title="No yarn yet" body="Upload a photo or logo to use it here." /> : <YarnTiles list={visual} drag={drag} use={use} />}
       <SavedText list={copy} drag={drag} use={use} />

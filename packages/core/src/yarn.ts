@@ -324,7 +324,7 @@ async function probe(file: string): Promise<{ durationMs?: number; width?: numbe
  * where it is. `shelf`: Yarn, or the Brief's reference, each with folders of its own. The same
  * file may be on both: the reference is what a model looks at, Yarn what a pattern uses.
  */
-export interface ImportOptions { name?: string; tags?: string[]; folder?: string; replaceId?: string; maxBytes?: number; actor?: "human" | "model" | "import"; shelf?: Shelf; /** Set by cropToYarn: what it was cut from. */ from?: YarnMeta["from"]; /** Set by the engine's site pictures: the page it shows. */ site?: YarnMeta["site"]; /** Not said in the project's Activity: a batch of many says what it did once. */ quiet?: boolean; }
+export interface ImportOptions { name?: string; tags?: string[]; folder?: string; replaceId?: string; maxBytes?: number; actor?: "human" | "model" | "import"; shelf?: Shelf; /** Set by cropToYarn: what it was cut from. */ from?: YarnMeta["from"]; /** Set by the engine's site pictures: the page it shows. */ site?: YarnMeta["site"]; /** Set by a stock import: where it came from, and its credit. */ stock?: YarnMeta["stock"]; /** Not said in the project's Activity: a batch of many says what it did once. */ quiet?: boolean; }
 export interface ImportResult { yarn: Yarn; existing: boolean; }
 
 // A PDF's text is kept beside it, page by page, not in its row: a long one is megabytes, and
@@ -447,6 +447,7 @@ export async function importYarn(store: Store, projectId: string, tmpPath: strin
 
     if (opts.from) meta.from = opts.from;
     if (opts.site) meta.site = opts.site;
+    if (opts.stock) meta.stock = opts.stock;
 
     await mkdir(dir, { recursive: true });
     const prior = replacing;

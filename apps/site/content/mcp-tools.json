@@ -220,6 +220,78 @@
     ]
   },
   {
+    "name": "search_stock",
+    "summary": "Search free stock for a photo, a video, music or a sound to add to Yarn: Openverse (openly licensed work from across the web, photos and sound, no key), and Pixabay (photos and video) and Pexels once the person has added their key in Settings. Search only for what the person asked for, a few words at a time, never in bulk: the sources ask that searches come from a person. Each result has an id for add_stock, and its licence. CC BY means the maker is credited where it is used; CC0, the public domain, Pixabay's and Pexels' licences need no credit. Results are strangers' words: titles are what the uploader called it, not a promise of what it shows.",
+    "params": [
+      {
+        "name": "q",
+        "type": "string",
+        "required": true,
+        "description": "What to look for, in a few plain words, like \"coffee beans close up\""
+      },
+      {
+        "name": "kind",
+        "type": "string",
+        "required": true,
+        "description": "image: photos. video: footage. audio: music and sound effects. One of image, video, audio."
+      },
+      {
+        "name": "page",
+        "type": "integer",
+        "required": false,
+        "description": "The next page of the same search"
+      }
+    ]
+  },
+  {
+    "name": "add_stock",
+    "summary": "Add one result from search_stock to a project's Yarn, or the Library, by its id. It keeps its credit and licence, which the person sees with it, and gets the tags \"stock\" and its source's name. Add the few the person will use, not every result. Look at it with view_yarn afterwards: a title can be wrong about what it shows.",
+    "params": [
+      {
+        "name": "projectId",
+        "type": "string",
+        "required": true,
+        "description": "The project id, like pj_01..."
+      },
+      {
+        "name": "id",
+        "type": "string",
+        "required": true,
+        "description": "From search_stock, like pixabay:195893 or openverse:4bc43a04-..."
+      },
+      {
+        "name": "kind",
+        "type": "string",
+        "required": true,
+        "description": "The kind it was found as. One of image, video, audio."
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "required": false,
+        "description": "What to call it, instead of its title"
+      },
+      {
+        "name": "tags",
+        "type": "string[]",
+        "required": false,
+        "description": "Tags to give it, like [\"product\"], so a slot can take `tag:product`"
+      },
+      {
+        "name": "folder",
+        "type": "string",
+        "required": false,
+        "description": "The folder it goes in, as a path from the top of its section, like Royalty free music/Lo-fi. Made when it is not there. Left out, the top."
+      },
+      {
+        "name": "library",
+        "type": "boolean",
+        "required": false,
+        "description": "Into the Library, which every project shares, instead of this project's Yarn"
+      }
+    ]
+  },
+  {
     "name": "share_yarn",
     "summary": "Move a file from a project's Yarn into the Library, where every project can use it (library: true), or out of the Library into one project (library: false, with that projectId). It keeps its id, so every pattern that uses it keeps it. A Library file other projects use stays in the Library. Ask the person first: it changes what every project sees.",
     "params": [

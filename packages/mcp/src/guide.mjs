@@ -104,7 +104,8 @@ Yarn holds pictures, video, sound, fonts, PDFs and saved text. The Brief's refer
 - Saved text: import_yarn with text saves words to use again (headlines, taglines, hashtags); with its yarnId and new text it is updated in place.
 - A slot takes a Yarn name or id, or "tag:product" for the first file with that tag.
 - import_yarn brings a file from a public link; import_yarn_file one from this computer.
-- The Library is what every project shares: its files are in every project's Yarn, after the project's own, marked library: true. With library: true, import_yarn and import_yarn_file put a file there, for what every brand uses. share_yarn moves a file into the Library, or out into the one project that uses it; ask the person first.`,
+- The Library is what every project shares: its files are in every project's Yarn, after the project's own, marked library: true. With library: true, import_yarn and import_yarn_file put a file there, for what every brand uses. share_yarn moves a file into the Library, or out into the one project that uses it; ask the person first.
+- For a photo, footage, music or a sound effect the brand does not have, search_stock finds free ones and add_stock adds the few the person will use, with their credit and licence. Search for what was asked, not in bulk. A CC BY one needs its maker credited where it is used: put its credit line in the post's caption.`,
 
   knitting: `# Knitting: making the files
 

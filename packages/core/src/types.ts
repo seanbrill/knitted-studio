@@ -73,6 +73,12 @@ export interface Yarn {
   updatedAt: string;
 }
 
+/** Where a stock file came from, kept with it: the credit is the line to give when it is used. */
+export interface StockCredit {
+  provider: string; id: string; page: string; author?: string; authorUrl?: string;
+  license: string; licenseUrl?: string; credit: string; at: string;
+}
+
 /** A part of a picture or a page: fractions of its width and height, from its top left corner. */
 export interface CropBox { x: number; y: number; w: number; h: number; }
 
@@ -93,6 +99,8 @@ export interface YarnMeta {
   from?: { id: string; name: string; page?: number; box: CropBox };
   /** A picture of a page of the business's website, as a visitor sees it: which page, on what, and when. */
   site?: { url: string; device: "desktop" | "mobile"; at: string };
+  /** Free stock, from a source like Pexels: where it came from, who made it, its licence, and the credit to give. */
+  stock?: StockCredit;
   /** Plain-language problems found at import, shown beside the file. */
   warnings?: string[];
 }
