@@ -692,7 +692,7 @@ export const TOOLS = [
       const f = s.frames.find((x) => x.id === id);
       const said = [`${frameId ? "Saved" : "Added"} ${f.name} (${f.id}) in ${s.name} (${s.id}), ${frameSize(f)}${known ? "" : ", a new section"}.`, ...(r.lint[id] ?? []).map((l) => l.message)].join(" ");
       const png = await lookAt(engine, store, designId, { frameId: id });
-      return png ? { __image: png.toString("base64"), mime: "image/png", caption: `${said} This is it, drawn.${f.height ? "" : " A tall page is cut into columns, left to right."}`, id: designId } : { saved: said, note: "It could not be drawn here: knitted's browser is not ready, so look later with view_design." };
+      return png ? { __image: png.toString("base64"), mime: "image/png", caption: `${said} This is it, drawn.${f.height ? "" : " A tall page is cut into columns, left to right."}`, id: designId, frameId: id } : { saved: said, frameId: id, note: "It could not be drawn here: knitted's browser is not ready, so look later with view_design." };
     } },
   { name: "arrange_design", description: "ARRANGE a design sheet, all changes or none: rename it, add, rename, move or remove sections, and move, copy or remove frames. Each change is { op, ... }: rename {name}; addSection {name, note?, at?}; updateSection {section, name?, note?}; moveSection {section, to}; removeSection {section}; moveFrame {frameId, section, at?}; duplicateFrame {frameId, name?}; removeFrame {frameId}. at and to count from 0. The person can undo it.", inputSchema: obj({ designId: DESIGN, changes: { type: "array", minItems: 1, maxItems: 50, items: { type: "object", properties: { op: { type: "string", enum: DESIGN_OPS } }, required: ["op"] } } }, ["designId", "changes"]),
     async handler({ designId, changes }, { store }) {

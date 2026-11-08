@@ -12,6 +12,8 @@ import { PageHeader } from "./AppShell";
 import { SyncChoices } from "./SyncChoices";
 import type { SyncOptions } from "@knitted/core/client";
 import { timeAgo, useLive } from "@/lib/hooks";
+import { leadOf, useMarks, type Mark } from "@/lib/agent";
+import { ModelMark } from "./ModelMark";
 import { KnitQueue, knitShare } from "./KnitQueue";
 
 const { Plus, Search, MoreHorizontal, Pencil, Copy, Archive, Trash2, FolderOpen, Image: ImageIcon, Upload } = icons;
@@ -28,12 +30,13 @@ function useView(): [View, (v: View) => void] {
   return [view, (v) => { setView(v); try { localStorage.setItem("knitted.projects.view", v); } catch {} }];
 }
 
-function ProjectCard({ p, view, items, menuTrigger, knitting }: { p: ProjectSummary; view: View; items: MenuItems; menuTrigger: React.ReactElement; knitting: JobItem[] }) {
+function ProjectCard({ p, view, items, menuTrigger, knitting, mark, lead }: { p: ProjectSummary; view: View; items: MenuItems; menuTrigger: React.ReactElement; knitting: JobItem[]; mark?: Mark; lead?: boolean }) {
   const running = knitting.filter((j) => j.status === "running");
   const pct = running.length ? Math.round((running.reduce((n, j) => n + knitShare(j), 0) / running.length) * 100) : null;
   const card = (
     <div className="card card-link" style={{ position: "relative", padding: view === "grid" ? "var(--space-3)" : "var(--space-3) var(--space-4)", display: view === "list" ? "flex" : "block", alignItems: "center", gap: "var(--space-4)" }}>
       <Link href={`/projects/${p.id}`} aria-label={`Open ${p.name}`} style={{ position: "absolute", inset: 0, borderRadius: "var(--radius-md)", zIndex: 1 }} />
+      <ModelMark mark={mark} lead={lead} />
       {view === "grid" && (
         <div style={{ aspectRatio: "4 / 3", borderRadius: "var(--radius-sm)", overflow: "hidden", background: p.example ? "var(--ember)" : "var(--surface-sunken)", display: "grid", placeItems: "center", marginBottom: "var(--space-3)" }}>
           {p.cover ? (
@@ -97,6 +100,9 @@ function ProjectsInner() {
   const named = new Map((data ?? []).map((p) => [p.id, p.name]));
 
   const [creating, setCreating] = useState(params.get("new") === "1");
+  // The projects a model works in now, outlined on their cards.
+  const marks = useMarks((w) => w.projectId);
+  const lead = leadOf(marks);
   const [renaming, setRenaming] = useState<ProjectSummary | null>(null);
   const [picturing, setPicturing] = useState<ProjectSummary | null>(null);
   const [deleting, setDeleting] = useState<ProjectSummary | null>(null);
@@ -167,6 +173,7 @@ function ProjectsInner() {
               view={view}
               items={menuFor(p)}
               knitting={(knitting ?? []).filter((j) => j.projectId === p.id)}
+              mark={marks.get(p.id)} lead={lead === p.id}
               menuTrigger={<Menu trigger={<IconButton label={`Actions for ${p.name}`}><MoreHorizontal size={16} /></IconButton>} items={menuFor(p)} />}
             />
           ))}

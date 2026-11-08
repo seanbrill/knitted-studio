@@ -7,6 +7,8 @@ import {
   Button, Chip, ColorField, ConfirmDialog, Dialog, EmptyState, Field, Input, Select, Skeleton, Slider, Switch, Textarea, icons, useToast,
 } from "@knitted/ui";
 import { useLive } from "@/lib/hooks";
+import { leadOf, useMarks } from "@/lib/agent";
+import { ModelMark } from "./ModelMark";
 import { SwatchPreview } from "./SwatchPreview";
 import { ContrastPanel } from "./ContrastPanel";
 import { FolderCrumbs, FolderDialogs, FolderList, NewFolderButton, byFolder, useFolders } from "./Folders";
@@ -31,6 +33,9 @@ export function SwatchView({ projectId }: { projectId: string }) {
   const { data: fonts } = useLive(() => api.fonts(), []);
   const kit = useFolders(projectId, "swatches", swatches, { onChanged: refresh });
   const view = useView<Swatch>("swatches", commonSorts<Swatch>(), { mode: "list" });
+  // What a model is changing or looking at, outlined on its card.
+  const marks = useMarks((w) => w.swatchId);
+  const lead = leadOf(marks);
   const [find, setFind] = useState("");
   const [pickedId, setPickedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -115,7 +120,8 @@ export function SwatchView({ projectId }: { projectId: string }) {
         </div>
         <ul aria-label="Swatches" style={view.mode === "grid" ? layout("grid", 150) : { ...layout("list"), gap: 4 }}>
           {view.sorted(swatches.filter((s) => (find.trim() ? s.name.toLowerCase().includes(find.trim().toLowerCase()) : s.folder === kit.here))).map((s) => (
-            <li key={s.id}>
+            <li key={s.id} style={{ position: "relative" }}>
+              <ModelMark mark={marks.get(s.id)} lead={lead === s.id} />
               <button type="button" className={`card card-link swatch-pick swatch-pick-${view.mode}`} aria-pressed={s.id === current.id} draggable onDragStart={kit.dragThings([s.id])} onClick={() => { dirty.current = false; setPickedId(s.id); }}>
                 <span aria-hidden className="swatch-pick-colors">{s.colors.slice(0, 6).map((c) => <span key={c.role} style={{ background: c.hex }} />)}</span>
                 <span className="label" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{s.name}</span>

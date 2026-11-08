@@ -14,6 +14,9 @@ import { useLive } from "@/lib/hooks";
 import { frameDoc, frameHeight } from "@/lib/design";
 import { AskModelButton, aboutDesign } from "./AskModel";
 import { ModelPresence } from "./ModelPresence";
+import { ModelAtWork } from "./ModelAtWork";
+import { ModelMark } from "./ModelMark";
+import { leadOf, useMarks, type Mark } from "@/lib/agent";
 import { ZoomControls } from "./ZoomControls";
 import { stepZoom, typingIn, useSpaceHeld, wheelZoom, zoomKey } from "@/lib/zoom";
 
@@ -61,14 +64,19 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
   const [viewW, setViewW] = useState(0);
   const [hand, setHand] = useState(false);
   const [heights, setHeights] = useState<Record<string, number>>({});
-  const [draft, setDraft] = useState<Draft | null>(null);
-  const [preview, setPreview] = useState<Draft | null>(null);
+  // What is written in the inspector and not saved yet, by frame: a frame's draft stays its own
+  // when another frame is picked, and is there again on going back to it.
+  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const [preview, setPreview] = useState<{ id: string; draft: Draft } | null>(null);
   const [saving, setSaving] = useState<"idle" | "saving" | "error">("idle");
   const [asking, setAsking] = useState<Asking | null>(null);
   const view = useRef<HTMLDivElement>(null);
   const board = useRef<HTMLDivElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
 
+  // The frames a model is designing or looking at, outlined; following it, the newest is brought into view.
+  const marks = useMarks((w) => (w.designId === initial.id ? w.frameIds : null));
+  const leadFrame = leadOf(marks);
   const where = design.sections.map((section) => ({ section, frame: section.frames.find((x) => x.id === selected) })).find((w): w is { section: DesignSection; frame: DesignFrame } => !!w.frame) ?? null;
 
   // The zoom that fits the widest section in the window: frames scale, the space round them does not.
@@ -229,17 +237,21 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
 
   // The inspector starts from the frame as it is, and follows it while nothing is changed there.
   const base = where ? draftOf(where.frame) : null;
-  const dirty = !!(draft && base && !same(draft, base));
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (!dirty) { setDraft(base); setPreview(null); }
-  }, [selected, where?.frame.updatedAt]); // eslint-disable-line react-hooks/exhaustive-deps
+  const written = where ? drafts[where.frame.id] : undefined;
+  const draft = written ?? base;
+  const dirty = !!(written && base && !same(written, base));
+  const forget = (id: string) => setDrafts(({ [id]: _, ...rest }) => rest);
+  const setDraft = (d: Draft) => {
+    if (!where || !base) return;
+    const id = where.frame.id;
+    if (same(d, base)) forget(id); else setDrafts((m) => ({ ...m, [id]: d }));
+  };
   // What is being written shows on the board a moment after the typing stops.
   useEffect(() => {
-    if (!dirty) return;
-    const t = setTimeout(() => setPreview(draft), 400);
+    if (!dirty || !selected || !written) return;
+    const t = setTimeout(() => setPreview({ id: selected, draft: written }), 400);
     return () => clearTimeout(t);
-  }, [draft, dirty]);
+  }, [written, dirty, selected]);
 
   const change = useCallback(async (ops: DesignOp[], said?: string) => {
     setSaving("saving");
@@ -256,7 +268,7 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
   const save = async () => {
     if (!where || !draft) return;
     const r = await change([{ op: "setFrame", section: where.section.id, frameId: where.frame.id, name: draft.name, width: draft.width, height: draft.height, note: draft.note, html: draft.html, css: draft.css }]);
-    if (r) { setPreview(null); setDraft(null); }
+    if (r) { forget(where.frame.id); setPreview(null); }
   };
 
   const projectName = project?.name ?? "Project";
@@ -326,8 +338,9 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
                   </header>
                   <div className="design-frames">
                     {s.frames.map((f) => {
-                      const shown = selected === f.id && preview ? { ...f, ...preview, height: preview.height ?? undefined } : f;
-                      return <FrameView key={f.id} f={shown} doc={frameDoc(shown, swatch, projectId)} height={heights[f.id]} selected={selected === f.id}
+                      const p = preview?.id === f.id && selected === f.id && drafts[f.id] ? preview.draft : null;
+                      const shown = p ? { ...f, ...p, height: p.height ?? undefined } : f;
+                      return <FrameView key={f.id} f={shown} doc={frameDoc(shown, swatch, projectId)} height={heights[f.id]} selected={selected === f.id} mark={marks.get(f.id)} lead={leadFrame === f.id}
                         onSelect={() => setSelected(f.id)} onZoom={() => zoomToFrame(f.id)} onHeight={(h) => setHeights((m) => (m[f.id] === h ? m : { ...m, [f.id]: h }))} />;
                     })}
                     {!s.frames.length && <button type="button" className="design-add" onClick={() => setAsking({ kind: "frame", section: s })}><Plus aria-hidden /> Add a frame</button>}
@@ -341,11 +354,12 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
 
         {where && draft && (
           <Inspector key={where.frame.id} design={design} projectId={projectId} section={where.section} frame={where.frame} draft={draft} setDraft={setDraft} dirty={dirty}
-            onSave={save} onDiscard={() => { setDraft(draftOf(where.frame)); setPreview(null); }} onClose={() => setSelected(null)}
+            onSave={save} onDiscard={() => { forget(where.frame.id); setPreview(null); }} onClose={() => setSelected(null)}
             change={change} onSelect={setSelected} />
         )}
       </div>
 
+      <ModelAtWork right={where ? 436 : 16} />
       <SectionDialog asking={asking?.kind === "section" ? asking : null} onClose={() => setAsking(null)}
         onDone={async (name, note, s) => { await change(s ? [{ op: "updateSection", section: s.id, name, note }] : [{ op: "addSection", name, note }]); }} />
       <FrameDialog asking={asking?.kind === "frame" ? asking : null} onClose={() => setAsking(null)}
@@ -361,7 +375,7 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
 }
 
 /** One frame on the board: its label, the frame drawn as a page, and the button that selects it. */
-function FrameView({ f, doc, height, selected, onSelect, onZoom, onHeight }: { f: DesignFrame; doc: string; height?: number; selected: boolean; onSelect: () => void; onZoom: () => void; onHeight: (h: number) => void }) {
+function FrameView({ f, doc, height, selected, mark, lead, onSelect, onZoom, onHeight }: { f: DesignFrame; doc: string; height?: number; selected: boolean; mark?: Mark; lead: boolean; onSelect: () => void; onZoom: () => void; onHeight: (h: number) => void }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const h = f.height ?? height ?? Math.round(f.width * 0.625);
   return (
@@ -373,6 +387,7 @@ function FrameView({ f, doc, height, selected, onSelect, onZoom, onHeight }: { f
           onLoad={async () => { if (!f.height && ref.current) { const m = await frameHeight(ref.current); if (m) onHeight(m); } }} />
         {/* data-pan-ok: with a frame focused, Space still drags the board about. */}
         <button type="button" className="design-frame-hit" data-pan-ok aria-label={`${f.name}, ${frameSize(f)}`} aria-pressed={selected} onClick={onSelect} onDoubleClick={onZoom} />
+        <ModelMark mark={mark} lead={lead} />
       </div>
     </figure>
   );

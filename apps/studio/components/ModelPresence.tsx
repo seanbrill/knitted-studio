@@ -10,13 +10,13 @@ import { useFollow } from "@/lib/follow";
 const { Check, X, AlertTriangle } = icons;
 
 /** The newest call that is somewhere to go: an edit, or a model looking at a pattern. */
-export const lead = (s: AgentState) => [...s.calls].reverse().find((x) => (x.edits || x.tool === "preview_pattern") && pathFor(x));
+export const lead = (s: AgentState) => [...s.calls].reverse().find((x) => (x.edits || x.tool === "preview_pattern" || x.tool === "view_design") && pathFor(x));
 
 /** One model at work now: each run of the studio's own model, and each other model by name. */
 interface Worker { key: string; who: string; what: string; to: string | null; run?: string }
 
-const placeOf = (w: { projectId?: string | null; patternId?: string | null }) =>
-  !w.projectId ? null : w.patternId ? `/projects/${w.projectId}/patterns/${w.patternId}` : `/projects/${w.projectId}`;
+const placeOf = (w: { projectId?: string | null; patternId?: string | null; designId?: string | null }) =>
+  !w.projectId ? null : w.patternId ? `/projects/${w.projectId}/patterns/${w.patternId}` : w.designId ? `/projects/${w.projectId}/designs/${w.designId}` : `/projects/${w.projectId}`;
 
 /** Everyone at work at once, so two runs side by side are two rows, each one to follow. */
 export function atWork(s: AgentState): Worker[] {

@@ -143,8 +143,9 @@ app.whenReady().then(async () => {
 
     // The window gets the token as a cookie nothing else on the machine has.
     await session.defaultSession.cookies.set({ url: origin, name: "knitted_token", value: token, httpOnly: true, sameSite: "strict" });
-    // Nothing the app does needs a camera, a microphone, a location or a notification.
-    session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(permission === "clipboard-sanitized-write" || permission === "fullscreen"));
+    // Nothing the app does needs a camera, a microphone or a location. A notification says the
+    // person's model is done while knitted is behind another window (ModelDone.tsx).
+    session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(permission === "clipboard-sanitized-write" || permission === "fullscreen" || permission === "notifications"));
     // Check for Updates goes where each system keeps it: the app menu on a Mac, Help elsewhere.
     const mac = process.platform === "darwin";
     const sep = { type: "separator" };

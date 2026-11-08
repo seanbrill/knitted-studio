@@ -6,6 +6,8 @@
 import Link from "next/link";
 import { api, type JobItem } from "@knitted/core/client";
 import { Button, IconButton, icons } from "@knitted/ui";
+import { useMarks } from "@/lib/agent";
+import { ModelMark } from "./ModelMark";
 
 const { X } = icons;
 
@@ -24,6 +26,8 @@ const nameOf = (j: JobItem) => j.input?.patternName ?? j.progress?.current ?? "A
  * where knits from every project are shown together. `compact`: the waiting ones as a count, not a list.
  */
 export function KnitQueue({ jobs, href, place, compact }: { jobs: JobItem[]; href?: string; place?: (j: JobItem) => { label: string; href: string } | null; compact?: boolean }) {
+  // A knit a model started, outlined with what it asked for.
+  const marks = useMarks((w, c) => (c.tool === "knit_pattern" ? w.jobId : null));
   if (!jobs.length) return null;
   const where = (j: JobItem) => { const p = place?.(j); return p ? <><Link className="link" href={p.href}>{p.label}</Link><span aria-hidden style={{ color: "var(--ink-muted)" }}> · </span></> : null; };
   const running = jobs.filter((j) => j.status === "running");
@@ -46,7 +50,8 @@ export function KnitQueue({ jobs, href, place, compact }: { jobs: JobItem[]; hre
         const of = p && p.total > 1 ? `File ${Math.min(p.total, p.done + 1)} of ${p.total}` : null;
         const frames = p?.frames && p.frames.total ? `frame ${p.frames.done} of ${p.frames.total}` : null;
         return (
-          <div key={j.id} style={{ display: "grid", gap: 6 }}>
+          <div key={j.id} style={{ display: "grid", gap: 6, position: "relative" }}>
+            <ModelMark mark={marks.get(j.id)} />
             <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
               <span className="body-sm" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{where(j)}{p?.current ?? nameOf(j)}</span>
               <span className="body-sm" style={{ color: "var(--ink-muted)", whiteSpace: "nowrap" }}>{[of, p?.step, frames].filter(Boolean).join(" · ")}</span>

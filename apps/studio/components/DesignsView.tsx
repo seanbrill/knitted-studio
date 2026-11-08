@@ -10,6 +10,8 @@ import { api } from "@knitted/core/client";
 import type { Design, Swatch } from "@knitted/core";
 import { Button, Dialog, EmptyState, Field, IconButton, Input, Menu, Skeleton, useToast, icons } from "@knitted/ui";
 import { timeAgo, useLive } from "@/lib/hooks";
+import { leadOf, useMarks } from "@/lib/agent";
+import { ModelMark } from "./ModelMark";
 import { frameDoc } from "@/lib/design";
 import { AskModelButton, aboutDesign } from "./AskModel";
 
@@ -30,6 +32,9 @@ export function DesignsView({ projectId }: { projectId: string }) {
   const { data: swatches } = useLive(() => api.swatches.list(projectId), [projectId]);
   const { data: project } = useLive(() => api.projects.get(projectId), [projectId]);
   const swatch = swatches?.find((s) => s.id === project?.swatchId) ?? swatches?.[0];
+  // What a model is changing or looking at, outlined on its card.
+  const marks = useMarks((w) => w.designId);
+  const lead = leadOf(marks);
   const [creating, setCreating] = useState(false);
 
   const act = async (fn: () => Promise<unknown>, msg?: string, undo?: () => Promise<unknown>) => {
@@ -50,6 +55,7 @@ export function DesignsView({ projectId }: { projectId: string }) {
             {designs.map((d) => (
               <li key={d.id} className="card card-link" style={{ padding: "var(--space-3)", position: "relative" }}>
                 <Link href={`/projects/${projectId}/designs/${d.id}`} aria-label={`Open ${d.name}`} style={{ position: "absolute", inset: 0, zIndex: 1, borderRadius: "var(--radius-md)" }} />
+                <ModelMark mark={marks.get(d.id)} lead={lead === d.id} />
                 <Preview design={d} swatch={swatch} projectId={projectId} />
                 <p className="label" style={{ margin: "var(--space-3) 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</p>
                 <p className="body-sm" style={{ margin: "2px 0 0", color: "var(--ink-muted)" }}>{counts(d)}, changed {timeAgo(d.updatedAt)}</p>

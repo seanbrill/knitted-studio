@@ -7,7 +7,7 @@
 import { useEffect, useState } from "react";
 import { create } from "zustand";
 import { api, subscribeAgent } from "@knitted/core/client";
-import type { AgentCall, AgentState, FolderSection } from "@knitted/core";
+import type { AgentCall, AgentState, AgentWhere, FolderSection } from "@knitted/core";
 
 /** How long a finished call is still "just now" on the canvas: long enough to see, short enough to be true. */
 export const RECENT_MS = 6000;
@@ -110,3 +110,41 @@ export function ago(t: number, now: number): string {
   const m = Math.round(s / 60);
   return m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`;
 }
+
+/** What a model is doing to one thing, for its card or frame: who, the step, and whether it is at it now. */
+export interface Mark { who: string; what: string; running: boolean; at: number }
+
+/**
+ * The things a model is working on now, or worked on a moment ago, by id: what each card or
+ * frame outlines. `of` reads the ids from where a call works. The newest call names each one.
+ */
+export function marksBy(s: AgentState | null, of: (w: AgentWhere, c: AgentCall) => (string | null | undefined)[] | string | null | undefined, now: number): Map<string, Mark> {
+  const out = new Map<string, Mark>();
+  for (const c of s?.calls ?? []) {
+    if (!(c.state === "running" || (c.state === "done" && now - endedAt(c) < RECENT_MS))) continue;
+    const got = of(c.where, c);
+    for (const id of Array.isArray(got) ? got : [got]) {
+      if (id) out.set(id, { who: c.client, what: c.summary, running: c.state === "running" || !!out.get(id)?.running, at: Date.parse(c.startedAt) });
+    }
+  }
+  return out;
+}
+
+/** The one a model is on now, of those marked: the newest. Follow brings it into view. */
+export const leadOf = (marks: Map<string, Mark>): string | null => [...marks].sort((a, b) => b[1].at - a[1].at)[0]?.[0] ?? null;
+
+/** marksBy, kept current: a mark goes a moment after the call it is for ends. */
+export function useMarks(of: Parameters<typeof marksBy>[1]): Map<string, Mark> {
+  const s = useAgent();
+  const now = useNow((t) => (s?.calls ?? []).some((c) => c.state !== "running" && t - endedAt(c) < RECENT_MS));
+  return marksBy(s, of, now);
+}
+
+// The conversations on screen now, so a run that ends in one the person is watching is not announced.
+const shownChats = new Map<string, number>();
+/** A chat on screen: returns what takes it off again. */
+export function showingChat(id: string): () => void {
+  shownChats.set(id, (shownChats.get(id) ?? 0) + 1);
+  return () => { const n = (shownChats.get(id) ?? 1) - 1; if (n > 0) shownChats.set(id, n); else shownChats.delete(id); };
+}
+export const chatOnScreen = (id: string) => (shownChats.get(id) ?? 0) > 0;

@@ -271,6 +271,17 @@
 .model-pointer { position: absolute; pointer-events: auto; display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border: 0; border-radius: var(--radius-pill); background: var(--red); color: var(--on-red); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; box-shadow: var(--shadow-lift); }
 .model-pointer-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .model-pointer:focus-visible, .model-dot:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+/* The same, on a card anywhere in the studio (ModelMark.tsx), and on a design sheet's frame. */
+.model-on { position: absolute; inset: -4px; z-index: 3; pointer-events: none; border: 2px solid var(--red); border-radius: calc(var(--radius-lg) + 4px); box-shadow: 0 0 0 4px color-mix(in srgb, var(--red) 16%, transparent); }
+.model-on[data-running] { animation: model-glow 2.4s ease-in-out infinite; }
+.model-on-tag { left: 8px; top: -11px; max-width: calc(100% - 16px); }
+.design-frame-box > .model-on { inset: calc(-5px / var(--z)); border-width: calc(2px / var(--z)); border-radius: calc(4px / var(--z)); box-shadow: 0 0 0 calc(4px / var(--z)) color-mix(in srgb, var(--red) 16%, transparent); }
+.design-frame-box > .model-on > .model-on-tag { left: 0; top: auto; bottom: 100%; margin-bottom: calc(4px / var(--z)); font-size: calc(11px / var(--z)); line-height: calc(16px / var(--z)); padding: calc(2px / var(--z)) calc(7px / var(--z)); border-radius: calc(4px / var(--z)); gap: calc(5px / var(--z)); max-width: 100%; }
+.design-frame-box > .model-on .model-tag-dot { width: calc(6px / var(--z)); height: calc(6px / var(--z)); }
+/* A tab of a project where a model works now. */
+.tab[data-model] { box-shadow: inset 0 0 0 2px var(--red); }
+.tab-model { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-left: 6px; vertical-align: middle; }
+.tab-model:not(.working) { background: var(--red); }
 
 /* What the studio's own model is thinking, over the canvas (ModelBubble.tsx). */
 .model-bubble { position: absolute; pointer-events: auto; display: grid; gap: 6px; padding: 8px 8px 10px 12px; background: var(--surface-raised); color: var(--ink); border: 1px solid var(--line-strong); border-left: 3px solid var(--red); border-radius: var(--radius-md); box-shadow: var(--shadow-lift); animation: fade-in var(--t-ui) var(--ease) both; }

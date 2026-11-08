@@ -28,7 +28,7 @@ Or choose **Design with your model** and say what you want, like *our whole site
 
 ## Changing a frame
 
-Select a frame to open it beside the board. You can change its name, width, height and note, and the HTML and CSS it is written in. What you type shows on the board a moment later. **Save** keeps it (or press Ctrl+S), and **Discard** goes back to what was saved.
+Select a frame to open it beside the board. You can change its name, width, height and note, and the HTML and CSS it is written in. What you type shows on the board a moment later. **Save** keeps it (or press Ctrl+S), and **Discard** goes back to what was saved. A frame keeps what you have not saved while you look at another: open it again and your changes are still there.
 
 - Colours, fonts and corners come from the Swatch as CSS variables, like `var(--color-primary)`, `var(--font-display)` and `var(--radius)`. Change the Swatch, and every frame follows.
 - A picture from Yarn is `yarn:` and its id, like `<img src="yarn:yn_01..." alt="...">`. Your logo is `yarn:logo`.
@@ -45,3 +45,5 @@ Select a frame to open it beside the board. You can change its name, width, heig
 ## Your model
 
 Your model uses `create_design`, `set_design_frame`, `arrange_design`, `get_design` and `view_design`. Each frame it designs is drawn back to it, so it checks its own work. Its frames are marked **by your model** on the board.
+
+While it works, the frame it is designing or looking at is outlined in red on the board, with what it is doing, and a panel in the corner says the same. Press **Follow** there, and each frame it works on is brought into view.

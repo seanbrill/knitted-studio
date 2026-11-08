@@ -1,5 +1,14 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
+  "next": {
+    "title": "See your model at work everywhere, and know when it is done",
+    "items": [
+      "Wherever your model works, that thing is outlined in red with its name and what it is doing: a Pattern, Yarn, Part, Swatch or design sheet in its list, a batch in the knitting queue, and the project tab it is under, as well as each Stitch in the editor.",
+      "On a design sheet, the frame your model is designing or looking at is outlined on the board too, and the panel in the corner says what it is doing. Follow brings each frame it works on into view.",
+      "When a run you started ends, the studio tells you on whatever page you are on, with the first line of its answer and Open the chat. Behind another window, your computer shows a notification. Turn either off in Settings, Model.",
+      "On a design sheet, picking a second frame with the first one open showed the first frame's code for the second, and saving would have written it there. Each frame now keeps its own unsaved changes, and has them again when you go back to it."
+    ]
+  },
   "entries": [
     {
       "version": "0.1.27",

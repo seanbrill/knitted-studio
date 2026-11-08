@@ -6,6 +6,7 @@ import { api } from "@knitted/core/client";
 import { Breadcrumbs, SwatchChip, Skeleton, Tip, icons, useToast, type Crumb } from "@knitted/ui";
 import { useCallback, useState } from "react";
 import { useLive } from "@/lib/hooks";
+import { RECENT_MS, endedAt, pathFor, useAgent, useNow } from "@/lib/agent";
 import { KnitQueue } from "./KnitQueue";
 import { RenameDialog } from "./ProjectsView";
 import { TrailContext } from "./Trail";
@@ -43,6 +44,12 @@ export function ProjectShell({ id, children }: { id: string; children: React.Rea
   const setTrail = useCallback((steps: Crumb[] | null) => setFolders(steps), []);
   const base = `/projects/${id}`;
   const tab = TABS.find((t) => (t.href === "" ? pathname === base : pathname.startsWith(base + t.href))) ?? TABS[0];
+  // The tab a model works in now, or did a moment ago: marked in its colour, with what it is doing.
+  const agent = useAgent();
+  const now = useNow((t) => (agent?.calls ?? []).some((c) => c.state !== "running" && t - endedAt(c) < RECENT_MS));
+  const at = (agent?.calls ?? []).filter((c) => c.where.projectId === id && pathFor(c) && (c.state === "running" || (c.state === "done" && now - endedAt(c) < RECENT_MS))).at(-1);
+  const atPath = at ? pathFor(at)! : null;
+  const modelTab = atPath ? (TABS.find((t) => t.href && atPath.startsWith(base + t.href)) ?? (atPath === base || atPath.startsWith(`${base}/patterns`) ? TABS[0] : null)) : null;
 
   if (error) return <div style={{ padding: "var(--space-8)" }}><Link href="/" className="link">Back to projects</Link><p role="alert" className="field-error" style={{ marginTop: 12 }}>{error}</p></div>;
 
@@ -74,7 +81,8 @@ export function ProjectShell({ id, children }: { id: string; children: React.Rea
           {TABS.map((t) => {
             const href = base + t.href;
             const on = t === tab;
-            return <Tip key={t.label} text={t.what}><Link href={href} className="tab" data-state={on ? "active" : "inactive"} aria-current={on ? "page" : undefined} aria-describedby={on ? "section-what" : undefined}>{t.label}{t.href === "/knits" && (project?.newKnits ?? 0) > 0 && <span className="tab-new" aria-label={`, ${project!.newKnits} new`}>{project!.newKnits}</span>}</Link></Tip>;
+            const model = modelTab === t && at ? at : null;
+            return <Tip key={t.label} text={model ? `${model.client}: ${model.summary}` : t.what}><Link href={href} className="tab" data-state={on ? "active" : "inactive"} data-model={model ? "" : undefined} aria-current={on ? "page" : undefined} aria-describedby={on ? "section-what" : undefined}>{t.label}{t.href === "/knits" && (project?.newKnits ?? 0) > 0 && <span className="tab-new" aria-label={`, ${project!.newKnits} new`}>{project!.newKnits}</span>}{model && <><span aria-hidden className={`tab-model${model.state === "running" ? " working" : ""}`} /><span className="sr-only">, {model.client} is working here</span></>}</Link></Tip>;
           })}
         </nav>
         <p id="section-what" className="body-sm" style={{ margin: "0 0 var(--space-6)", color: "var(--ink-muted)" }}>{tab.what}</p>

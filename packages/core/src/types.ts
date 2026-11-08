@@ -310,7 +310,13 @@ export interface Knit {
 
 export type PartKind = "stitches" | "code";
 /** Where a model's call works: what the studio points at and highlights while it does. */
-export interface AgentWhere { projectId?: string; patternId?: string; stitchIds?: string[]; yarnId?: string; partId?: string; swatchId?: string; designId?: string; jobId?: string; section?: FolderSection; }
+export interface AgentWhere {
+  projectId?: string; patternId?: string; stitchIds?: string[]; yarnId?: string; partId?: string; swatchId?: string;
+  designId?: string;
+  /** The frames of that design it works on, by id. */
+  frameIds?: string[];
+  jobId?: string; section?: FolderSection;
+}
 /** One call a model made, as the studio shows it: who, what, where, and how it ended. */
 export interface AgentCall {
   id: string;
@@ -337,8 +343,10 @@ export interface AgentLive {
   /** The run it is writing in: a job. */
   jobId: string;
   client: string;
-  /** The pattern it works on now: the one asked about, then whichever its newest step changes. */
-  where: { projectId?: string | null; patternId?: string | null };
+  /** The pattern or design it works on now: the one asked about, then whichever its newest step works on. */
+  where: { projectId?: string | null; patternId?: string | null; designId?: string | null };
+  /** The conversation it answers in, to open when it is done. */
+  chatId?: string | null;
   /** Working on a copy (Suggest only): the pattern it was asked from. */
   from?: string | null;
   kind: "note" | "text";

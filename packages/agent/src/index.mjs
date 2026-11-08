@@ -358,7 +358,7 @@ export function startAgentJob(store, args) {
   const progress = (current = null) => ({ total: 0, done: 0, current, events: events.slice(-60) });
   // Running from the start, there being no queue: so a run the app closed on is marked interrupted, not left waiting.
   const job = store.updateJob(created.id, { status: "running", progress: progress() });
-  const words = writingFor(store, job.id, { projectId, patternId: args.patternId ?? null, from: args.mode === "suggest" ? args.patternId ?? null : null });
+  const words = writingFor(store, job.id, { projectId, patternId: args.patternId ?? null, from: args.mode === "suggest" ? args.patternId ?? null : null, chatId: chat?.id ?? null });
   const record = (e) => { events.push(e); words.step(e); store.updateJob(job.id, { status: "running", progress: progress(e.type === "tool_call" ? e.name : null) }); };
   (async () => {
     const history = chat?.messages ?? [];
@@ -396,10 +396,10 @@ const quietly = (f) => { try { f(); } catch { /* the next word tries again */ } 
  * which the studio streams, not in the job, whose every change makes open windows fetch again.
  * `step` follows the run to the pattern its newest step works on.
  */
-function writingFor(store, jobId, { projectId, patternId, from }) {
-  const where = { projectId, patternId };
+function writingFor(store, jobId, { projectId, patternId, from, chatId = null }) {
+  const where = { projectId, patternId, designId: null };
   let said = { kind: "note", text: "", done: false }, at = 0, gap = 0, wait = null, over = false;
-  const show = () => { wait = null; at = Date.now(); gap = said.done ? HOLD_DONE_MS : SAY_EVERY_MS; if (!over) quietly(() => agentLive(store, jobId, { client: CLIENT, where: { ...where }, from, ...said })); };
+  const show = () => { wait = null; at = Date.now(); gap = said.done ? HOLD_DONE_MS : SAY_EVERY_MS; if (!over) quietly(() => agentLive(store, jobId, { client: CLIENT, where: { ...where }, from, chatId, ...said })); };
   const soon = () => { const due = at + gap - Date.now(); if (due <= 0) { clearTimeout(wait); show(); } else wait ??= setTimeout(show, due); };
   const beat = setInterval(show, STILL_HERE_MS);
   beat.unref?.();
@@ -413,9 +413,11 @@ function writingFor(store, jobId, { projectId, patternId, from }) {
     },
     step(e) {
       if (e.type !== "tool_call") return;
-      const pid = e.input?.patternId, pj = e.input?.projectId;
-      if ((typeof pid === "string" && pid !== where.patternId) || (typeof pj === "string" && pj !== where.projectId)) {
-        if (typeof pid === "string") where.patternId = pid;
+      const pid = e.input?.patternId, pj = e.input?.projectId, did = e.input?.designId;
+      if ((typeof pid === "string" && pid !== where.patternId) || (typeof pj === "string" && pj !== where.projectId) || (typeof did === "string" && did !== where.designId)) {
+        // A pattern or a design: whichever it works on now is where it is.
+        if (typeof pid === "string") { where.patternId = pid; where.designId = null; }
+        else if (typeof did === "string") { where.designId = did; where.patternId = null; }
         if (typeof pj === "string") where.projectId = pj;
         soon();
       }
@@ -423,7 +425,7 @@ function writingFor(store, jobId, { projectId, patternId, from }) {
     /** Its last words stay a moment after, with how it ended: done, failed or cancelled (packages/core/src/agent.ts). */
     end(status) {
       over = true; clearInterval(beat); clearTimeout(wait);
-      quietly(() => agentLive(store, jobId, { client: CLIENT, where: { ...where }, from, ...said, done: true, ended: status }));
+      quietly(() => agentLive(store, jobId, { client: CLIENT, where: { ...where }, from, chatId, ...said, done: true, ended: status }));
     },
   };
 }

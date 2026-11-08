@@ -9,6 +9,8 @@ import {
   Tip, icons, useToast,
 } from "@knitted/ui";
 import { formatBytes, timeAgo, useLive } from "@/lib/hooks";
+import { leadOf, useMarks } from "@/lib/agent";
+import { ModelMark } from "./ModelMark";
 import { useUploads, type UploadItem } from "@/lib/uploads";
 import { FolderCrumbs, FolderDialogs, FolderList, InFolder, NewFolderButton, counted, useFolders } from "./Folders";
 import { TagFilter, ViewBar, commonSorts, layout, useView, type SortBy } from "./Views";
@@ -150,6 +152,8 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
   const shown = useMemo(() => view.sorted((data ?? []).filter((y) => (filtering ? isInside(y.folder, kit.here) : y.folder === kit.here))), [data, filtering, kit.here, view]);
   // What is selected and still in sight: moving it away, or opening another folder, lets it go.
   const sel = useSelection(shown);
+  const marks = useMarks((w) => w.yarnId);
+  const lead = leadOf(marks);
   const picked = sel.picked;
 
   // Paste an image (a screenshot) straight in.
@@ -268,6 +272,7 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
                 {/* The whole card is one empty button that carries the name, so the
                     announced name and the visible text cannot disagree. */}
                 {cover}
+                <ModelMark mark={marks.get(y.id)} lead={lead === y.id} />
                 <div aria-hidden style={{ aspectRatio: "1 / 1", borderRadius: "var(--radius-sm)", overflow: "hidden", position: "relative" }}>
                   <YarnThumb y={y} top={!!site} />
                   {site && <span className="chip" style={{ position: "absolute", left: 6, bottom: 6, display: "inline-flex", gap: 4, alignItems: "center" }}><Device size={12} aria-hidden />{site.device === "mobile" ? "Phone" : "Desktop"}</span>}
@@ -282,6 +287,7 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
               <PickBox sel={sel} id={y.id} name={y.name} style={{ position: "relative", zIndex: 2 }} />
               <div className="card card-link" style={{ position: "relative", display: "grid", gridTemplateColumns: "48px minmax(0, 1fr) auto", gap: "var(--space-3)", alignItems: "center", padding: "6px var(--space-3) 6px 6px", outline: sel.has(y.id) ? "2px solid var(--ember)" : undefined }}>
                 {cover}
+                <ModelMark mark={marks.get(y.id)} lead={lead === y.id} />
                 <div aria-hidden style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", overflow: "hidden" }}><YarnThumb y={y} top={!!site} /></div>
                 <div aria-hidden style={{ minWidth: 0 }}>
                   <p className="label" style={{ margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{y.name}</p>

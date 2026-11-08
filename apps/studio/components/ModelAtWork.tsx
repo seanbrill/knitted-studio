@@ -13,7 +13,8 @@ import { lead } from "./ModelPresence";
 
 const { Minimize2, Eye } = icons;
 
-export function ModelAtWork() {
+/** `right`: how far in from the right it sits, clear of a panel there. */
+export function ModelAtWork({ right = 16 }: { right?: number } = {}) {
   const s = useAgent();
   const now = useNow((t) => isActive(s, t));
   const pathname = usePathname();
@@ -33,13 +34,13 @@ export function ModelAtWork() {
 
   if (small) return (
     <button className="chip chip-button floating" onClick={() => setSmall(false)} aria-label={`${who}: ${what}. Show more.`}
-      style={{ position: "fixed", right: 16, bottom: 16, zIndex: 39, maxWidth: 360, gap: 8 }}>
+      style={{ position: "fixed", right, bottom: 16, zIndex: 39, maxWidth: 360, gap: 8 }}>
       {dot}<span style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{who}</span>
       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--ink-muted)" }}>{what}</span>
     </button>
   );
   return (
-    <section className="panel floating" aria-label={`What ${who} is doing`} style={{ position: "fixed", right: 16, bottom: 16, zIndex: 39, width: 340, padding: "var(--space-3)", display: "grid", gap: 6 }}>
+    <section className="panel floating" aria-label={`What ${who} is doing`} style={{ position: "fixed", right, bottom: 16, zIndex: 39, width: 340, padding: "var(--space-3)", display: "grid", gap: 6 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         {dot}<strong className="label" style={{ flex: 1 }}>{who}{running ? " is working" : ""}</strong>
         <IconButton label="Make smaller" onClick={() => setSmall(true)}><Minimize2 size={14} aria-hidden /></IconButton>

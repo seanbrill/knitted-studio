@@ -4,6 +4,7 @@ import { useState } from "react";
 import { api } from "@knitted/core/client";
 import { Button, Field, Input, Select, Slider, icons, useToast } from "@knitted/ui";
 import { useLive } from "@/lib/hooks";
+import { DoneSettings } from "./ModelDone";
 
 const { AlertTriangle, Check, Copy, RotateCcw } = icons;
 
@@ -48,6 +49,7 @@ function OwnKey() {
         {good && <span className="body-sm" style={{ color: "var(--success)", display: "flex", gap: 4, alignItems: "center" }}><Check size={14} aria-hidden /> Connected</span>}
         {err && <span className="field-error" role="alert"><AlertTriangle size={14} aria-hidden /> {err}</span>}
       </div>
+      <DoneSettings />
     </div>
   );
 }

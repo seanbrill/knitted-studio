@@ -359,6 +359,23 @@ test("the tools marked read-only change nothing, so a pause that lets them throu
   assert.equal(store.rev(), rev);
 });
 
+test("a call on a design sheet says which frames it works on, so the board outlines them", async () => {
+  const { changeDesign } = await import("@knitted/core/node");
+  const { endOf } = await import("../packages/mcp/src/activity.mjs");
+  const d = await tools.create_design({ projectId: project.id, name: "Site", start: "blank" });
+  assert.deepEqual([lastCall().tool, lastCall().where], ["create_design", { projectId: project.id, designId: d.id }]);
+  const made = changeDesign(store, d.id, [{ op: "setFrame", section: d.sections[0].id, name: "Home", width: 1440, html: "<h1>Home</h1>", css: "" }]).made.frames[0];
+  await tools.arrange_design({ designId: d.id, changes: [{ op: "duplicateFrame", frameId: made }] });
+  const copy = store.db.prepare("select data from designs where id = ?").get(d.id);
+  const ids = JSON.parse(copy.data).sections[0].frames.map((f) => f.id);
+  assert.equal(ids.length, 2);
+  assert.deepEqual(lastCall().where.frameIds, ids, "the frame copied and its copy");
+  await tools.get_design({ designId: d.id });
+  assert.equal(lastCall().where.frameIds, undefined, "reading the whole sheet is no frame in particular");
+  // A frame it adds has its id only once it is made: set_design_frame says it.
+  assert.deepEqual(endOf("set_design_frame", { designId: d.id }, { frameId: "f9" }, store).where.frameIds, ["f9"]);
+});
+
 test("the studio names a model by what its client said it is", async () => {
   const { clientLabel } = await import("@knitted/mcp/context");
   assert.equal(clientLabel("claude-code"), "Claude Code");

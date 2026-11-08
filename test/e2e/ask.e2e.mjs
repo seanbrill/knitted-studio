@@ -320,9 +320,41 @@ test("Ask your model on a pattern starts a chat about it, and the person keeps w
   const asked = carrying("make the headline shorter").messages.at(-1).content;
   assert.match(asked, new RegExp(p.name), "the model is told which pattern");
   assert.match(asked, /What I want: make the headline shorter/);
-  await page.getByRole("button", { name: "Open the chat" }).click();
+  await page.locator(".toast").filter({ hasText: "Your model is on it" }).getByRole("button", { name: "Open the chat" }).click();
   await page.waitForURL(/\/ask\?chat=/);
   await page.getByRole("list", { name: "Conversation" }).getByText("Headline written.").waitFor({ timeout: 30000 });
+});
+
+test("while the model works, its pattern's card and the tab are marked, and when it is done the person is told on whatever page", async () => {
+  const p = await pattern();
+  await page.goto(`${studio.url}/projects/${projectId}`);
+  await page.getByRole("button", { name: `Actions for ${p.name}` }).first().click();
+  await page.getByRole("menuitem", { name: "Ask your model..." }).click();
+  const dialog = page.getByRole("dialog", { name: "Ask your model to change this pattern" });
+  await dialog.getByLabel("What should change?").fill("slowly make the headline say it is done");
+  await dialog.getByRole("button", { name: "Ask", exact: true }).click();
+  await dialog.waitFor({ state: "detached" });
+  // Its step on the pattern outlines that pattern's card, with who and what, and the Patterns tab.
+  const card = page.locator(".card").filter({ has: page.getByRole("link", { name: `Open ${p.name}` }) }).first();
+  await card.getByTestId("model-on").waitFor({ timeout: 20000 });
+  assert.match(await card.getByTestId("model-on").innerText(), /^Your model\s*(Reading|Filling)/);
+  await card.getByTestId("model-on").filter({ hasText: "Filling headline" }).waitFor({ timeout: 20000 });
+  assert.equal(await page.locator("a.tab").filter({ hasText: /^Patterns/ }).getAttribute("data-model"), "");
+  // Done, said on the page the person is on, with a way to the chat.
+  await page.locator("a.tab").filter({ hasText: /^Yarn/ }).click();
+  const told = page.locator(".toast").filter({ hasText: "Your model is done: Headline written." });
+  await told.waitFor({ timeout: 20000 });
+  await told.getByRole("button", { name: "Open the chat" }).click();
+  await page.waitForURL(/\/ask\?chat=/);
+  await page.getByRole("list", { name: "Conversation" }).getByText("Headline written.").waitFor();
+});
+
+test("with the chat on screen, a run that ends there is not announced again", async () => {
+  await page.getByRole("textbox", { name: /Message/ }).fill("make the headline say it again");
+  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByRole("list", { name: "Conversation" }).getByText("Headline written.").nth(1).waitFor({ timeout: 30000 });
+  await page.waitForTimeout(800);
+  assert.equal(await page.locator(".toast").filter({ hasText: "is done" }).count(), 0);
 });
 
 test("Spending shows what the answers cost, and a monthly limit stops the next one with a way to raise it", async () => {

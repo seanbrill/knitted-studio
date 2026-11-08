@@ -13,7 +13,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { api, type AgentEvent, type AgentJob, type ChatDetail, type ChatItem } from "@knitted/core/client";
 import { Button, ConfirmDialog, IconButton, Markdown, Textarea, icons, useToast } from "@knitted/ui";
-import { useAgent } from "@/lib/agent";
+import { showingChat, useAgent } from "@/lib/agent";
 import { setCurrentChat, useCurrentChat } from "@/lib/current-chat";
 import { timeAgo, useLive } from "@/lib/hooks";
 
@@ -143,6 +143,8 @@ export function Chat({ chatId, onStarted, projectId = null, patternId, compact =
   const [queued, setQueued] = useState<string[]>([]);
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setQueued(chatId ? queueOf(chatId) : []); }, [chatId]);
+  // On screen, a run that ends here is seen ending, and is not announced as well (ModelDone).
+  useEffect(() => (chatId ? showingChat(chatId) : undefined), [chatId]);
   const keep = (q: string[]) => { if (!chatId) return; queues.set(chatId, q); try { localStorage.setItem(QUEUE(chatId), JSON.stringify(q)); } catch { /* still kept for this visit */ } setQueued(q); };
 
   // Kept at the newest message while the person is reading there; left alone once they scroll up.

@@ -95,6 +95,30 @@ test("the model designs a page while the board is open, and sees it", async () =
   assert.match(r.content[1].text, /^Added Menu \(f\d+\) in Shop \(s4\), Desktop 1440\./);
   await frame("Menu").getByRole("heading", { name: "Our menu" }).waitFor();
   await page.getByText("by your model").first().waitFor();
+  // The frame it made is outlined on the board, with who and what, and what it is doing shows here too.
+  const menu = page.locator("[data-frame-box]").filter({ has: page.locator('iframe[title="Menu"]') });
+  await menu.getByTestId("model-on").waitFor();
+  assert.match(await menu.getByTestId("model-on").innerText(), /A model\s*Adding .Menu./);
+  await page.getByRole("region", { name: "What A model is doing" }).waitFor();
+});
+
+test("each frame keeps its own unsaved changes: picking another shows that one's code, and going back shows them again", async () => {
+  await page.getByRole("button", { name: "Product, Mobile 390" }).click();
+  const product = page.getByRole("complementary", { name: "Frame: Product" });
+  await product.getByLabel("Note").fill("Half written");
+  await page.waitForTimeout(500);
+  await page.getByRole("button", { name: "Menu, Desktop 1440" }).click();
+  const menu = page.getByRole("complementary", { name: "Frame: Menu" });
+  assert.equal(await menu.getByLabel("Name").inputValue(), "Menu");
+  assert.equal(await menu.getByLabel("Note").inputValue(), "");
+  assert.match(await menu.getByLabel("HTML").inputValue(), /Our menu/);
+  assert.equal(await menu.getByRole("button", { name: "Save" }).isDisabled(), true, "nothing changed on Menu");
+  await page.waitForTimeout(500);
+  await frame("Menu").getByRole("heading", { name: "Our menu" }).waitFor();
+  await page.getByRole("button", { name: "Product, Mobile 390" }).click();
+  assert.equal(await product.getByLabel("Note").inputValue(), "Half written");
+  await product.getByRole("button", { name: "Discard" }).click();
+  assert.equal(await product.getByLabel("Note").inputValue(), "");
 });
 
 test("the board zooms past 100% and about the pointer, zooms to a frame, and drags about", async () => {

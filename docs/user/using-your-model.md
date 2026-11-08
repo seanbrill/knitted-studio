@@ -46,14 +46,29 @@ Then restart your model's app so it picks up the new tools.
 
 ## Watch it work
 
-While your model works, the studio shows it: its name and what it is doing, in the side bar on every page and in the editor's top bar. In the editor, each Stitch it changes is outlined in red with its name for a moment, so you can see where it is working and keep out of its way. Open it to see a list of what it did, with anything that was refused and why.
+While your model works, the studio shows it: its name and what it is doing, in the side bar on every page and in the editor's top bar. Open it to see a list of what it did, with anything that was refused and why.
+
+Whatever it is working on is outlined in red, with its name and what it is doing, so you can see where it is and keep out of its way:
+
+- in the editor, each Stitch it changes
+- in a project, the Pattern, Yarn, Part, Swatch or design sheet in its list, and the tab it is under, such as **Patterns**
+- on a design sheet, each frame it designs or looks at
+- in the knitting queue, the batch it started
 
 In the editor, a small bubble over the canvas shows what your model is thinking and doing as it happens, even with the chat closed. Shrink it to a dot, or close it for the rest of that run.
 
-- **Follow** takes you where it is working, and keeps up as it moves from one Pattern to the next. It stops when you go somewhere yourself or make a change of your own.
+- **Follow** takes you where it is working, and keeps up as it moves from one Pattern to the next, or from frame to frame on a design sheet, bringing each into view. It stops when you go somewhere yourself or make a change of your own.
 - **Pause** holds it. Until you press **Resume**, every change it tries is refused and it is told to wait for you. It can still read, check and preview.
 
 You and your model can work on the same Pattern at once. Its changes appear on your canvas as it makes them, and **Undo** only takes back your own. If you were changing something when its change arrived, yours is kept too, unless you both changed the very same thing at the same moment. Then its change stays, and the studio tells you yours was not kept.
+
+## When it is done
+
+When a run you started in the studio ends, the studio tells you on whatever page you are on, with the first line of its answer and **Open the chat**. It says so too if your model stopped or could not finish. If knitted is behind another window, your computer shows a notification as well; the first time, it asks whether it may.
+
+You are not told about a run in a chat you are watching, since you can see it end. To turn either kind off, open **Settings**, then **Model**, and look under *When your model finishes*.
+
+A model connected from outside, such as Claude Code, is outlined as it works like any other, but the studio cannot tell when its task is over, so it is not announced.
 
 ## What it cannot do
 

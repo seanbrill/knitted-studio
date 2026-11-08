@@ -6,6 +6,7 @@ import { Tip, icons } from "@knitted/ui";
 import { marksOn, useAgent, useNow } from "@/lib/agent";
 import { ENDED_MS, focusOn, liveOn, meets, stepOf, workOn, type Rect } from "@/lib/editor/live";
 import { ModelBubble } from "./ModelBubble";
+import { useFollow } from "@/lib/follow";
 
 const { ArrowLeft } = icons;
 const BUBBLE_KEY = "knitted.editor.bubble";
@@ -59,6 +60,13 @@ export function ModelLayer({ patternId, stitches, box, scale, at, size, frame, s
     const left = Math.min(size.w - w - 12, Math.max(12, cx - w / 2)), top = Math.min(size.h - h - 12, Math.max(12, cy - h / 2));
     pointer = { left, top, w, h, turn: (Math.atan2(cy - (top + h / 2), cx - (left + w / 2)) * 180) / Math.PI - 180 };
   }
+  // Following, the canvas goes to what it changes when that is out of sight, each time it moves on.
+  const following = useFollow((f) => f.on);
+  const goTo = (lead.length ? lead : marked).map((s) => s.id).join(",");
+  useEffect(() => {
+    if (following && away) onShow(away);
+  }, [following, goTo]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // The frame says who is at work when nothing it changes is drawn, and the bubble does not say it already.
   const tagged = !!work && !marked.length && !(bubble && !small && bubble.client === work.who);
   const tag: Rect | null = tagged ? { x: Math.max(8, at.x - 2), y: Math.max(8, at.y - 28), w: Math.min(360, size.w - 16), h: 22 } : null;

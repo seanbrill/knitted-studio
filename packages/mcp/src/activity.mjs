@@ -112,6 +112,12 @@ function stitchesOf(name, a, p) {
   return [...new Set([...refs.map((r) => stitchIdFor(p, r)), ...added].filter((x) => typeof x === "string"))];
 }
 
+/** The frames of a design a call works on, by id: the one it designs or looks at, or those it moves. */
+function framesOf(name, a) {
+  const ids = name === "arrange_design" ? (Array.isArray(a.changes) ? a.changes.map((c) => c?.frameId) : []) : [a.frameId];
+  return [...new Set(ids.filter((x) => typeof x === "string" && x))];
+}
+
 // The calls that work on the Brief, whose page Follow opens.
 const BRIEF_TOOLS = new Set(["get_brief", "set_profile", "capture_website"]);
 
@@ -132,7 +138,8 @@ export function describeCall(name, a, store) {
   // A call on folders works in one section: the page Follow opens. Moving things of several kinds, the first.
   const section = (name === "move_to_folder" ? moving(a)[0]?.[0] : undefined) ?? ((name === "move_to_folder" || name === "list_folders" || (name === "rename" && a.folder)) && HOLDS[a.section] ? a.section : undefined)
     ?? (BRIEF_TOOLS.has(name) || (a.reference && (name === "list_yarn" || name.startsWith("import_yarn"))) || yarn?.shelf === "reference" ? "reference" : undefined);
-  const where = Object.fromEntries(Object.entries({ projectId, patternId: p?.id, stitchIds: stitchIds.length ? stitchIds : undefined, yarnId: yarn?.id, partId: a.partId, designId: design?.id, jobId: a.jobId, section }).filter(([, v]) => v !== undefined));
+  const frameIds = design ? framesOf(name, a) : [];
+  const where = Object.fromEntries(Object.entries({ projectId, patternId: p?.id, stitchIds: stitchIds.length ? stitchIds : undefined, yarnId: yarn?.id, partId: a.partId, designId: design?.id, frameIds: frameIds.length ? frameIds : undefined, jobId: a.jobId, section }).filter(([, v]) => v !== undefined));
   return { summary, where };
 }
 
@@ -148,6 +155,9 @@ export function endOf(name, a, out, store) {
   if (name === "propose_swatch" && out?.id) where.swatchId = out.id;
   if (name === "create_part" && out?.id) where.partId = out.id;
   if (name === "create_design" && out?.id) where.designId = out.id;
+  // A frame it adds has its id only once it is made.
+  if (name === "set_design_frame" && typeof out?.frameId === "string") where.frameIds = [out.frameId];
+  if (name === "arrange_design" && Array.isArray(out?.made?.frames) && out.made.frames.length) where.frameIds = [...new Set([...framesOf(name, a), ...out.made.frames])];
   if (name === "insert_part" && out?.inserted) { const id = stitchIdFor(safe(() => store.getPattern(a.patternId)), out.inserted); if (id) where.stitchIds = [id]; }
   if ((name === "knit_pattern" || name === "synthesize_voiceover" || name === "capture_website") && out?.jobId) where.jobId = out.jobId;
   const note = refused.length ? refused.map((r) => `${r.slot ? `${r.slot}: ` : ""}${r.why}`).join("; ") : undefined;

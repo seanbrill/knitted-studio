@@ -13,6 +13,8 @@ import { timeAgo, useLive } from "@/lib/hooks";
 import { ViewBar, layout, useView, type SortBy } from "./Views";
 import { AskModelDialog, aboutPattern } from "./AskModel";
 import { PickBox, SelectionBar, picking, useSelection } from "./Selection";
+import { leadOf, useMarks } from "@/lib/agent";
+import { ModelMark } from "./ModelMark";
 
 const PATTERN_SORTS: SortBy<Pattern>[] = [
   { value: "updated", label: "Last changed", key: (p) => p.updatedAt, desc: true },
@@ -94,6 +96,9 @@ export function PatternsView({ projectId }: { projectId: string }) {
   const filtering = !!q.trim() || size !== "all";
   const here = view.sorted((patterns ?? []).filter((p) => (filtering ? isInside(p.folder, kit.here) && p.name.toLowerCase().includes(q.trim().toLowerCase()) && (size === "all" || p.size.name === size) : p.folder === kit.here)));
   const sel = useSelection(here);
+  // What a model is changing or looking at, outlined on its card.
+  const marks = useMarks((w) => w.patternId);
+  const lead = leadOf(marks);
   const [asking, setAsking] = useState<Pattern | null>(null);
   const [bulkDelete, setBulkDelete] = useState(false);
   // A click with Shift, Ctrl or Cmd held picks the pattern instead of opening it.
@@ -145,6 +150,7 @@ export function PatternsView({ projectId }: { projectId: string }) {
                 <div className="pickable" data-selected={sel.has(p.id)}>
                 <PickBox sel={sel} id={p.id} name={p.name} className="pick-box" />
                 <div className="card card-link" draggable onDragStart={kit.dragThings(sel.has(p.id) ? sel.picked.map((x) => x.id) : [p.id])} style={{ padding: "6px var(--space-3) 6px 6px", position: "relative", display: "grid", gridTemplateColumns: "56px minmax(0, 1fr) auto auto", gap: "var(--space-3)", alignItems: "center" }}>
+                  <ModelMark mark={marks.get(p.id)} lead={lead === p.id} />
                   <Link href={`/projects/${projectId}/patterns/${p.id}`} aria-label={`Open ${p.name}`} draggable={false} onClick={pick(p)} style={{ position: "absolute", inset: 0, zIndex: 1, borderRadius: "var(--radius-md)" }} />
                   <div className="thumb" aria-hidden style={{ width: 56, height: 56, padding: 4 }}>
                     <div style={{ width: p.size.w >= p.size.h ? "100%" : `${(p.size.w / p.size.h) * 100}%` }}><PatternThumb pattern={p} ctx={thumbs} /></div>
@@ -163,6 +169,7 @@ export function PatternsView({ projectId }: { projectId: string }) {
                 <div className="pickable" data-selected={sel.has(p.id)}>
                 <PickBox sel={sel} id={p.id} name={p.name} className="pick-box" />
                 <div className="card card-link" draggable onDragStart={kit.dragThings(sel.has(p.id) ? sel.picked.map((x) => x.id) : [p.id])} style={{ padding: "var(--space-3)", position: "relative" }}>
+                  <ModelMark mark={marks.get(p.id)} lead={lead === p.id} />
                   <Link href={`/projects/${projectId}/patterns/${p.id}`} aria-label={`Open ${p.name}`} draggable={false} onClick={pick(p)} style={{ position: "absolute", inset: 0, zIndex: 1, borderRadius: "var(--radius-md)" }} />
                   <div className="thumb" style={{ aspectRatio: "4 / 5", padding: "var(--space-2)" }}>
                     <div style={{ width: "100%", maxHeight: "100%", display: "grid", placeItems: "center" }}>

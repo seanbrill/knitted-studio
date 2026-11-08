@@ -6,6 +6,8 @@ import { api } from "@knitted/core/client";
 import { foldersIn, hasLintErrors, isInside, lintCodePart, nameOf, type Part, type PartCategory } from "@knitted/core";
 import { Button, Chip, ConfirmDialog, Dialog, EmptyState, Field, Input, Select, Skeleton, Textarea, icons, useToast } from "@knitted/ui";
 import { useLive } from "@/lib/hooks";
+import { leadOf, useMarks } from "@/lib/agent";
+import { ModelMark } from "./ModelMark";
 import { PartThumb } from "./editor/PartThumb";
 import { FolderCrumbs, FolderDialogs, FolderList, NewFolderButton, useFolders } from "./Folders";
 import { ViewBar, commonSorts, layout, useView } from "./Views";
@@ -22,6 +24,9 @@ export function PartsManager({ projectId }: { projectId: string }) {
   const { data: swatches } = useLive(() => api.swatches.list(projectId), [projectId]);
   const { data: project } = useLive(() => api.projects.get(projectId), [projectId]);
   const swatch = swatches?.find((s) => s.id === project?.swatchId) ?? swatches?.[0];
+  // What a model is changing or looking at, outlined on its card.
+  const marks = useMarks((w) => w.partId);
+  const lead = leadOf(marks);
   const [creating, setCreating] = useState(false);
   const [coding, setCoding] = useState<Part | null>(null);
   const [del, setDel] = useState<{ part: Part; usedIn: number } | null>(null);
@@ -63,7 +68,8 @@ export function PartsManager({ projectId }: { projectId: string }) {
     <ul style={layout(view.mode, 240)}>
       {list.map((p) => (
         <li key={p.id} className="card" draggable={editable} onDragStart={editable ? kit.dragThings([p.id]) : undefined}
-          style={view.mode === "grid" ? { padding: "var(--space-3)", display: "grid", gap: 8 } : { padding: "var(--space-2) var(--space-3)", display: "grid", gridTemplateColumns: "120px minmax(0, 1fr) auto", gap: "var(--space-3)", alignItems: "center" }}>
+          style={view.mode === "grid" ? { padding: "var(--space-3)", display: "grid", gap: 8, position: "relative" } : { padding: "var(--space-2) var(--space-3)", display: "grid", gridTemplateColumns: "120px minmax(0, 1fr) auto", gap: "var(--space-3)", alignItems: "center", position: "relative" }}>
+          <ModelMark mark={marks.get(p.id)} lead={lead === p.id} />
           <PartThumb part={p} swatch={swatch} projectId={projectId} width={view.mode === "grid" ? 216 : 120} />
           <div style={{ minWidth: 0 }}>
             <p className="label" style={{ margin: 0 }}>{p.name}</p>
