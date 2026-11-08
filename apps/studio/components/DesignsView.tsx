@@ -15,7 +15,7 @@ import { ModelMark } from "./ModelMark";
 import { frameDoc } from "@/lib/design";
 import { AskModelButton, aboutDesign } from "./AskModel";
 
-const { Plus, MoreHorizontal, Copy, Trash2, Download } = icons;
+const { Plus, MessageSquare, MoreHorizontal, Copy, Trash2, Download } = icons;
 const START = [
   { value: "brand", label: "From your brand", what: "Foundations, Components and Pages, drawn with your Swatch: a home page on a computer and a phone, to change into yours." },
   { value: "blank", label: "Blank", what: "One empty section, for you or your model to fill." },
@@ -36,6 +36,10 @@ export function DesignsView({ projectId }: { projectId: string }) {
   const marks = useMarks((w) => w.designId);
   const lead = leadOf(marks);
   const [creating, setCreating] = useState(false);
+  // Open comments on each sheet.
+  const { data: notes } = useLive(() => api.comments.counts(projectId), [projectId]);
+  const noted = (id: string) => notes?.[id] ?? 0;
+  const commentsWords = (n: number) => `${n} open comment${n === 1 ? "" : "s"}`;
 
   const act = async (fn: () => Promise<unknown>, msg?: string, undo?: () => Promise<unknown>) => {
     try { await fn(); await refresh(); if (msg) toast(msg, undo ? { label: "Undo", onClick: () => void undo().then(refresh) } : undefined); } catch (e) { toast((e as Error).message); }
@@ -54,11 +58,11 @@ export function DesignsView({ projectId }: { projectId: string }) {
           <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "var(--space-4)" }}>
             {designs.map((d) => (
               <li key={d.id} className="card card-link" style={{ padding: "var(--space-3)", position: "relative" }}>
-                <Link href={`/projects/${projectId}/designs/${d.id}`} aria-label={`Open ${d.name}`} style={{ position: "absolute", inset: 0, zIndex: 1, borderRadius: "var(--radius-md)" }} />
+                <Link href={`/projects/${projectId}/designs/${d.id}`} aria-label={`Open ${d.name}${noted(d.id) ? `, ${commentsWords(noted(d.id))}` : ""}`} style={{ position: "absolute", inset: 0, zIndex: 1, borderRadius: "var(--radius-md)" }} />
                 <ModelMark mark={marks.get(d.id)} lead={lead === d.id} />
                 <Preview design={d} swatch={swatch} projectId={projectId} />
                 <p className="label" style={{ margin: "var(--space-3) 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</p>
-                <p className="body-sm" style={{ margin: "2px 0 0", color: "var(--ink-muted)" }}>{counts(d)}, changed {timeAgo(d.updatedAt)}</p>
+                <p className="body-sm" style={{ margin: "2px 0 0", color: "var(--ink-muted)" }}>{counts(d)}, changed {timeAgo(d.updatedAt)}{noted(d.id) > 0 && <span className="comment-count" title={commentsWords(noted(d.id))} style={{ marginLeft: 8 }}><MessageSquare size={12} aria-hidden />{noted(d.id)}</span>}</p>
                 <span style={{ position: "absolute", top: 8, right: 8, zIndex: 2 }}>
                   <Menu trigger={<IconButton label={`Actions for ${d.name}`}><MoreHorizontal size={16} /></IconButton>} items={[
                     { label: "Make a copy", icon: <Copy size={14} />, onSelect: () => void act(() => api.designs.duplicate(d.id), `Copied ${d.name}`) },

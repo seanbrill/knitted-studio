@@ -242,6 +242,43 @@ test("a section downloads on its own: everything in it with a style guide, or it
   assert.ok(!code.names.some((n) => n.endsWith("style-guide.html")), "the code alone");
 });
 
+test("a comment is pinned to a spot on a frame, shows on the board, and the sheet's card counts it", async () => {
+  await page.goto(`${studio.url}/projects/${projectId}/designs/${designId}`);
+  await page.getByRole("button", { name: "Comments", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "Comments on the sheet" });
+  await panel.getByText("None yet").waitFor();
+  const target = page.getByRole("button", { name: "Place a comment on Home" }).first();
+  const box = await target.boundingBox();
+  await target.click({ position: { x: box.width * 0.5, y: box.height * 0.1 } });
+  await panel.getByRole("textbox", { name: "Comment 1" }).fill("The headline needs more room");
+  await panel.getByRole("button", { name: "Add the comment" }).click();
+  const [c] = await serverHas(studio, `/api/comments?design=${designId}`, (l) => l.length === 1);
+  assert.ok(c.frameId, "on a frame");
+  assert.equal(c.frameName, "Home");
+  assert.ok(Math.abs(c.x - 0.5) < 0.01 && Math.abs(c.y - 0.1) < 0.01, `at ${c.x}, ${c.y}`);
+  const pin = page.getByRole("button", { name: "Comment 1: The headline needs more room" });
+  await pin.waitFor();
+  // The pin is where it was put, whatever the zoom.
+  const at = await pin.boundingBox();
+  const frame = await page.locator(`[data-frame-box="${c.frameId}"]`).boundingBox();
+  assert.ok(Math.abs(at.x + at.width / 2 - (frame.x + frame.width * 0.5)) < 3 && Math.abs(at.y + at.height / 2 - (frame.y + frame.height * 0.1)) < 3, "the pin on its spot");
+  assert.ok(at.width > 20 && at.width < 32, `the same size on screen at any zoom: ${at.width}`);
+
+  // Closed, the pins stay on the board, and one opens its comment again.
+  await panel.getByRole("button", { name: "Close the comments" }).click();
+  await panel.waitFor({ state: "detached" });
+  await pin.click();
+  await panel.getByRole("textbox", { name: "Reply to comment 1" }).waitFor();
+  assert.equal(await page.locator(".tab-count").first().innerText(), "1");
+  await panel.getByRole("button", { name: "Resolve" }).click();
+  await panel.getByText("All resolved").waitFor();
+  await panel.getByRole("button", { name: "Open again" }).click();
+  await panel.getByText("1 open").waitFor();
+
+  await page.goto(`${studio.url}/projects/${projectId}/designs`);
+  await page.getByRole("link", { name: "Open Website, 1 open comment" }).waitFor();
+});
+
 test("a sheet is deleted from the list, and Undo brings it back", async () => {
   await page.goto(`${studio.url}/projects/${projectId}/designs`);
   await page.getByText(/4 sections, 10 frames/).waitFor();

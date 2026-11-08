@@ -406,4 +406,32 @@ export const MIGRATIONS: Migration[] = [
     // A knit the person marked as one they like: when, or null.
     sql: `alter table knits add column favorite_at text;`,
   },
+  {
+    version: 19,
+    name: "comments",
+    // A note pinned to a spot on a knit (and a moment, in a video) or on a frame of a design
+    // sheet, by the person or their model, with replies. x and y are fractions of the picture
+    // or the frame, so a pin stays put at any size. A reply has a parent and no pin.
+    sql: `
+      create table comments (
+        id text primary key,
+        project_id text not null references projects(id) on delete cascade,
+        knit_id text references knits(id) on delete cascade,
+        design_id text references designs(id) on delete cascade,
+        frame_id text,
+        parent_id text references comments(id) on delete cascade,
+        x real,
+        y real,
+        time_ms integer,
+        body text not null,
+        author text not null,
+        resolved_at text,
+        created_at text not null,
+        updated_at text not null
+      );
+      create index comments_knit on comments (knit_id);
+      create index comments_design on comments (design_id);
+      create index comments_parent on comments (parent_id);
+    `,
+  },
 ];

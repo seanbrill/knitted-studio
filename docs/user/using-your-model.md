@@ -55,6 +55,8 @@ Then restart your model's app so it picks up the new tools.
 - "Read our brief and write three posts about what is new on the menu."
 - "Take new pictures of our website, then design a fresh version of the home page's top section."
 
+Or show it. Pin a comment to the spot on a knit or a design sheet that should change, and press **Ask your model to do this**. Your model reads comments with `list_comments`, looks at the spot with `view_comment`, and answers with `reply_comment`, resolving the comment when the change is made. See [Comments on a knit](/docs/batch-knitting/#comments) and [on a design](/docs/designs/#comments).
+
 ## Watch it work
 
 While your model works, the studio shows it: its name and what it is doing, in the side bar on every page and in the editor's top bar. Open it to see a list of what it did, with anything that was refused and why.

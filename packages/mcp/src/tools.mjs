@@ -20,7 +20,7 @@
 import { applyCommand, findSection, frameSize, DESIGN_DEVICES, TOKEN_NAMES, instanceOf, joinFolder, motionLint, sceneChange, parentOf, partFromStitches, preflight, uniqueSlotName, checkPost, metricsLine, COLOR_ROLES, FOLDER_SECTIONS, PLATFORMS, PRESETS, SIZES, KNIT_SIZES, sizeNamed, CommandSchema } from "@knitted/core";
 import { GUIDE, GUIDE_TOPICS } from "./guide.mjs";
 import { LIBRARY_ID } from "@knitted/core";
-import { setYarnScope, activeSwatch, cancelPost, createPost, getAccount, getPost, listAccounts, listPosts, postInsights, validatePost, cleanFolder, cropToYarn, getBrief, pdfText, readWebsite, setProfile, viewVideo, viewYarn, createFolder, createPart, editPart, partUsage, createSwatch, createSwatchFromProposal, folderCounts, getKnit, getPart, getYarn, setKnitFavorite, setKnitPost, setKnitTags, importYarn, importYarnFromPath, importYarnFromUrl, searchStock, addStock, saveDrawing, drawSheet, planGeneration, startGeneration, createCopy, createDesign, changeDesign, getDesign, listDesigns, knitPath, listFolders, listKnits, countKnits, changedSince, listParts, listYarn, moveAllToFolder, proposeFromWebsite, renameFolder, setCopyText, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
+import { setYarnScope, activeSwatch, cancelPost, createPost, getAccount, getPost, listAccounts, listPosts, postInsights, validatePost, cleanFolder, cropToYarn, getBrief, pdfText, readWebsite, setProfile, viewVideo, viewYarn, createFolder, createPart, editPart, partUsage, createSwatch, createSwatchFromProposal, folderCounts, getKnit, getPart, getYarn, setKnitFavorite, setKnitPost, setKnitTags, importYarn, importYarnFromPath, importYarnFromUrl, searchStock, addStock, saveDrawing, drawSheet, planGeneration, startGeneration, createCopy, createDesign, changeDesign, getDesign, listDesigns, listComments, replyComment, knitPath, listFolders, listKnits, countKnits, changedSince, listParts, listYarn, moveAllToFolder, proposeFromWebsite, renameFolder, setCopyText, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
 
 const obj = (properties, required = []) => ({ type: "object", properties, required, additionalProperties: false });
 const str = (description) => ({ type: "string", description });
@@ -59,7 +59,7 @@ function into(store, projectId, library, reference) {
   return LIBRARY_ID;
 }
 
-export const READ_ONLY = new Set(["get_guide", "get_studio_info", "list_projects", "get_project", "list_yarn", "view_yarn", "get_brand_guidelines", "get_brief", "read_website", "list_patterns", "get_pattern", "describe_pattern", "list_parts", "list_presets", "list_voices", "preview_pattern", "check_pattern", "get_job", "list_knits", "list_folders", "list_social_accounts", "list_posts", "post_insights", "search_stock", "view_sheet", "list_designs", "get_design", "view_design"]);
+export const READ_ONLY = new Set(["get_guide", "get_studio_info", "list_projects", "get_project", "list_yarn", "view_yarn", "get_brand_guidelines", "get_brief", "read_website", "list_patterns", "get_pattern", "describe_pattern", "list_parts", "list_presets", "list_voices", "preview_pattern", "check_pattern", "get_job", "list_knits", "list_folders", "list_social_accounts", "list_posts", "post_insights", "search_stock", "view_sheet", "list_designs", "get_design", "view_design", "list_comments", "view_comment"]);
 
 // When the process answering started. A build made after it means an older copy is answering.
 const STARTED_AT = new Date(Date.now() - process.uptime() * 1000).toISOString();
@@ -83,6 +83,23 @@ async function lookAt(engine, store, designId, o) {
   try { return await engine.forModel(await engine.renderDesign(store, designId, o)); }
   catch (e) { if (browserGate(e?.message)) return null; throw e; }
 }
+// ── comments ──────────────────────────────────────────────────────────────────
+const COMMENT = str("The comment's id, like cm_01...");
+const clock = (ms) => `${Math.floor(ms / 60000)}:${((ms % 60000) / 1000).toFixed(1).padStart(4, "0")}`;
+const placeOf = (t) => t.x != null
+  ? `${Math.round(t.x * 100)}% across and ${Math.round(t.y * 100)}% down${t.frameName ? ` the frame ${t.frameName}` : ""}${t.timeMs != null ? `, at ${clock(t.timeMs)}` : ""}`
+  : t.timeMs != null ? `at ${clock(t.timeMs)}` : t.frameName ? `the frame ${t.frameName} as a whole` : "the whole thing";
+const byWho = (a) => (a === "human" ? "the person" : "a model");
+/** A thread as a model reads it. */
+function commentOut(t) {
+  return {
+    id: t.id, n: t.n, ...(t.knitId ? { knitId: t.knitId, knit: t.on } : { designId: t.designId, design: t.on, ...(t.frameId ? { frameId: t.frameId, frame: t.frameName } : {}) }),
+    where: placeOf(t), ...(t.x != null ? { x: t.x, y: t.y } : {}), ...(t.timeMs != null ? { timeMs: t.timeMs } : {}),
+    by: byWho(t.author), text: t.text, resolved: !!t.resolvedAt,
+    ...(t.replies.length ? { replies: t.replies.map((r) => ({ by: byWho(r.author), text: r.text })) } : {}),
+  };
+}
+
 const DESIGN_OPS = ["rename", "addSection", "updateSection", "moveSection", "removeSection", "moveFrame", "duplicateFrame", "removeFrame"];
 
 const tagList = (tags) => { if (tags !== undefined && !(Array.isArray(tags) && tags.every((t) => typeof t === "string"))) throw new Error("tags is a list of words, like [\"product\", \"shot\"]."); };
@@ -709,6 +726,28 @@ export const TOOLS = [
       const what = frameId ? `the frame ${frameId}` : sectionId ? `the section ${sectionId}` : `${d.name}: ${d.sections.map((s) => `${s.name} (${s.frames.map((f) => f.name).join(", ") || "empty"})`).join("; ")}`;
       return { __image: png.toString("base64"), mime: "image/png", caption: `This is ${what}.`, id: designId };
     } },
+  { name: "list_comments", description: "The person's comments: notes pinned to a spot on a knit (and a moment, in a video) or on a frame of a design sheet, saying what to change there. Each says where it is and what is under it can be seen with view_comment. Open ones only, unless open is false. Look at one with view_comment before you change anything, and answer it with reply_comment when it is done.", inputSchema: obj({ projectId: PROJECT, knitId: str("A knit's id, for its comments"), designId: DESIGN, frameId: str("With designId, one frame's comments"), open: { type: "boolean", description: "Only those not resolved yet. True unless said." } }),
+    async handler({ projectId, knitId, designId, frameId, open = true }, { store }) {
+      if (!projectId && !knitId && !designId) throw new Error("Say whose comments: a projectId, a knitId or a designId.");
+      const list = listComments(store, { projectId, knitId, designId, frameId, open });
+      return { comments: list.map(commentOut), ...(list.length ? { next: "view_comment on each, to see the spot it is pinned to." } : { note: open ? "No open comments." : "No comments." }) };
+    } },
+  { name: "view_comment", description: "LOOK at a comment: the knit (at the comment's moment, in a video) or the frame, with the pin drawn where the person put it, beside a close-up of that spot. Says what is under the pin (the stitch in the knit's pattern, or the element in the frame's HTML), the whole thread, and how to change that part.", inputSchema: obj({ commentId: COMMENT }, ["commentId"]),
+    async handler({ commentId }, { store, engine }) {
+      const { thread: t, png, under, patternId, frameGone } = await engine.lookAtComment(store, commentId);
+      const thread = [`Comment ${t.n} on ${t.knitId ? `the knit "${t.on}"` : `the design "${t.on}"`}, by ${byWho(t.author)}: "${t.text}"`, ...t.replies.map((r) => `${byWho(r.author)} replied: "${r.text}"`)].join(" ");
+      const there = Array.isArray(under) ? (under.length ? `Under the pin, top first: ${under.map((u) => `${u.kind} stitch ${u.stitchId}${u.slot ? ` (slot ${u.slot})` : ""}${u.text ? ` saying "${u.text}"` : ""}`).join("; ")}.` : "Under the pin there is only the background.")
+        : under ? `Under the pin is ${under.tag}${under.text ? ` saying "${under.text}"` : ""}, in ${under.path}. Its HTML: ${under.html}` : "";
+      const how = t.knitId
+        ? patternId ? `The knit was made from the pattern ${patternId}: change that pattern (describe_pattern first), check it with check_pattern, then knit it again with knit_pattern at the same size. The old knit stays where it is.` : "The pattern it was knitted from is gone, so make the change in the closest pattern and knit a new version."
+        : `Change the frame with set_design_frame (get_design with its frameId gives the code), and look again with view_design.`;
+      const pinned = frameGone ? "The frame it was pinned to has been deleted since, so this is the whole sheet, without the pin: ask the person where it belongs now, or answer it if the deletion did what it asked."
+        : t.x != null ? `The pin is the red ring numbered ${t.n}; on the right is a close-up of the spot.` : "It has no pin: it is about the whole thing.";
+      const caption = `${thread}. It is pinned ${placeOf(t)}${t.resolvedAt ? ", and resolved already" : ""}. ${pinned} ${there} ${how} Then reply_comment with what you changed, and resolve: true when it is done.`;
+      return { __image: png.toString("base64"), mime: "image/png", caption: caption.replace(/\s+/g, " ").trim(), id: t.id };
+    } },
+  { name: "reply_comment", description: "Answer a comment: say what you changed, or ask what the person meant. resolve: true when the change is made and knitted again (or saved, on a design), so it leaves the open list; the person can open it again.", inputSchema: obj({ commentId: COMMENT, text: str("What you did, or your question, in plain words"), resolve: { type: "boolean", description: "True when it is done" } }, ["commentId", "text"]),
+    async handler({ commentId, text, resolve }, { store }) { return commentOut(replyComment(store, commentId, { text, resolve }, "model")); } },
   { name: "list_folders", description: "How a project's things are sorted: each section (patterns, yarn, parts, swatches, knits, reference) has folders of its own, which can hold folders. Each folder is a path like Royalty free music/Lo-fi, with how many things are in it, not counting the folders inside. Give a section for just that one.", inputSchema: obj({ projectId: PROJECT, section: SECTION }, ["projectId"]),
     async handler({ projectId, section }, { store }) {
       store.getProject(projectId);

@@ -218,6 +218,35 @@ export async function renderPreview(store, patternId, { timeMs = 0, scale = 1, r
   } finally { await page.close(); await rm(file, { force: true }); if (!injected) await renderer.close(); }
 }
 
+/**
+ * The stitches at a point of a pattern at a moment, the one on top first: what a comment pinned
+ * there is about. `x` and `y` are fractions of the frame. Drawn as it knits, so a stitch that
+ * has moved in by then is found where it is.
+ * @returns {Promise<{ stitchId: string, kind: string, slot?: string, text?: string }[]>}
+ */
+export async function stitchesAt(store, patternId, { x, y, timeMs = 0, renderer: injected } = {}) {
+  const pattern = store.getPattern(patternId);
+  const swatch = activeSwatch(store, pattern.projectId);
+  const yarn = listYarn(store, pattern.projectId);
+  const ctx = renderContext(store, pattern.projectId, pattern, swatch, yarn, Object.fromEntries(yarn.map((v) => [v.id, v])));
+  const dir = join(store.paths.projectDir(pattern.projectId), ".pages");
+  await mkdir(dir, { recursive: true });
+  const file = join(dir, `at-${patternId}-${Date.now()}.html`);
+  await writeFile(file, pageFor({ ...pattern, background: swatch.colors.find((c) => c.role === "background")?.hex }, ctx), "utf8");
+  const renderer = injected ?? (await openRenderer());
+  const page = await renderer.newPage({ width: pattern.size.w, height: pattern.size.h, scale: 1 });
+  try {
+    await page.goto(pathToFileURL(file).href);
+    await page.evaluate(() => window.__stage.ready());
+    if (timeMs) await page.evaluate((t) => window.__stage.seek(t), timeMs);
+    const ids = await page.evaluate(([px, py]) => [...new Set(document.elementsFromPoint(px, py).map((el) => el.closest?.(".stitch")?.dataset.stitchId).filter(Boolean))], [x * pattern.size.w, y * pattern.size.h]);
+    return ids.map((id) => pattern.stitches.find((st) => st.id === id)).filter(Boolean).map((st) => ({
+      stitchId: st.id, kind: st.kind, ...(st.slot ? { slot: st.slot } : {}),
+      ...(st.kind === "text" && st.content ? { text: st.content.slice(0, 120) } : {}),
+    }));
+  } finally { await page.close(); await rm(file, { force: true }); if (!injected) await renderer.close(); }
+}
+
 /** The whole job. Progress goes to the jobs table, so the UI, the CLI and MCP all read the same thing. */
 export async function runKnit(store, { jobId, projectId, patternId, params = {}, signal, renderer: injected }) {
   const format = FORMATS[params.format ?? "png"] ? (params.format === "jpg" ? "jpeg" : params.format ?? "png") : "png";

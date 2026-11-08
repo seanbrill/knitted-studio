@@ -786,3 +786,41 @@ test("design sheets: the model starts one from the brand, designs a frame and se
   const { pathFor } = await import("../apps/studio/lib/agent.ts");
   assert.equal(pathFor(lastCall()), `/projects/${project.id}/designs/${d.id}`);
 });
+
+test("a model reads the person's comments, looks at the spot each is pinned to, and answers them", async () => {
+  const { addComment, insertKnit, knitPath, getComment } = await import("@knitted/core/node");
+  const { mkdirSync } = await import("node:fs");
+  const { dirname } = await import("node:path");
+  const sharp = (await import("sharp")).default;
+  const k = insertKnit(store, { projectId: project.id, patternId: null, patternName: "Gone", jobId: null, batchId: null, label: "Old story", file: "c/old-story.png", kind: "image", format: "png", width: 400, height: 600, bytes: 1, durationMs: null, hash: "c1", report: {} });
+  mkdirSync(dirname(knitPath(store, k)), { recursive: true });
+  await sharp({ create: { width: 400, height: 600, channels: 3, background: "#3366aa" } }).png().toFile(knitPath(store, k));
+  const c = addComment(store, { knitId: k.id, x: 0.5, y: 0.25, text: "The logo is too small here" });
+  addComment(store, { knitId: k.id, text: "Overall it is too dark" });
+
+  const { comments } = await tools.list_comments({ knitId: k.id });
+  assert.deepEqual(comments.map((x) => x.n), [1, 2]);
+  assert.equal(comments[0].where, "50% across and 25% down");
+  assert.equal(comments[0].by, "the person");
+  assert.equal(comments[1].where, "the whole thing");
+  assert.match((await tools.list_comments({ projectId: project.id })).next, /view_comment/);
+  await assert.rejects(tools.list_comments({}), /Say whose comments/);
+
+  const seen = await tools.view_comment({ commentId: c.id });
+  assert.equal(seen.mime, "image/png");
+  const pic = await sharp(Buffer.from(seen.__image, "base64")).metadata();
+  assert.ok(pic.width > 400, `the picture with a close-up beside it, ${pic.width} wide`);
+  assert.match(seen.caption, /Comment 1 on the knit "Old story", by the person: "The logo is too small here"/);
+  assert.match(seen.caption, /red ring numbered 1/);
+  assert.match(seen.caption, /pattern it was knitted from is gone/);
+  assert.match(seen.caption, /reply_comment/);
+
+  const done = await tools.reply_comment({ commentId: c.id, text: "Made the logo twice the size and knitted it again.", resolve: true });
+  assert.equal(done.resolved, true);
+  assert.deepEqual(done.replies, [{ by: "a model", text: "Made the logo twice the size and knitted it again." }]);
+  assert.deepEqual([lastCall().tool, lastCall().summary, lastCall().edits], ["reply_comment", "Answering a comment, and resolving it", true]);
+  assert.equal(getComment(store, c.id).replies[0].author, "model");
+  assert.deepEqual((await tools.list_comments({ knitId: k.id })).comments.map((x) => x.n), [2], "a resolved one is not open");
+  assert.equal((await tools.list_comments({ knitId: k.id, open: false })).comments.length, 2);
+  assert.deepEqual([lastCall().summary, lastCall().edits], ["Reading the comments", false]);
+});

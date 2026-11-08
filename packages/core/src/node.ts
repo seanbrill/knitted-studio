@@ -27,3 +27,4 @@ export * from "./stock.ts";
 export * from "./draw.ts";
 export * from "./generate.ts";
 export * from "./designs.ts";
+export * from "./comments.ts";

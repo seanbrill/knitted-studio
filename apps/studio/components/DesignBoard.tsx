@@ -6,7 +6,7 @@
 // on the sheet, its frames change here as it saves them.
 
 import Link from "next/link";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { api } from "@knitted/core/client";
 import { DESIGN_DEVICES, deviceOf, frameSize, lintDesignCode, type Design, type DesignDevice, type DesignFrame, type DesignOp, type DesignSection, type Swatch } from "@knitted/core";
 import { Button, ConfirmDialog, Dialog, Field, IconButton, Input, Menu, SegmentedControl, Select, Textarea, Tip, icons, useToast } from "@knitted/ui";
@@ -18,9 +18,10 @@ import { ModelAtWork } from "./ModelAtWork";
 import { ModelMark } from "./ModelMark";
 import { leadOf, useMarks, type Mark } from "@/lib/agent";
 import { ZoomControls } from "./ZoomControls";
+import { CommentThreads, PinCatch, Pins, shownThreads, useCommentState, useComments, type CommentsOn } from "./Comments";
 import { stepZoom, typingIn, useSpaceHeld, wheelZoom, zoomKey } from "@/lib/zoom";
 
-const { ArrowLeft, ArrowUp, ArrowDown, ChevronRight, Copy, Download, FileCode, MoreHorizontal, Package, Pencil, Plus, Trash2, Undo2, X, AlertTriangle } = icons;
+const { ArrowLeft, ArrowUp, ArrowDown, ChevronRight, Copy, Download, FileCode, MessageSquare, MoreHorizontal, Package, Pencil, Plus, Trash2, Undo2, X, AlertTriangle } = icons;
 const ZOOM_MIN = 0.05;
 const ZOOM_MAX = 4;
 // Round a frame zoomed to: room to see it is the whole frame, and its label.
@@ -78,6 +79,25 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
   const marks = useMarks((w) => (w.designId === initial.id ? w.frameIds : null));
   const leadFrame = leadOf(marks);
   const where = design.sections.map((section) => ({ section, frame: section.frames.find((x) => x.id === selected) })).find((w): w is { section: DesignSection; frame: DesignFrame } => !!w.frame) ?? null;
+
+  // Comments: pinned to a spot on a frame, or on the sheet as a whole. With the panel open, a
+  // click on a frame places one; the pins of the open ones show on the board all the time.
+  const commentsOn: CommentsOn = { kind: "design", projectId, designId: design.id, name: design.name };
+  const { threads, refresh: refreshComments } = useComments(commentsOn);
+  const cs = useCommentState();
+  const [commenting, setCommenting] = useState(false);
+  const pinsOf = useMemo(() => {
+    const m = new Map<string, typeof threads>();
+    for (const t of shownThreads(threads, cs)) if (t.frameId) m.set(t.frameId, [...(m.get(t.frameId) ?? []), t]);
+    return m;
+  }, [threads, cs]);
+  const openComments = threads.filter((t) => !t.resolvedAt).length;
+  const comment = (on: boolean) => {
+    setCommenting(on);
+    cs.setPicking(on);
+    if (on) setSelected(null); else { cs.setDraft(null); cs.setActive(null); }
+  };
+  const pickComment = (id: string) => { setCommenting(true); setSelected(null); cs.setActive(id); };
 
   // The zoom that fits the widest section in the window: frames scale, the space round them does not.
   const fit = useMemo(() => {
@@ -311,6 +331,11 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
           <ZoomControls zoom={zoom} scale={z} onZoom={(v) => zoomTo(v)} onStep={step} hand={hand} onHand={setHand}
             onSelection={selected ? () => zoomToFrame(selected) : undefined} selectionHint="Zoom to selection (select a frame first)" />
         </div>
+        <div className="editor-group">
+          <Button size="sm" aria-pressed={commenting} tip="Pin a comment to the spot on a frame that should change. Your model can read each one and do what it says." onClick={() => comment(!commenting)}>
+            <MessageSquare size={14} aria-hidden /> Comments{openComments > 0 && <span className="tab-count" aria-label={`, ${openComments} open`}>{openComments}</span>}
+          </Button>
+        </div>
         <div className="editor-group roomy">
           <AskModelButton size="sm" about={aboutDesign(projectId, design)} />
           <Menu trigger={<Button size="sm"><Download size={14} aria-hidden /> Download</Button>} items={[
@@ -343,8 +368,11 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
                     {s.frames.map((f) => {
                       const p = preview?.id === f.id && selected === f.id && drafts[f.id] ? preview.draft : null;
                       const shown = p ? { ...f, ...p, height: p.height ?? undefined } : f;
+                      const pins = pinsOf.get(f.id) ?? [];
                       return <FrameView key={f.id} f={shown} doc={frameDoc(shown, swatch, projectId)} height={heights[f.id]} selected={selected === f.id} mark={marks.get(f.id)} lead={leadFrame === f.id}
-                        onSelect={() => setSelected(f.id)} onZoom={() => zoomToFrame(f.id)} onHeight={(h) => setHeights((m) => (m[f.id] === h ? m : { ...m, [f.id]: h }))} />;
+                        onSelect={() => { setSelected(f.id); if (commenting) comment(false); }} onZoom={() => zoomToFrame(f.id)} onHeight={(h) => setHeights((m) => (m[f.id] === h ? m : { ...m, [f.id]: h }))}
+                        pins={(pins.length > 0 || cs.draft?.frameId === f.id) && <Pins threads={pins} draft={cs.draft?.frameId === f.id ? cs.draft : null} active={cs.active} onPick={(t) => pickComment(t.id)} />}
+                        catching={commenting && cs.picking && !cs.draft ? (x, y) => { cs.setDraft({ x, y, frameId: f.id, frameName: f.name }); cs.setActive(null); } : undefined} />;
                     })}
                     {!s.frames.length && <button type="button" className="design-add" onClick={() => setAsking({ kind: "frame", section: s })}><Plus aria-hidden /> Add a frame</button>}
                   </div>
@@ -355,14 +383,24 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
           </div>
         </div>
 
-        {where && draft && (
+        {commenting && (
+          <aside className="design-inspector" aria-label="Comments on the sheet">
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+              <h2 className="label" style={{ margin: 0, flex: 1 }}>Comments on {design.name}</h2>
+              <IconButton label="Close the comments" onClick={() => comment(false)}><X size={16} /></IconButton>
+            </div>
+            <CommentThreads on={commentsOn} threads={threads} c={cs} refresh={refreshComments} wholeWords="sheet" hint="Click the spot on a frame that should change." heading={false}
+              onGo={(t) => { if (t.frameId && design.sections.some((s) => s.frames.some((f) => f.id === t.frameId))) zoomToFrame(t.frameId); }} />
+          </aside>
+        )}
+        {!commenting && where && draft && (
           <Inspector key={where.frame.id} design={design} projectId={projectId} section={where.section} frame={where.frame} draft={draft} setDraft={setDraft} dirty={dirty}
             onSave={save} onDiscard={() => { forget(where.frame.id); setPreview(null); }} onClose={() => setSelected(null)}
             change={change} onSelect={setSelected} />
         )}
       </div>
 
-      <ModelAtWork right={where ? 436 : 16} />
+      <ModelAtWork right={where || commenting ? 436 : 16} />
       <SectionDialog asking={asking?.kind === "section" ? asking : null} onClose={() => setAsking(null)}
         onDone={async (name, note, s) => { await change(s ? [{ op: "updateSection", section: s.id, name, note }] : [{ op: "addSection", name, note }]); }} />
       <FrameDialog asking={asking?.kind === "frame" ? asking : null} onClose={() => setAsking(null)}
@@ -378,7 +416,13 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
 }
 
 /** One frame on the board: its label, the frame drawn as a page, and the button that selects it. */
-function FrameView({ f, doc, height, selected, mark, lead, onSelect, onZoom, onHeight }: { f: DesignFrame; doc: string; height?: number; selected: boolean; mark?: Mark; lead: boolean; onSelect: () => void; onZoom: () => void; onHeight: (h: number) => void }) {
+function FrameView({ f, doc, height, selected, mark, lead, onSelect, onZoom, onHeight, pins, catching }: {
+  f: DesignFrame; doc: string; height?: number; selected: boolean; mark?: Mark; lead: boolean; onSelect: () => void; onZoom: () => void; onHeight: (h: number) => void;
+  /** The comments pinned to it. */
+  pins?: ReactNode;
+  /** While a comment is placed: where on the frame it goes, as fractions across and down. */
+  catching?: (x: number, y: number) => void;
+}) {
   const ref = useRef<HTMLIFrameElement>(null);
   const h = f.height ?? height ?? Math.round(f.width * 0.625);
   return (
@@ -391,6 +435,8 @@ function FrameView({ f, doc, height, selected, mark, lead, onSelect, onZoom, onH
         {/* data-pan-ok: with a frame focused, Space still drags the board about. */}
         <button type="button" className="design-frame-hit" data-pan-ok aria-label={`${f.name}, ${frameSize(f)}`} aria-pressed={selected} onClick={onSelect} onDoubleClick={onZoom} />
         <ModelMark mark={mark} lead={lead} />
+        {pins}
+        {catching && <PinCatch label={`Place a comment on ${f.name}`} onSpot={catching} />}
       </div>
     </figure>
   );

@@ -288,7 +288,29 @@ export type ActivityAction =
   | "yarn.imported" | "yarn.changed" | "yarn.deleted" | "yarn.shared" | "swatch.created" | "part.created"
   | "design.created" | "design.duplicated" | "design.deleted"
   | "folder.created" | "folder.filed" | "folder.renamed" | "folder.deleted"
-  | "brief.built" | "brief.changed" | "brief.synced";
+  | "brief.built" | "brief.changed" | "brief.synced"
+  | "comment.added" | "comment.replied" | "comment.resolved";
+
+/** Who wrote a comment or a reply. */
+export type CommentAuthor = "human" | "model";
+export interface CommentReply { id: string; text: string; author: CommentAuthor; createdAt: string; updatedAt: string }
+/** A comment pinned to a knit or a frame of a design sheet, and the replies to it (comments.ts). */
+export interface CommentThread {
+  id: string;
+  /** Its number on what it is on, from 1, oldest first: the number on its pin. */
+  n: number;
+  projectId: string;
+  knitId: string | null; designId: string | null; frameId: string | null;
+  /** What it is on, by name: the knit's label or the sheet's name; and the frame's name, on a sheet. */
+  on: string; frameName: string | null;
+  /** Where: fractions of the picture or the frame across and down. Null for a comment on the whole thing. */
+  x: number | null; y: number | null;
+  /** The moment in a video, in milliseconds. */
+  timeMs: number | null;
+  text: string; author: CommentAuthor; createdAt: string; updatedAt: string;
+  resolvedAt: string | null;
+  replies: CommentReply[];
+}
 
 /** A refused change. Always returned, always logged, never swallowed. */
 export interface Refusal {

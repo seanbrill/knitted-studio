@@ -160,6 +160,39 @@ export async function renderDesign(store, designId, { sectionId, frameId, scale 
 }
 
 /**
+ * What is at a point of a frame: the element there, as a model reads it, and the elements it
+ * sits in. `x` and `y` are fractions of the frame, across and down its whole height.
+ * @returns {Promise<{ tag: string, path: string, text: string, html: string } | null>}
+ */
+export async function elementAt(store, designId, frameId, { x, y, renderer: injected } = {}) {
+  const design = getDesign(store, designId);
+  const f = design.sections.flatMap((s) => s.frames).find((v) => v.id === frameId);
+  if (!f) return null;
+  const swatch = activeSwatch(store, design.projectId);
+  const files = filesFor(store, design.projectId, swatch);
+  const dir = join(store.paths.projectDir(design.projectId), ".pages");
+  await mkdir(dir, { recursive: true });
+  const file = join(dir, `at-${designId}-${Date.now()}.html`);
+  await writeFile(file, framePage(f, { swatch, fontFaces: files.fontFaces, yarnUrl: files.yarnUrl }), "utf8");
+  const renderer = injected ?? (await openRenderer());
+  const page = await renderer.newPage({ width: f.width, height: f.height ?? 900, scale: 1 });
+  try {
+    await page.goto(pathToFileURL(file).href);
+    await page.evaluate(() => document.fonts.ready);
+    const h = f.height ?? Math.min(MAX_SIDE, await page.evaluate(() => document.documentElement.scrollHeight));
+    await page.setViewportSize({ width: f.width, height: h });
+    return await page.evaluate(([px, py]) => {
+      const el = document.elementFromPoint(px, py);
+      if (!el || el === document.documentElement) return null;
+      const name = (e) => `${e.tagName.toLowerCase()}${e.id ? `#${e.id}` : ""}${[...e.classList].slice(0, 3).map((c) => `.${c}`).join("")}`;
+      const path = []; for (let e = el; e && e !== document.body && e !== document.documentElement; e = e.parentElement) path.unshift(name(e));
+      const html = el.outerHTML.replace(/\s+/g, " ");
+      return { tag: name(el), path: path.join(" > "), text: (el.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 200), html: html.length > 600 ? `${html.slice(0, 600)}...` : html };
+    }, [x * f.width, y * h]);
+  } finally { await page.close(); await rm(file, { force: true }); if (!injected) await renderer.close(); }
+}
+
+/**
  * A picture for a model to read: a long page cut into columns side by side, then no more than
  * `max` pixels a side, as a model sees no more than that anyway.
  */

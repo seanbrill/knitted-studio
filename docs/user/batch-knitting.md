@@ -56,6 +56,14 @@ The **Knits** tab searches by name. It can also narrow to **Pictures** or **Vide
 
 Press the star on a knit, or **Favourite** when it is open, to mark one you like. Pick several to star them together. Your model sees your favourites too (`list_knits` with `favorite`): the surest guide to what you want more of.
 
+## Comments
+
+Open a knit and press **Add a comment**, click the spot that should change, and say what. In a video, find the moment with the controls first: the comment is at that moment, and its pin shows round then. For a comment with no spot, choose **the whole knit** (or **this moment**, in a video) instead of clicking.
+
+Each comment is numbered, and its pin has the same number. Open a comment to reply, **Resolve** it or delete it. **Resolved** shows the resolved ones again, and **Open again** brings one back. A knit's card shows how many of its comments are open.
+
+**Ask your model to do this** on a comment, or **Ask your model to do all** for every open one, and your model does what they say. It sees the knit with the pin on it and a close-up of the spot, and which stitch of the pattern is under the pin. It changes the pattern, knits it again, and answers each comment, resolving it when it is done. A knit is a finished file, so the change is a new knit; the old one keeps its comments.
+
 ## Through your model
 
 Your model knits with `knit_pattern`. Its `rows` are the same table, one set of slot values per post, and `sizes` the same sizes. Ask for twelve and you get twelve files in the project's Knits. When you ask in the studio, **Files it may knit per request**, in Settings, Model, sets how many one request may make.

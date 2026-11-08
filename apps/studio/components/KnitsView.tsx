@@ -13,6 +13,7 @@ import { TagFilter, ViewBar, layout, useView, type SortBy } from "./Views";
 import { AskModelButton, aboutKnit } from "./AskModel";
 import { PickBox, SelectionBar, TagDialog, picking, useSelection } from "./Selection";
 import { PostDialog } from "./PostDialog";
+import { KnitWithComments } from "./Comments";
 
 const KNIT_SORTS: SortBy<KnitRecord>[] = [
   { value: "newest", label: "Newest first", key: (k) => k.createdAt, desc: true },
@@ -21,7 +22,7 @@ const KNIT_SORTS: SortBy<KnitRecord>[] = [
   { value: "size", label: "Biggest first", key: (k) => k.bytes, desc: true },
 ];
 
-const { Download, Trash2, AlertTriangle, Copy, FolderInput, X, Check, Send, Star } = icons;
+const { Download, Trash2, AlertTriangle, Copy, FolderInput, MessageSquare, X, Check, Send, Star } = icons;
 
 /** A knit's star: press to make it a favourite, again to take it off. */
 function FavoriteStar({ k, onToggle, inRow }: { k: KnitRecord; onToggle: (k: KnitRecord) => void; inRow?: boolean }) {
@@ -46,6 +47,9 @@ export function KnitsView({ projectId }: { projectId: string }) {
   const toast = useToast();
   const { data: knits, refresh } = useLive(() => api.knit.list(projectId), [projectId]);
   const { data: active } = useLive(() => api.knit.active(projectId), [projectId]);
+  // Open comments on each knit, to find the ones with something to do.
+  const { data: notes } = useLive(() => api.comments.counts(projectId), [projectId]);
+  const noted = (id: string) => notes?.[id] ?? 0;
   const [open, setOpen] = useState<KnitRecord | null>(null);
   // Opening a knit is looking at it: its New badge goes.
   const show = (k: KnitRecord) => { setOpen(k); if (!k.seenAt) void api.knit.seen(k.id).then(refresh, () => {}); };
@@ -161,13 +165,13 @@ export function KnitsView({ projectId }: { projectId: string }) {
                     <li key={k.id} className={`pickable${fresh ? " stitching-in" : ""}`} data-selected={sel.has(k.id)} draggable onDragStart={kit.dragThings(sel.has(k.id) ? sel.picked.map((x) => x.id) : [k.id])}>
                       <PickBox sel={sel} id={k.id} name={k.label} className="pick-box" />
                       <div className="card card-link" style={{ position: "relative", padding: "6px var(--space-3) 6px 6px", display: "grid", gridTemplateColumns: "56px minmax(0, 1fr) auto", gap: "var(--space-3)", alignItems: "center" }}>
-                        <button aria-label={`Open ${k.label}${k.seenAt ? "" : ", new"}${k.patternChangedSince ? ", its pattern changed since" : ""}`} onClick={(e) => (picking(e) ? sel.toggle(k.id, e.shiftKey) : show(k))} style={{ position: "absolute", inset: 0, zIndex: 1, background: "transparent", border: 0, cursor: "pointer", borderRadius: "var(--radius-md)" }} />
+                        <button aria-label={`Open ${k.label}${k.seenAt ? "" : ", new"}${k.patternChangedSince ? ", its pattern changed since" : ""}${noted(k.id) ? `, ${noted(k.id)} open comment${noted(k.id) === 1 ? "" : "s"}` : ""}`} onClick={(e) => (picking(e) ? sel.toggle(k.id, e.shiftKey) : show(k))} style={{ position: "absolute", inset: 0, zIndex: 1, background: "transparent", border: 0, cursor: "pointer", borderRadius: "var(--radius-md)" }} />
                         <div aria-hidden className="thumb" style={{ width: 56, height: 56, padding: 4 }}>
                           {k.kind === "image" ? <img src={knitFileUrl(k)} alt="" loading="lazy" style={{ display: "block", maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} /> : <video src={knitFileUrl(k)} muted preload="metadata" style={{ display: "block", maxWidth: "100%", maxHeight: "100%" }} />}
                         </div>
                         <div aria-hidden style={{ minWidth: 0 }}>
                           <p className="label" style={{ margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{k.label}</p>
-                          <p className="eyebrow" style={{ margin: "2px 0 0", display: "flex", gap: 6, alignItems: "center" }}>{k.format} · {k.width}x{k.height} · {formatBytes(k.bytes)}{warn > 0 && <span title={`${warn} to review`} style={{ color: "var(--danger)" }}><AlertTriangle size={12} aria-hidden /></span>}{k.patternChangedSince && <span title="Its pattern was changed after this was knitted. Knit it again to bring it up to date." style={{ textTransform: "none", letterSpacing: 0 }}>· pattern changed</span>}</p>
+                          <p className="eyebrow" style={{ margin: "2px 0 0", display: "flex", gap: 6, alignItems: "center" }}>{k.format} · {k.width}x{k.height} · {formatBytes(k.bytes)}{warn > 0 && <span title={`${warn} to review`} style={{ color: "var(--danger)" }}><AlertTriangle size={12} aria-hidden /></span>}{noted(k.id) > 0 && <span className="comment-count" title={`${noted(k.id)} open comment${noted(k.id) === 1 ? "" : "s"}`}><MessageSquare size={12} aria-hidden />{noted(k.id)}</span>}{k.patternChangedSince && <span title="Its pattern was changed after this was knitted. Knit it again to bring it up to date." style={{ textTransform: "none", letterSpacing: 0 }}>· pattern changed</span>}</p>
                         </div>
                         <span className="body-sm" style={{ color: "var(--ink-muted)", whiteSpace: "nowrap", display: "flex", gap: 8, alignItems: "center", position: "relative", zIndex: 2 }}><span aria-hidden style={{ display: "contents" }}>{!k.seenAt && <span className="new-badge in-row">New</span>}{timeAgo(k.createdAt)}</span><FavoriteStar k={k} onToggle={favorite} inRow /></span>
                       </div>
@@ -177,7 +181,7 @@ export function KnitsView({ projectId }: { projectId: string }) {
                     <li key={k.id} className={`pickable${fresh ? " stitching-in" : ""}`} data-selected={sel.has(k.id)} draggable onDragStart={kit.dragThings(sel.has(k.id) ? sel.picked.map((x) => x.id) : [k.id])}>
                       <PickBox sel={sel} id={k.id} name={k.label} className="pick-box" />
                       <div className="card card-link" style={{ position: "relative", height: "100%", padding: "var(--space-2)" }}>
-                        <button aria-label={`Open ${k.label}${k.seenAt ? "" : ", new"}${k.patternChangedSince ? ", its pattern changed since" : ""}`} onClick={(e) => (picking(e) ? sel.toggle(k.id, e.shiftKey) : show(k))} style={{ position: "absolute", inset: 0, zIndex: 1, background: "transparent", border: 0, cursor: "pointer", borderRadius: "var(--radius-md)" }} />
+                        <button aria-label={`Open ${k.label}${k.seenAt ? "" : ", new"}${k.patternChangedSince ? ", its pattern changed since" : ""}${noted(k.id) ? `, ${noted(k.id)} open comment${noted(k.id) === 1 ? "" : "s"}` : ""}`} onClick={(e) => (picking(e) ? sel.toggle(k.id, e.shiftKey) : show(k))} style={{ position: "absolute", inset: 0, zIndex: 1, background: "transparent", border: 0, cursor: "pointer", borderRadius: "var(--radius-md)" }} />
                         {!k.seenAt && <span aria-hidden className="new-badge">New</span>}
                         {/* On the card's 4:5 mat, as a pattern's card has it, so a row of knits lines up whatever their sizes. */}
                         <div aria-hidden className="thumb" style={{ padding: "var(--space-2)" }}>
@@ -186,7 +190,7 @@ export function KnitsView({ projectId }: { projectId: string }) {
                           </div>
                         </div>
                         <p className="label" aria-hidden style={{ margin: "var(--space-2) 0 0", paddingRight: 30, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{k.label}</p>
-                        <p className="eyebrow" aria-hidden style={{ margin: "2px 0 0", display: "flex", gap: 6, alignItems: "center" }}>{k.format} · {k.width}x{k.height} · {formatBytes(k.bytes)}{warn > 0 && <span title={`${warn} to review`} style={{ color: "var(--danger)" }}><AlertTriangle size={12} aria-hidden /></span>}{k.patternChangedSince && <span title="Its pattern was changed after this was knitted. Knit it again to bring it up to date." style={{ textTransform: "none", letterSpacing: 0 }}>· pattern changed</span>}</p>
+                        <p className="eyebrow" aria-hidden style={{ margin: "2px 0 0", display: "flex", gap: 6, alignItems: "center" }}>{k.format} · {k.width}x{k.height} · {formatBytes(k.bytes)}{warn > 0 && <span title={`${warn} to review`} style={{ color: "var(--danger)" }}><AlertTriangle size={12} aria-hidden /></span>}{noted(k.id) > 0 && <span className="comment-count" title={`${noted(k.id)} open comment${noted(k.id) === 1 ? "" : "s"}`}><MessageSquare size={12} aria-hidden />{noted(k.id)}</span>}{k.patternChangedSince && <span title="Its pattern was changed after this was knitted. Knit it again to bring it up to date." style={{ textTransform: "none", letterSpacing: 0 }}>· pattern changed</span>}</p>
                         <FavoriteStar k={k} onToggle={favorite} />
                       </div>
                     </li>
@@ -210,9 +214,7 @@ export function KnitsView({ projectId }: { projectId: string }) {
         </>)}>
         {open && (
           <div style={{ display: "grid", gap: "var(--space-3)" }}>
-            <div style={{ background: "var(--surface-sunken)", borderRadius: "var(--radius-md)", display: "grid", placeItems: "center", maxHeight: "60dvh", overflow: "hidden" }}>
-              {open.kind === "image" ? <img src={knitFileUrl(open)} alt={open.label} style={{ maxWidth: "100%", maxHeight: "60dvh", objectFit: "contain" }} /> : <video src={knitFileUrl(open)} controls style={{ maxWidth: "100%", maxHeight: "60dvh" }} />}
-            </div>
+            <KnitWithComments key={open.id} knit={open} src={knitFileUrl(open)} />
             <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>{open.format.toUpperCase()}, {open.width}x{open.height}, {formatBytes(open.bytes)}, knitted {timeAgo(open.createdAt)}. {open.patternId && <Link className="link" href={`/projects/${projectId}/patterns/${open.patternId}`}>Open the pattern</Link>}</p>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
               {open.tags.map((t) => <Chip key={t}>{t}<button className="icon-btn" style={{ width: 18, height: 18 }} aria-label={`Remove tag ${t}`} onClick={() => void retag(open.tags.filter((x) => x !== t))}><X size={11} /></button></Chip>)}

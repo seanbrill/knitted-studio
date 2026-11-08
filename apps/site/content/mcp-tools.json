@@ -1909,6 +1909,78 @@
     ]
   },
   {
+    "name": "list_comments",
+    "summary": "The person's comments: notes pinned to a spot on a knit (and a moment, in a video) or on a frame of a design sheet, saying what to change there. Each says where it is and what is under it can be seen with view_comment. Open ones only, unless open is false. Look at one with view_comment before you change anything, and answer it with reply_comment when it is done.",
+    "params": [
+      {
+        "name": "projectId",
+        "type": "string",
+        "required": false,
+        "description": "The project id, like pj_01..."
+      },
+      {
+        "name": "knitId",
+        "type": "string",
+        "required": false,
+        "description": "A knit's id, for its comments"
+      },
+      {
+        "name": "designId",
+        "type": "string",
+        "required": false,
+        "description": "The design id, like ds_01..."
+      },
+      {
+        "name": "frameId",
+        "type": "string",
+        "required": false,
+        "description": "With designId, one frame's comments"
+      },
+      {
+        "name": "open",
+        "type": "boolean",
+        "required": false,
+        "description": "Only those not resolved yet. True unless said."
+      }
+    ]
+  },
+  {
+    "name": "view_comment",
+    "summary": "LOOK at a comment: the knit (at the comment's moment, in a video) or the frame, with the pin drawn where the person put it, beside a close-up of that spot. Says what is under the pin (the stitch in the knit's pattern, or the element in the frame's HTML), the whole thread, and how to change that part.",
+    "params": [
+      {
+        "name": "commentId",
+        "type": "string",
+        "required": true,
+        "description": "The comment's id, like cm_01..."
+      }
+    ]
+  },
+  {
+    "name": "reply_comment",
+    "summary": "Answer a comment: say what you changed, or ask what the person meant. resolve: true when the change is made and knitted again (or saved, on a design), so it leaves the open list; the person can open it again.",
+    "params": [
+      {
+        "name": "commentId",
+        "type": "string",
+        "required": true,
+        "description": "The comment's id, like cm_01..."
+      },
+      {
+        "name": "text",
+        "type": "string",
+        "required": true,
+        "description": "What you did, or your question, in plain words"
+      },
+      {
+        "name": "resolve",
+        "type": "boolean",
+        "required": false,
+        "description": "True when it is done"
+      }
+    ]
+  },
+  {
     "name": "list_folders",
     "summary": "How a project's things are sorted: each section (patterns, yarn, parts, swatches, knits, reference) has folders of its own, which can hold folders. Each folder is a path like Royalty free music/Lo-fi, with how many things are in it, not counting the folders inside. Give a section for just that one.",
     "params": [

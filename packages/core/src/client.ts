@@ -3,7 +3,7 @@
 // The editor, the dashboard and the settings page all go through this, so a
 // route's shape lives in one place and a change to it is a type error here.
 
-import type { Actor, AgentState, Brief, ColorRole, CropBox, Part, Pattern, Project, Refusal, Shelf, Size, Swatch, Yarn } from "./types.ts";
+import type { Actor, AgentState, Brief, ColorRole, CommentThread, CropBox, Part, Pattern, Project, Refusal, Shelf, Size, Swatch, Yarn } from "./types.ts";
 import type { FolderSection } from "./folders-pure.ts";
 import type { SiteProposal } from "./site.ts";
 import type { KnitIssue, KnitRecord } from "./knits.ts";
@@ -121,6 +121,14 @@ export const api = {
     import: (projectId: string, file: unknown, scope: "project" | "library" = "project", folder?: string) => call<Part>("POST", `/api/projects/${projectId}/parts`, { name: "import", file, scope, folder }),
     /** The pattern a Part is edited through, to open in the editor. Every change there is the Part's. */
     edit: (id: string, projectId: string) => call<Pattern>("POST", `/api/parts/${id}`, { action: "edit", projectId }),
+  },
+  comments: {
+    list: (q: { knit?: string; design?: string; frame?: string; project?: string; open?: boolean }) => call<CommentThread[]>("GET", `/api/comments?${new URLSearchParams(Object.entries({ ...q, open: q.open ? "1" : undefined }).filter(([, v]) => v) as [string, string][])}`),
+    counts: (projectId: string) => call<Record<string, number>>("GET", `/api/comments?project=${encodeURIComponent(projectId)}&counts=1`),
+    add: (b: { knitId?: string; designId?: string; frameId?: string; x?: number; y?: number; timeMs?: number; text: string }) => call<CommentThread>("POST", "/api/comments", b),
+    reply: (id: string, b: { text: string; resolve?: boolean }) => call<CommentThread>("POST", `/api/comments/${id}/replies`, b),
+    update: (id: string, b: { text?: string; resolved?: boolean }) => call<CommentThread>("PATCH", `/api/comments/${id}`, b),
+    remove: (id: string) => call<{ ok: true }>("DELETE", `/api/comments/${id}`),
   },
   designs: {
     list: (projectId: string) => call<Design[]>("GET", `/api/projects/${projectId}/designs`),

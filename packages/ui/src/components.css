@@ -403,5 +403,50 @@
 .design-add svg { width: calc(18px / var(--z)); height: calc(18px / var(--z)); }
 .design-inspector { width: 420px; flex: none; border-left: 1px solid var(--line); background: var(--surface); overflow: auto; display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-4); }
 .design-inspector .code { font-family: var(--font-mono); font-size: 12px; line-height: 1.5; tab-size: 2; white-space: pre; }
+
+/* Comments: numbered pins over a knit or a frame, and the threads about them. On the board the
+   pins sit in the scaled sheet, so their sizes divide by its zoom to stay the same on screen. */
+.knit-stage { background: var(--surface-sunken); border-radius: var(--radius-md); display: grid; place-items: center; max-height: 60dvh; overflow: hidden; }
+.pin-media { position: relative; display: inline-block; max-width: 100%; line-height: 0; }
+.pin-media > img, .pin-media > video { display: block; max-width: 100%; max-height: 60dvh; width: auto; height: auto; }
+.pin { position: absolute; z-index: 3; translate: -50% -50%; display: grid; place-items: center; width: calc(26px / var(--z, 1)); height: calc(26px / var(--z, 1)); padding: 0;
+  border: calc(2px / var(--z, 1)) solid #fff; border-radius: 50%; background: #17110b; color: #fff;
+  font-family: var(--font-body); font-weight: 700; font-size: calc(12px / var(--z, 1)); line-height: 1;
+  box-shadow: 0 calc(1px / var(--z, 1)) calc(5px / var(--z, 1)) rgba(0, 0, 0, 0.45); cursor: pointer; }
+.pin[data-active], .pin[data-draft] { background: var(--ember); color: var(--on-ember); z-index: 4; }
+.pin[data-active] { outline: calc(3px / var(--z, 1)) solid #fff; outline-offset: calc(1px / var(--z, 1)); box-shadow: 0 0 0 calc(6px / var(--z, 1)) rgba(23, 17, 11, 0.35); }
+.pin[data-resolved]:not([data-active]) { background: #fff; color: #5a4e42; border-color: #5a4e42; }
+.pin[data-draft] { pointer-events: none; }
+.pin[data-draft] svg { width: calc(12px / var(--z, 1)); height: calc(12px / var(--z, 1)); }
+.pin-catch { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; padding: 0; border: 0; border-radius: 0; cursor: crosshair; background: transparent; }
+.pin-media[data-picking] { outline: 2px dashed var(--ember); outline-offset: 4px; }
+.design-frame-box:has(> .pin-catch) { outline: calc(2px / var(--z)) dashed var(--ember); outline-offset: calc(4px / var(--z)); }
+.pin-media > video ~ .pin-catch { bottom: 48px; height: auto; }
+.pin-catch:focus-visible { outline: calc(3px / var(--z, 1)) solid var(--ember); outline-offset: calc(-3px / var(--z, 1)); }
+.comments { display: grid; gap: var(--space-3); align-content: start; justify-items: stretch; }
+.comments > .btn { justify-self: start; }
+.comments-head { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.comments-hint { margin: 0; color: var(--ink-muted); }
+.comment-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.comment { border: 1px solid var(--line); border-radius: var(--radius-md); padding: var(--space-3); display: grid; gap: 8px; background: var(--surface); }
+.comment[data-active] { border-color: var(--ember); box-shadow: 0 0 0 1px var(--ember); }
+.comment-head { display: flex; align-items: flex-start; gap: var(--space-2); }
+.comment-pick { all: unset; flex: 1; min-width: 0; display: grid; gap: 6px; cursor: pointer; border-radius: 4px; }
+.comment-pick:focus-visible { outline: 2px solid var(--ember); outline-offset: 3px; }
+.comment-meta { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-muted); min-width: 0; }
+.comment-meta b { color: var(--ink); font-weight: 600; }
+.comment-n { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--ink); color: var(--surface); font-size: 11px; font-weight: 700; flex: none; }
+.comment[data-active] .comment-n { background: var(--ember); color: var(--on-ember); }
+.comment[data-resolved] .comment-n { background: transparent; color: var(--ink-muted); box-shadow: inset 0 0 0 1.5px currentColor; }
+.comment-text { font-size: 14px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); }
+.comment[data-resolved] .comment-text { color: var(--ink-muted); }
+.comment-reply { margin: 0 0 0 28px; padding-left: 10px; border-left: 2px solid var(--line); font-size: 13px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.comment-reply b { font-weight: 600; margin-right: 4px; }
+.comment-actions { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.comment-reply-form { display: grid; gap: 6px; }
+.comment-reply-form > .btn { justify-self: end; }
 .design-card-preview { position: relative; aspect-ratio: 16 / 10; overflow: hidden; background: var(--surface-sunken); border-radius: var(--radius-md); }
 .design-card-preview iframe { position: absolute; top: 0; left: 0; border: 0; transform-origin: 0 0; pointer-events: none; }
+
+/* Open comments on a card: an icon and how many. */
+.comment-count { display: inline-flex; align-items: center; gap: 3px; color: var(--ember-ink); font-weight: 600; font-variant-numeric: tabular-nums; }

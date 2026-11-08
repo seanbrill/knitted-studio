@@ -3,7 +3,7 @@ export {
   AlertTriangle, Archive, ArrowLeft, Check, ChevronDown, ChevronRight, Copy, Download, Eye, EyeOff, Folder, FolderInput, FolderOpen, FolderPlus, Home, Image,
   Layers, LayoutGrid, List, Lock, LockOpen, Moon, MoreHorizontal, Palette, Pencil, Plus, Search, Settings,
   Shapes, Sparkles, Sun, Trash2, Type, Unlock, Upload, UploadCloud, X, Film, Music, FileText, Wand2,
-  Link2, Clock, RotateCcw, RotateCw, ZoomIn, ZoomOut, Play, Pause, Mic, Package, FileCode, Scissors, Undo2, Redo2, Command,
+  Link2, Clock, RotateCcw, RotateCw, ZoomIn, ZoomOut, Play, Pause, Mic, MessageSquare, Package, FileCode, Scissors, Undo2, Redo2, Command,
 } from "lucide-react";
 // The editor's side panels, hidden and shown again, and the way to where a model is working.
 export { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, LocateFixed, Minimize2 } from "lucide-react";

@@ -57,6 +57,11 @@ before(async () => {
       return stream(res, body.model, [{ type: "text", text: "The headline says it now, short and warm." }], "end_turn", 250);
     }
     res.setHeader("content-type", "application/json");
+    // Asked to do what a comment says: it answers the comment, and resolves it.
+    const comment = asked?.content.includes("reply_comment") && /\((cm_\w+)\)/.exec(asked.content)?.[1];
+    if (comment && last === asked) return res.end(JSON.stringify({ stop_reason: "tool_use", usage: { input_tokens: 10, output_tokens: 5 }, content: [
+      { type: "tool_use", id: `t${sent.length}`, name: "reply_comment", input: { commentId: comment, text: "Made the headline bigger and knitted it again.", resolve: true } },
+    ] }));
     if (last.role === "user" && typeof last.content === "string") {
       if (last.content.includes("slowly")) await new Promise((r) => setTimeout(r, 8000));
       return res.end(JSON.stringify({ stop_reason: "tool_use", usage: { input_tokens: 10, output_tokens: 5 }, content: [
@@ -419,6 +424,54 @@ test("Spending shows what the answers cost, and a monthly limit stops the next o
   await page.waitForURL(/tab=spending/);
   assert.equal(sent.length, before, "nothing was sent to the model");
   assert.equal((await j("PUT", "/api/agent/usage", { monthly: null })).status, 200);
+});
+
+test("a comment is pinned to a spot on a knit, answered, and done by the model, which answers it and resolves it", async () => {
+  await j("POST", `/api/patterns/${patternId}/knit`, { params: {} });
+  const [knit] = await serverHas(studio, `/api/projects/${projectId}/knits`, (k) => k.length === 1, { timeout: 90000 });
+  await page.goto(`${studio.url}/projects/${projectId}/knits`);
+  await page.getByRole("button", { name: `Open ${knit.label}, new` }).click();
+  const dlg = page.getByRole("dialog");
+  await dlg.getByText("None yet").waitFor();
+
+  // Placed where it is clicked: a quarter across and two fifths down the picture.
+  await dlg.getByRole("button", { name: "Add a comment" }).click();
+  const picture = dlg.locator(".pin-media img");
+  await picture.evaluate((i) => (i.complete && i.naturalWidth ? null : new Promise((r) => { i.onload = r; })));
+  const box = await picture.boundingBox();
+  await dlg.getByRole("button", { name: "Place comment here" }).click({ position: { x: box.width * 0.25, y: box.height * 0.4 } });
+  await dlg.getByRole("textbox", { name: "Comment 1" }).fill("The headline is too small");
+  await dlg.getByRole("button", { name: "Add the comment" }).click();
+  const [c] = await serverHas(studio, `/api/comments?knit=${knit.id}`, (l) => l.length === 1);
+  assert.ok(Math.abs(c.x - 0.25) < 0.01 && Math.abs(c.y - 0.4) < 0.01, `at ${c.x}, ${c.y}`);
+  assert.equal(c.author, "human");
+  await dlg.getByRole("button", { name: "Comment 1: The headline is too small" }).waitFor();
+  await dlg.getByText("1 open").waitFor();
+
+  // The person replies in the thread.
+  await dlg.getByRole("textbox", { name: "Reply to comment 1" }).fill("Twice the size, please");
+  await dlg.getByRole("button", { name: "Reply", exact: true }).click();
+  await dlg.locator(".comment-reply").filter({ hasText: "Twice the size, please" }).waitFor();
+
+  // Asked, the model looks at the spot and answers there, and it is resolved.
+  await dlg.getByRole("button", { name: "Ask your model to do this" }).click();
+  await page.locator(".toast").filter({ hasText: "Your model is on it: comment 1" }).waitFor();
+  await dlg.locator(".comment-reply").filter({ hasText: "Made the headline bigger and knitted it again." }).waitFor({ timeout: 30000 });
+  await dlg.getByText("All resolved").waitFor();
+  const asked = carrying(c.id);
+  assert.ok(asked, "the model was told which comment");
+  assert.match(asked.messages.at(-1).content, /view_comment/);
+  assert.match(asked.messages.at(-1).content, /What I want: comment 1 \(cm_\w+\): "The headline is too small"/);
+  const [done] = await serverHas(studio, `/api/comments?knit=${knit.id}`, (l) => l[0].resolvedAt);
+  assert.deepEqual(done.replies.map((r) => r.author), ["human", "model"]);
+
+  // A resolved one shows when asked for, and opens again.
+  await dlg.getByRole("button", { name: "Resolved (1)" }).click();
+  await dlg.getByRole("button", { name: "Open again" }).click();
+  await dlg.getByText("1 open").waitFor();
+  assert.deepEqual(await axeProblems(page), []);
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: `Open ${knit.label}, 1 open comment` }).waitFor();
 });
 
 test("a message sent while the model answers waits its turn, and goes when the answer is in", async () => {

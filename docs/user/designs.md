@@ -53,6 +53,14 @@ The list of design sheets has **Download the code** and **Download everything** 
 
 Each section downloads on its own from its menu, in the same three ways: **Download as a picture**, **Download its code**, and **Download everything, with a style guide**. Everything for a section is a ZIP named for the sheet and the section, such as `website-pages.zip`. It has `section.png`, that section's frames as code, the fonts and pictures they use, and a style guide of just what that section is drawn with.
 
+## Comments
+
+Press **Comments** on the board's bar, click the spot on a frame that should change, and say what. For a comment about the sheet as a whole, choose **the whole sheet** instead. The pins stay on the board when the panel is closed, the same size at any zoom; press one to open its comment. Pressing a comment in the panel brings its frame into view.
+
+A comment can be replied to, resolved, opened again or deleted. **Comments** on the bar shows how many are open, and so does the sheet's card in the list of designs.
+
+**Ask your model to do this** on a comment, or **Ask your model to do all** for every open one. Your model sees the frame with the pin on it and a close-up of the spot, and is told which element of the frame's HTML is under the pin. It changes the frame, looks at it again, and answers each comment, resolving it when it is done.
+
 ## Your model
 
 Your model uses `create_design`, `set_design_frame`, `arrange_design`, `get_design` and `view_design`. Each frame it designs is drawn back to it, so it checks its own work. Its frames are marked **by your model** on the board.
