@@ -1,20 +1,22 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
-  "next": {
-    "title": "Post to your own accounts, now or at a time",
-    "items": [
-      "Post a knit to Instagram, TikTok, LinkedIn, Threads, X and YouTube: open it and press Post, or pick several and press Post together for a carousel. Post it now, at a time, or keep it as a draft.",
-      "Each platform's limits are checked as you write, before anything is scheduled: X's 280 characters, with a link counting as 23; TikTok taking videos only; the shapes Instagram takes; YouTube's title. A caption too long for one platform gets a field of its own.",
-      "A project's new Posts tab shows what went out, with a link to each, what is scheduled, and what needs you. Post a draft now, move a time, or cancel.",
-      "Connect your accounts in Settings, Social, through a developer app of your own on each platform. There is no knitted server in between, so your sign-ins stay in your computer's secret store. The new guide, Posting to social accounts, walks through each platform.",
-      "Posts go out while knitted is open. One due while it was closed goes out when it opens, if that is within two hours, and otherwise waits as missed for you to post or move. YouTube publishes a scheduled video itself, knitted open or not.",
-      "A post that fails before anything was sent, because the network dropped or the platform was busy, is tried again twice. One that fails after says to look on the platform first, so nothing is posted twice.",
-      "Instagram and Threads fetch what they post from a public address, so knitted puts each file in a bucket of yours (R2, S3, B2, Spaces, MinIO) or a FileFreak folder just before posting, and removes it after. Test in Settings checks that it works.",
-      "TikTok posts follow TikTok's rules for apps: you pick who sees each one, with nothing picked for you, and comments, duets and stitches stay off until you turn them on.",
-      "Your model can post too, with schedule_post. What it makes are drafts for you to schedule, unless you let it schedule in Settings, Social."
-    ]
-  },
   "entries": [
+    {
+      "version": "0.1.16",
+      "date": "2026-11-07",
+      "title": "Post to your own accounts, now or at a time",
+      "items": [
+        "Post a knit to Instagram, TikTok, LinkedIn, Threads, X and YouTube: open it and press Post, or pick several and press Post together for a carousel. Post it now, at a time, or keep it as a draft.",
+        "Each platform's limits are checked as you write, before anything is scheduled: X's 280 characters, with a link counting as 23; TikTok taking videos only; the shapes Instagram takes; YouTube's title. A caption too long for one platform gets a field of its own.",
+        "A project's new Posts tab shows what went out, with a link to each, what is scheduled, and what needs you. Post a draft now, move a time, or cancel.",
+        "Connect your accounts in Settings, Social, through a developer app of your own on each platform. There is no knitted server in between, so your sign-ins stay in your computer's secret store. The new guide, Posting to social accounts, walks through each platform.",
+        "Posts go out while knitted is open. One due while it was closed goes out when it opens, if that is within two hours, and otherwise waits as missed for you to post or move. YouTube publishes a scheduled video itself, knitted open or not.",
+        "A post that fails before anything was sent, because the network dropped or the platform was busy, is tried again twice. One that fails after says to look on the platform first, so nothing is posted twice.",
+        "Instagram and Threads fetch what they post from a public address, so knitted puts each file in a bucket of yours (R2, S3, B2, Spaces, MinIO) or a FileFreak folder just before posting, and removes it after. Test in Settings checks that it works.",
+        "TikTok posts follow TikTok's rules for apps: you pick who sees each one, with nothing picked for you, and comments, duets and stitches stay off until you turn them on.",
+        "Your model can post too, with schedule_post. What it makes are drafts for you to schedule, unless you let it schedule in Settings, Social."
+      ]
+    },
     {
       "version": "0.1.15",
       "date": "2026-11-07",
