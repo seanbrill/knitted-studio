@@ -1,13 +1,13 @@
 [
   {
     "name": "get_guide",
-    "summary": "How to use knitted well, a topic at a time: the numbers and habits that make work look designed, not merely generated. Read start first, then the topic before your first task of that kind. Topics: start, patterns, motion, voice, yarn, drawing, making, knitting, brief, parts, posts, copywriting, organizing.",
+    "summary": "How to use knitted well, a topic at a time: the numbers and habits that make work look designed, not merely generated. Read start first, then the topic before your first task of that kind. Topics: start, patterns, motion, voice, yarn, drawing, making, designing, knitting, brief, parts, posts, copywriting, organizing.",
     "params": [
       {
         "name": "topic",
         "type": "string",
         "required": false,
-        "description": "Leave out for start. One of start, patterns, motion, voice, yarn, drawing, making, knitting, brief, parts, posts, copywriting, organizing."
+        "description": "Leave out for start. One of start, patterns, motion, voice, yarn, drawing, making, designing, knitting, brief, parts, posts, copywriting, organizing."
       }
     ]
   },
@@ -1701,6 +1701,174 @@
         "type": "string",
         "required": true,
         "description": "The post, by id from list_posts"
+      }
+    ]
+  },
+  {
+    "name": "list_designs",
+    "summary": "A project's design sheets: whole sites on one board, like a Figma file, in labelled sections of frames. Each frame is a screen or a piece of one, in HTML and CSS.",
+    "params": [
+      {
+        "name": "projectId",
+        "type": "string",
+        "required": true,
+        "description": "The project id, like pj_01..."
+      }
+    ]
+  },
+  {
+    "name": "get_design",
+    "summary": "Read a design sheet: its sections and frames by id. Give frameId for that frame's HTML and CSS, or code: true for every frame's. Look at it with view_design.",
+    "params": [
+      {
+        "name": "designId",
+        "type": "string",
+        "required": true,
+        "description": "The design id, like ds_01..."
+      },
+      {
+        "name": "frameId",
+        "type": "string",
+        "required": false,
+        "description": "A frame's id, like f7, for its code"
+      },
+      {
+        "name": "code",
+        "type": "boolean",
+        "required": false,
+        "description": "Every frame's HTML and CSS. A sheet's code can be long: ask for one frame when that is enough."
+      }
+    ]
+  },
+  {
+    "name": "create_design",
+    "summary": "START a design sheet for a whole site. start \"brand\" (the default) begins with Foundations (colours, type, buttons and fields), Components (header, footer) and Pages (a home page on desktop and mobile), all drawn with the brand's Swatch, to make into the business's own; \"blank\" begins with one empty Pages section. Then design with set_design_frame. Read get_guide designing first.",
+    "params": [
+      {
+        "name": "projectId",
+        "type": "string",
+        "required": true,
+        "description": "The project id, like pj_01..."
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "required": true,
+        "description": "Like \"Website\" or \"Spring launch page\""
+      },
+      {
+        "name": "start",
+        "type": "string",
+        "required": false,
+        "description": "One of brand, blank."
+      }
+    ]
+  },
+  {
+    "name": "set_design_frame",
+    "summary": "DESIGN one frame of a sheet: a page, a screen or a piece of one, as HTML and CSS, and SEE it. Give frameId to change one, or leave it out to add one to the section (by id or name; a section that is not there yet is added). The brand is in CSS variables: var(--color-primary) and the other roles, var(--color-on-primary) for text on it, var(--font-display), var(--font-body), var(--radius). Pictures from Yarn are yarn:<id>, the logo yarn:logo. No scripts, and nothing from the web. It comes back drawn: look, and fix what is off.",
+    "params": [
+      {
+        "name": "designId",
+        "type": "string",
+        "required": true,
+        "description": "The design id, like ds_01..."
+      },
+      {
+        "name": "section",
+        "type": "string",
+        "required": true,
+        "description": "The section's id or name, like s3 or \"Pages\""
+      },
+      {
+        "name": "frameId",
+        "type": "string",
+        "required": false,
+        "description": "The frame to change, like f7. Leave out to add a frame"
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "required": false,
+        "description": "Like \"Home\" or \"Pricing, mobile\""
+      },
+      {
+        "name": "device",
+        "type": "string",
+        "required": false,
+        "description": "desktop is 1440 wide, tablet 834, mobile 390. Or give width.. One of desktop, tablet, mobile."
+      },
+      {
+        "name": "width",
+        "type": "number",
+        "required": false,
+        "description": "In pixels, 240 to 3840, when not a device's"
+      },
+      {
+        "name": "height",
+        "type": "number",
+        "required": false,
+        "description": "A fixed height, like one phone screen (844). Leave it out to keep the height it has; 0 for a frame as tall as what is in it."
+      },
+      {
+        "name": "html",
+        "type": "string",
+        "required": false,
+        "description": "The frame's body, without <html>, <head> or <body>"
+      },
+      {
+        "name": "css",
+        "type": "string",
+        "required": false,
+        "description": "Its styles. They are its own: no other frame sees them"
+      },
+      {
+        "name": "note",
+        "type": "string",
+        "required": false,
+        "description": "What it is for, or what is still to do"
+      }
+    ]
+  },
+  {
+    "name": "arrange_design",
+    "summary": "ARRANGE a design sheet, all changes or none: rename it, add, rename, move or remove sections, and move, copy or remove frames. Each change is { op, ... }: rename {name}; addSection {name, note?, at?}; updateSection {section, name?, note?}; moveSection {section, to}; removeSection {section}; moveFrame {frameId, section, at?}; duplicateFrame {frameId, name?}; removeFrame {frameId}. at and to count from 0. The person can undo it.",
+    "params": [
+      {
+        "name": "designId",
+        "type": "string",
+        "required": true,
+        "description": "The design id, like ds_01..."
+      },
+      {
+        "name": "changes",
+        "type": "object[]",
+        "required": true,
+        "description": ""
+      }
+    ]
+  },
+  {
+    "name": "view_design",
+    "summary": "LOOK at a design sheet as the person sees it: the whole board with its labelled sections, one section, or one frame. A whole sheet is small: look at a frame or a section to check the detail. A tall frame is cut into columns, left to right.",
+    "params": [
+      {
+        "name": "designId",
+        "type": "string",
+        "required": true,
+        "description": "The design id, like ds_01..."
+      },
+      {
+        "name": "sectionId",
+        "type": "string",
+        "required": false,
+        "description": "A section's id or name, for just that section"
+      },
+      {
+        "name": "frameId",
+        "type": "string",
+        "required": false,
+        "description": "A frame's id, for just that frame"
       }
     ]
   },

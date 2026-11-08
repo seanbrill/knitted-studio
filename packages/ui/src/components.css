@@ -348,3 +348,34 @@
 .chat-queue li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 4px 4px 4px 10px; border: 1px dashed var(--line-strong); border-radius: var(--radius-md); }
 .chat-queue-text { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+
+/* ── design sheets: the board, its sections and frames ───────────────────────
+   The board is drawn scaled; --z is the scale, so its labels divide by it and stay
+   the same size on screen at any zoom, as they do in a design tool. */
+.design-page { display: flex; flex-direction: column; height: 100vh; }
+.design-body { flex: 1; display: flex; min-height: 0; }
+.design-view { flex: 1; overflow: auto; background: var(--surface-sunken); position: relative; }
+.design-board { display: flex; flex-direction: column; gap: calc(32px / var(--z)); padding: calc(40px / var(--z)); width: max-content; transform-origin: 0 0; }
+.design-section { padding: calc(16px / var(--z)) calc(24px / var(--z)) calc(32px / var(--z)); border-radius: calc(14px / var(--z)); background: var(--surface); box-shadow: 0 0 0 calc(1px / var(--z)) var(--line); }
+.design-section > header { display: flex; align-items: center; gap: calc(10px / var(--z)); margin: 0 0 calc(18px / var(--z)); font-size: calc(14px / var(--z)); }
+.design-section > header h2 { margin: 0; font-size: calc(15px / var(--z)); font-weight: 600; background: var(--surface-sunken); padding: calc(4px / var(--z)) calc(12px / var(--z)); border-radius: 999px; }
+.design-section > header p { margin: 0; color: var(--ink-muted); max-width: calc(560px / var(--z)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.design-section > header .icon-btn { width: calc(28px / var(--z)); height: calc(28px / var(--z)); }
+.design-section > header .icon-btn svg { width: calc(14px / var(--z)); height: calc(14px / var(--z)); }
+.design-frames { display: flex; gap: calc(28px / var(--z)); align-items: flex-start; }
+.design-frame { margin: 0; }
+.design-frame figcaption { font-size: calc(12px / var(--z)); font-weight: 500; margin: 0 0 calc(6px / var(--z)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
+.design-frame figcaption span { color: var(--ink-muted); font-weight: 400; margin-left: 0.5em; }
+.design-frame-box { position: relative; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 12px 32px -18px rgba(0, 0, 0, 0.3); }
+.design-frame-box iframe { display: block; border: 0; }
+.design-frame-hit { position: absolute; inset: 0; width: 100%; background: transparent; border: 0; padding: 0; cursor: pointer; border-radius: 0; }
+.design-frame-hit:hover { box-shadow: inset 0 0 0 calc(2px / var(--z)) color-mix(in srgb, var(--ember) 45%, transparent); }
+.design-frame-hit[aria-pressed="true"] { box-shadow: inset 0 0 0 calc(3px / var(--z)) var(--ember); }
+.design-frame-hit:focus-visible { outline: calc(3px / var(--z)) solid var(--ember); outline-offset: calc(3px / var(--z)); }
+.design-add { display: grid; place-items: center; gap: calc(6px / var(--z)); min-width: calc(180px / var(--z)); min-height: calc(120px / var(--z)); padding: calc(16px / var(--z)); border: calc(1.5px / var(--z)) dashed var(--line-strong); border-radius: calc(10px / var(--z)); background: transparent; color: var(--ink-muted); font: inherit; font-size: calc(13px / var(--z)); cursor: pointer; }
+.design-add:hover { color: var(--ink); border-color: var(--ink-muted); }
+.design-add svg { width: calc(18px / var(--z)); height: calc(18px / var(--z)); }
+.design-inspector { width: 420px; flex: none; border-left: 1px solid var(--line); background: var(--surface); overflow: auto; display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-4); }
+.design-inspector .code { font-family: var(--font-mono); font-size: 12px; line-height: 1.5; tab-size: 2; white-space: pre; }
+.design-card-preview { position: relative; aspect-ratio: 16 / 10; overflow: hidden; background: var(--surface-sunken); border-radius: var(--radius-md); }
+.design-card-preview iframe { position: absolute; top: 0; left: 0; border: 0; transform-origin: 0 0; pointer-events: none; }

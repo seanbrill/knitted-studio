@@ -279,6 +279,7 @@ export type ActivityAction =
   | "project.created" | "project.renamed" | "project.picture" | "project.duplicated" | "project.deleted"
   | "pattern.created" | "pattern.duplicated" | "pattern.deleted" | "edit.refused"
   | "yarn.imported" | "yarn.changed" | "yarn.deleted" | "yarn.shared" | "swatch.created" | "part.created"
+  | "design.created" | "design.duplicated" | "design.deleted"
   | "folder.created" | "folder.filed" | "folder.renamed" | "folder.deleted"
   | "brief.built" | "brief.changed" | "brief.synced";
 
@@ -302,7 +303,7 @@ export interface Knit {
 
 export type PartKind = "stitches" | "code";
 /** Where a model's call works: what the studio points at and highlights while it does. */
-export interface AgentWhere { projectId?: string; patternId?: string; stitchIds?: string[]; yarnId?: string; partId?: string; swatchId?: string; jobId?: string; section?: FolderSection; }
+export interface AgentWhere { projectId?: string; patternId?: string; stitchIds?: string[]; yarnId?: string; partId?: string; swatchId?: string; designId?: string; jobId?: string; section?: FolderSection; }
 /** One call a model made, as the studio shows it: who, what, where, and how it ended. */
 export interface AgentCall {
   id: string;

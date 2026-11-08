@@ -734,3 +734,38 @@ test("draw_svg: the model sees what it drew, the colours off the brand, and can 
   assert.match(sheet.caption, /^1 picture, left to right then down: Ring \(/);
   assert.ok(READ_ONLY.has("view_sheet") && !READ_ONLY.has("draw_svg"));
 });
+
+test("design sheets: the model starts one from the brand, designs a frame and sees it, arranges the sheet, and Follow opens it", async () => {
+  const { READ_ONLY } = await import("@knitted/mcp/tools");
+  const drawn = [];
+  // The engine draws in a browser (test/e2e/design.e2e.mjs covers that); here it says what it was asked to draw.
+  const engine = { renderDesign: async (_s, id, o) => { drawn.push({ id, ...o }); return Buffer.from("png"); }, forModel: async (b) => b };
+  const t = toolByName();
+  const d = await tools.create_design({ projectId: project.id, name: "Website" });
+  assert.deepEqual(d.sections.map((s) => s.name), ["Foundations", "Components", "Pages"]);
+  assert.ok(d.sections[2].frames.every((f) => typeof f.codeChars === "number" && f.html === undefined), "code only when asked for");
+  assert.equal(lastCall().summary, 'Starting a design, "Website"');
+  assert.equal(lastCall().where.designId, d.id);
+
+  const r = await t.set_design_frame.handler({ designId: d.id, section: "Pricing", name: "Pricing", device: "mobile", html: '<h1>Plans</h1><img src="yarn:logo">', css: "h1{color:var(--color-primary)}" }, { store, engine });
+  assert.equal(r.mime, "image/png");
+  assert.match(r.caption, /^Added Pricing \(f9\) in Pricing \(s4\), Mobile 390, a new section\. A picture has no alt text/);
+  assert.deepEqual(drawn.at(-1), { id: d.id, frameId: "f9" });
+  await assert.rejects(t.set_design_frame.handler({ designId: d.id, section: "s9", name: "X", html: "" }, { store, engine }), /no section "s9"/);
+  await assert.rejects(t.set_design_frame.handler({ designId: d.id, section: "Pages", name: "X", html: "<script>1</script>" }, { store, engine }), /Scripts do not run/);
+  const one = await tools.get_design({ designId: d.id, frameId: "f9" });
+  assert.equal(one.sections[3].frames[0].html, '<h1>Plans</h1><img src="yarn:logo">');
+  assert.ok(one.tokens.includes("--color-on-primary"));
+
+  const a = await tools.arrange_design({ designId: d.id, changes: [{ op: "moveSection", section: "Pricing", to: 2 }, { op: "duplicateFrame", frameId: "f9", name: "Pricing, annual" }] });
+  assert.deepEqual(a.sections.map((s) => s.name), ["Foundations", "Components", "Pricing", "Pages"]);
+  assert.deepEqual(a.made.frames, ["f10"]);
+  await assert.rejects(tools.arrange_design({ designId: d.id, changes: [{ op: "setFrame", section: "s1" }] }), /set_design_frame/);
+  assert.equal(lastCall().summary, 'Arranging "Website"');
+
+  const v = await t.view_design.handler({ designId: d.id, sectionId: "Pricing" }, { store, engine });
+  assert.match(v.caption, /the section Pricing/);
+  assert.ok(["list_designs", "get_design", "view_design"].every((n) => READ_ONLY.has(n)) && !READ_ONLY.has("set_design_frame"));
+  const { pathFor } = await import("../apps/studio/lib/agent.ts");
+  assert.equal(pathFor(lastCall()), `/projects/${project.id}/designs/${d.id}`);
+});

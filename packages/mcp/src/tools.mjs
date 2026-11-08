@@ -17,10 +17,10 @@
 //    propose_swatch adds a NEW swatch the person may choose to use; it never changes
 //    one, and never makes one the project's.
 
-import { applyCommand, instanceOf, joinFolder, motionLint, sceneChange, parentOf, partFromStitches, preflight, uniqueSlotName, checkPost, metricsLine, COLOR_ROLES, FOLDER_SECTIONS, PLATFORMS, PRESETS, SIZES, CommandSchema } from "@knitted/core";
+import { applyCommand, findSection, frameSize, DESIGN_DEVICES, TOKEN_NAMES, instanceOf, joinFolder, motionLint, sceneChange, parentOf, partFromStitches, preflight, uniqueSlotName, checkPost, metricsLine, COLOR_ROLES, FOLDER_SECTIONS, PLATFORMS, PRESETS, SIZES, CommandSchema } from "@knitted/core";
 import { GUIDE, GUIDE_TOPICS } from "./guide.mjs";
 import { LIBRARY_ID } from "@knitted/core";
-import { setYarnScope, activeSwatch, cancelPost, createPost, getAccount, getPost, listAccounts, listPosts, postInsights, validatePost, cleanFolder, cropToYarn, getBrief, pdfText, readWebsite, setProfile, viewVideo, viewYarn, createFolder, createPart, editPart, partUsage, createSwatch, createSwatchFromProposal, folderCounts, getKnit, getPart, getYarn, setKnitPost, setKnitTags, importYarn, importYarnFromPath, importYarnFromUrl, searchStock, addStock, saveDrawing, drawSheet, planGeneration, startGeneration, createCopy, knitPath, listFolders, listKnits, countKnits, changedSince, listParts, listYarn, moveAllToFolder, proposeFromWebsite, renameFolder, setCopyText, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
+import { setYarnScope, activeSwatch, cancelPost, createPost, getAccount, getPost, listAccounts, listPosts, postInsights, validatePost, cleanFolder, cropToYarn, getBrief, pdfText, readWebsite, setProfile, viewVideo, viewYarn, createFolder, createPart, editPart, partUsage, createSwatch, createSwatchFromProposal, folderCounts, getKnit, getPart, getYarn, setKnitPost, setKnitTags, importYarn, importYarnFromPath, importYarnFromUrl, searchStock, addStock, saveDrawing, drawSheet, planGeneration, startGeneration, createCopy, createDesign, changeDesign, getDesign, listDesigns, knitPath, listFolders, listKnits, countKnits, changedSince, listParts, listYarn, moveAllToFolder, proposeFromWebsite, renameFolder, setCopyText, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
 
 const obj = (properties, required = []) => ({ type: "object", properties, required, additionalProperties: false });
 const str = (description) => ({ type: "string", description });
@@ -59,10 +59,31 @@ function into(store, projectId, library, reference) {
   return LIBRARY_ID;
 }
 
-export const READ_ONLY = new Set(["get_guide", "get_studio_info", "list_projects", "get_project", "list_yarn", "view_yarn", "get_brand_guidelines", "get_brief", "read_website", "list_patterns", "get_pattern", "describe_pattern", "list_parts", "list_presets", "list_voices", "preview_pattern", "check_pattern", "get_job", "list_knits", "list_folders", "list_social_accounts", "list_posts", "post_insights", "search_stock", "view_sheet"]);
+export const READ_ONLY = new Set(["get_guide", "get_studio_info", "list_projects", "get_project", "list_yarn", "view_yarn", "get_brand_guidelines", "get_brief", "read_website", "list_patterns", "get_pattern", "describe_pattern", "list_parts", "list_presets", "list_voices", "preview_pattern", "check_pattern", "get_job", "list_knits", "list_folders", "list_social_accounts", "list_posts", "post_insights", "search_stock", "view_sheet", "list_designs", "get_design", "view_design"]);
 
 // When the process answering started. A build made after it means an older copy is answering.
 const STARTED_AT = new Date(Date.now() - process.uptime() * 1000).toISOString();
+
+// ── design sheets ─────────────────────────────────────────────────────────────
+const DESIGN = str("The design id, like ds_01...");
+const DEVICE = { type: "string", enum: ["desktop", "tablet", "mobile"], description: "desktop is 1440 wide, tablet 834, mobile 390. Or give width." };
+/** A sheet as a model reads it: sections and frames by id, with each frame's code only when asked. */
+function designOut(d, { code = false, frameId } = {}) {
+  return {
+    id: d.id, name: d.name, version: d.version,
+    sections: d.sections.map((s) => ({
+      id: s.id, name: s.name, ...(s.note ? { note: s.note } : {}),
+      frames: s.frames.map((f) => ({ id: f.id, name: f.name, size: frameSize(f), width: f.width, ...(f.height ? { height: f.height } : {}), ...(f.note ? { note: f.note } : {}), ...(f.by ? { by: f.by } : {}),
+        ...(code || f.id === frameId ? { html: f.html, css: f.css } : { codeChars: f.html.length + f.css.length }) })),
+    })),
+  };
+}
+/** A frame, a section or the sheet, drawn for a model to look at; or why it could not be. */
+async function lookAt(engine, store, designId, o) {
+  try { return await engine.forModel(await engine.renderDesign(store, designId, o)); }
+  catch (e) { if (browserGate(e?.message)) return null; throw e; }
+}
+const DESIGN_OPS = ["rename", "addSection", "updateSection", "moveSection", "removeSection", "moveFrame", "duplicateFrame", "removeFrame"];
 
 const tagList = (tags) => { if (tags !== undefined && !(Array.isArray(tags) && tags.every((t) => typeof t === "string"))) throw new Error("tags is a list of words, like [\"product\", \"shot\"]."); };
 /** What an import added. The same file twice is the same Yarn, so the tags asked for land on the one there, and it stays where it is filed. */
@@ -648,6 +669,43 @@ export const TOOLS = [
   // Each section of a project has folders of its own, which hold things and other folders.
   // Filing a thing changes nothing about it. There is no tool to delete a folder: a person
   // does that in the studio, and what was in it moves up, so nothing is lost either way.
+  { name: "list_designs", description: "A project's design sheets: whole sites on one board, like a Figma file, in labelled sections of frames. Each frame is a screen or a piece of one, in HTML and CSS.", inputSchema: obj({ projectId: PROJECT }, ["projectId"]),
+    async handler({ projectId }, { store }) { return listDesigns(store, projectId).map((d) => ({ ...designOut(d), updatedAt: d.updatedAt })); } },
+  { name: "get_design", description: "Read a design sheet: its sections and frames by id. Give frameId for that frame's HTML and CSS, or code: true for every frame's. Look at it with view_design.", inputSchema: obj({ designId: DESIGN, frameId: str("A frame's id, like f7, for its code"), code: { type: "boolean", description: "Every frame's HTML and CSS. A sheet's code can be long: ask for one frame when that is enough." } }, ["designId"]),
+    async handler({ designId, frameId, code }, { store }) { return { ...designOut(getDesign(store, designId), { code, frameId }), tokens: TOKEN_NAMES, pictures: "yarn:<id> in src or url(), or yarn:logo for the brand's logo" }; } },
+  { name: "create_design", description: "START a design sheet for a whole site. start \"brand\" (the default) begins with Foundations (colours, type, buttons and fields), Components (header, footer) and Pages (a home page on desktop and mobile), all drawn with the brand's Swatch, to make into the business's own; \"blank\" begins with one empty Pages section. Then design with set_design_frame. Read get_guide designing first.", inputSchema: obj({ projectId: PROJECT, name: str("Like \"Website\" or \"Spring launch page\""), start: { type: "string", enum: ["brand", "blank"] } }, ["projectId", "name"]),
+    async handler({ projectId, name, start }, { store }) { const d = createDesign(store, projectId, { name, start }, "model"); return { ...designOut(d), next: "view_design to see it, then set_design_frame to make each frame the business's own." }; } },
+  { name: "set_design_frame", description: "DESIGN one frame of a sheet: a page, a screen or a piece of one, as HTML and CSS, and SEE it. Give frameId to change one, or leave it out to add one to the section (by id or name; a section that is not there yet is added). The brand is in CSS variables: var(--color-primary) and the other roles, var(--color-on-primary) for text on it, var(--font-display), var(--font-body), var(--radius). Pictures from Yarn are yarn:<id>, the logo yarn:logo. No scripts, and nothing from the web. It comes back drawn: look, and fix what is off.", inputSchema: obj({ designId: DESIGN, section: str("The section's id or name, like s3 or \"Pages\""), frameId: str("The frame to change, like f7. Leave out to add a frame"), name: str("Like \"Home\" or \"Pricing, mobile\""), device: DEVICE, width: { type: "number", description: "In pixels, 240 to 3840, when not a device's" }, height: { type: "number", description: "A fixed height, like one phone screen (844). Leave it out to keep the height it has; 0 for a frame as tall as what is in it." }, html: str("The frame's body, without <html>, <head> or <body>"), css: str("Its styles. They are its own: no other frame sees them"), note: str("What it is for, or what is still to do") }, ["designId", "section"]),
+    async handler({ designId, section, frameId, name, device, width, height, html, css, note }, { store, engine }) {
+      const d = getDesign(store, designId);
+      const w = width ?? (device ? DESIGN_DEVICES[device]?.width : undefined);
+      if (!frameId && !name) throw new Error("Give the new frame a name, like \"Home\".");
+      if (!frameId && html === undefined) throw new Error("A new frame needs its html.");
+      let known = true; try { findSection(d.sections, section); } catch (e) { if (/^s\d+$/.test(String(section).trim())) throw e; known = false; }
+      const ops = [...(known ? [] : [{ op: "addSection", name: section }]), { op: "setFrame", section, frameId, name, width: w, height: height === 0 ? null : height, html, css, note }];
+      const r = changeDesign(store, designId, ops, "model");
+      const id = frameId ?? r.made.frames[0];
+      const s = r.sections.find((x) => x.frames.some((f) => f.id === id));
+      const f = s.frames.find((x) => x.id === id);
+      const said = [`${frameId ? "Saved" : "Added"} ${f.name} (${f.id}) in ${s.name} (${s.id}), ${frameSize(f)}${known ? "" : ", a new section"}.`, ...(r.lint[id] ?? []).map((l) => l.message)].join(" ");
+      const png = await lookAt(engine, store, designId, { frameId: id });
+      return png ? { __image: png.toString("base64"), mime: "image/png", caption: `${said} This is it, drawn.${f.height ? "" : " A tall page is cut into columns, left to right."}`, id: designId } : { saved: said, note: "It could not be drawn here: knitted's browser is not ready, so look later with view_design." };
+    } },
+  { name: "arrange_design", description: "ARRANGE a design sheet, all changes or none: rename it, add, rename, move or remove sections, and move, copy or remove frames. Each change is { op, ... }: rename {name}; addSection {name, note?, at?}; updateSection {section, name?, note?}; moveSection {section, to}; removeSection {section}; moveFrame {frameId, section, at?}; duplicateFrame {frameId, name?}; removeFrame {frameId}. at and to count from 0. The person can undo it.", inputSchema: obj({ designId: DESIGN, changes: { type: "array", minItems: 1, maxItems: 50, items: { type: "object", properties: { op: { type: "string", enum: DESIGN_OPS } }, required: ["op"] } } }, ["designId", "changes"]),
+    async handler({ designId, changes }, { store }) {
+      const bad = changes.find((c) => !DESIGN_OPS.includes(c?.op));
+      if (bad) throw new Error(`"${bad?.op}" is not a change arrange_design makes. Design a frame with set_design_frame.`);
+      const r = changeDesign(store, designId, changes, "model");
+      return { ...designOut(r), made: r.made };
+    } },
+  { name: "view_design", description: "LOOK at a design sheet as the person sees it: the whole board with its labelled sections, one section, or one frame. A whole sheet is small: look at a frame or a section to check the detail. A tall frame is cut into columns, left to right.", inputSchema: obj({ designId: DESIGN, sectionId: str("A section's id or name, for just that section"), frameId: str("A frame's id, for just that frame") }, ["designId"]),
+    async handler({ designId, sectionId, frameId }, { store, engine }) {
+      const d = getDesign(store, designId);
+      const png = await lookAt(engine, store, designId, { sectionId, frameId });
+      if (!png) throw new Error("knitted's browser is not ready yet, so the design cannot be drawn. get_design still reads it.");
+      const what = frameId ? `the frame ${frameId}` : sectionId ? `the section ${sectionId}` : `${d.name}: ${d.sections.map((s) => `${s.name} (${s.frames.map((f) => f.name).join(", ") || "empty"})`).join("; ")}`;
+      return { __image: png.toString("base64"), mime: "image/png", caption: `This is ${what}.`, id: designId };
+    } },
   { name: "list_folders", description: "How a project's things are sorted: each section (patterns, yarn, parts, swatches, knits, reference) has folders of its own, which can hold folders. Each folder is a path like Royalty free music/Lo-fi, with how many things are in it, not counting the folders inside. Give a section for just that one.", inputSchema: obj({ projectId: PROJECT, section: SECTION }, ["projectId"]),
     async handler({ projectId, section }, { store }) {
       store.getProject(projectId);

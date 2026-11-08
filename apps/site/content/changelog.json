@@ -1,5 +1,15 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
+  "next": {
+    "title": "Design sheets: a whole site on one board, in labelled sections",
+    "items": [
+      "Designs, a new tab in every project: a site's colours and type, the pieces its pages share, and each page on a computer and a phone, on one board in labelled sections, like a Figma file.",
+      "Start one from your brand, with Foundations, Components and a home page drawn with your Swatch, or blank. Every colour, font and corner follows the Swatch, so a change there changes the whole design.",
+      "Select a frame to change its name, size and code, and see it on the board as you type. Undo walks back through your changes and your model's.",
+      "Design with your model: it designs each page, sees what it made, and fixes it, while you watch the board change.",
+      "Download the sheet, a section or a frame as a picture, or the whole design as HTML and CSS, with your brand's tokens and fonts, for whoever builds the site."
+    ]
+  },
   "entries": [
     {
       "version": "0.1.23",

@@ -371,4 +371,33 @@ export const MIGRATIONS: Migration[] = [
         values ('library', 'Library', 'What every project shares.', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
     `,
   },
+  {
+    version: 17,
+    name: "designs",
+    // Design sheets: a site's UI on one board, in sections of frames, kept as one document.
+    // Each change keeps the version before it in design_versions, so Undo can walk back
+    // through what a person or a model did.
+    sql: `
+      create table designs (
+        id text primary key,
+        project_id text not null references projects(id) on delete cascade,
+        name text not null,
+        data text not null,
+        version integer not null default 1,
+        created_at text not null,
+        updated_at text not null,
+        deleted_at text
+      );
+      create index designs_project on designs (project_id);
+      create table design_versions (
+        design_id text not null references designs(id) on delete cascade,
+        version integer not null,
+        name text not null,
+        data text not null,
+        actor text not null,
+        at text not null,
+        primary key (design_id, version)
+      );
+    `,
+  },
 ];

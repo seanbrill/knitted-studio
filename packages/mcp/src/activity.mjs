@@ -4,7 +4,7 @@
 //
 // Nothing here may break a call: a lookup that fails only makes the words plainer.
 
-import { getPart, getYarn } from "@knitted/core/node";
+import { getDesign, getPart, getYarn } from "@knitted/core/node";
 
 const safe = (f) => { try { return f(); } catch { return undefined; } };
 const quote = (s) => `"${String(s ?? "").trim().slice(0, 60)}"`;
@@ -49,6 +49,12 @@ const SAY = {
   draw_svg: (a) => (a.redraw ? `Drawing ${a.name ? quote(a.name) : "a drawing"} again` : `Drawing ${a.name ? quote(a.name) : "a picture"}`),
   generate_image: (a) => (a.estimate ? "Pricing photos" : `Making ${Number(a.count) > 1 ? `${a.count} photos` : "a photo"}${Array.isArray(a.from) && a.from.length ? " from your pictures" : ""}`),
   generate_video: (a) => (a.estimate ? "Pricing a video" : `Making a ${a.seconds ?? 6}-second video`),
+  list_designs: (a, c) => `Looking at ${possessive(c.project, "a project's")} designs`,
+  get_design: (a, c) => `Reading the design ${c.design ? quote(c.design) : ""}`.trim(),
+  create_design: (a) => `Starting a design, ${quote(a.name)}`,
+  set_design_frame: (a, c) => `${a.frameId ? "Designing" : "Adding"} ${a.name ? quote(a.name) : a.frameId ? `frame ${a.frameId}` : "a frame"}${c.design ? ` on ${quote(c.design)}` : ""}`,
+  arrange_design: (a, c) => `Arranging ${c.design ? quote(c.design) : "a design"}`,
+  view_design: (a, c) => `Looking at ${a.frameId ? `frame ${a.frameId} of ` : a.sectionId ? `a section of ` : ""}${c.design ? quote(c.design) : "a design"}`,
   view_sheet: (a) => `Looking at ${Array.isArray(a.yarnIds) ? `${a.yarnIds.length} pictures` : a.folder ? `the pictures in ${quote(a.folder)}` : a.tag ? `the pictures tagged ${a.tag}` : "pictures"} side by side`,
   share_yarn: (a, c) => `Moving ${c.yarn ? quote(c.yarn) : "a file"} ${a.library ? "into the Library, for every project" : "out of the Library"}`,
   tag_yarn: (a, c) => `Tagging ${c.yarn ? quote(c.yarn) : "a file"}${Array.isArray(a.tags) && a.tags.length ? ` ${a.tags.join(", ")}` : ""}`,
@@ -112,18 +118,20 @@ const BRIEF_TOOLS = new Set(["get_brief", "set_profile", "capture_website"]);
 export function describeCall(name, a, store) {
   const p = a.patternId ? safe(() => store.getPattern(a.patternId)) : undefined;
   const yarn = a.yarnId ? safe(() => getYarn(store, a.yarnId)) : undefined;
-  const projectId = a.projectId ?? p?.projectId ?? yarn?.projectId;
+  const design = a.designId ? safe(() => getDesign(store, a.designId)) : undefined;
+  const projectId = a.projectId ?? p?.projectId ?? yarn?.projectId ?? design?.projectId;
   const c = {
     pattern: p, p: p ? p.name : "a pattern", yarn: yarn?.name,
     project: projectId ? safe(() => store.getProject(projectId).name) : undefined,
     part: a.partId ? safe(() => getPart(store, a.partId).name) : undefined,
+    design: design?.name,
   };
   const summary = safe(() => SAY[name]?.(a, c)) ?? name.replace(/_/g, " ");
   const stitchIds = p ? stitchesOf(name, a, p) : [];
   // A call on folders works in one section: the page Follow opens. Moving things of several kinds, the first.
   const section = (name === "move_to_folder" ? moving(a)[0]?.[0] : undefined) ?? ((name === "move_to_folder" || name === "list_folders" || (name === "rename" && a.folder)) && HOLDS[a.section] ? a.section : undefined)
     ?? (BRIEF_TOOLS.has(name) || (a.reference && (name === "list_yarn" || name.startsWith("import_yarn"))) || yarn?.shelf === "reference" ? "reference" : undefined);
-  const where = Object.fromEntries(Object.entries({ projectId, patternId: p?.id, stitchIds: stitchIds.length ? stitchIds : undefined, yarnId: yarn?.id, partId: a.partId, jobId: a.jobId, section }).filter(([, v]) => v !== undefined));
+  const where = Object.fromEntries(Object.entries({ projectId, patternId: p?.id, stitchIds: stitchIds.length ? stitchIds : undefined, yarnId: yarn?.id, partId: a.partId, designId: design?.id, jobId: a.jobId, section }).filter(([, v]) => v !== undefined));
   return { summary, where };
 }
 
@@ -138,6 +146,7 @@ export function endOf(name, a, out, store) {
   if ((name === "import_yarn" || name === "import_yarn_file" || name === "crop_to_yarn") && out?.id) { where.yarnId = out.id; where.section = out.in === "reference" || a.reference ? "reference" : undefined; }
   if (name === "propose_swatch" && out?.id) where.swatchId = out.id;
   if (name === "create_part" && out?.id) where.partId = out.id;
+  if (name === "create_design" && out?.id) where.designId = out.id;
   if (name === "insert_part" && out?.inserted) { const id = stitchIdFor(safe(() => store.getPattern(a.patternId)), out.inserted); if (id) where.stitchIds = [id]; }
   if ((name === "knit_pattern" || name === "synthesize_voiceover" || name === "capture_website") && out?.jobId) where.jobId = out.jobId;
   const note = refused.length ? refused.map((r) => `${r.slot ? `${r.slot}: ` : ""}${r.why}`).join("; ") : undefined;

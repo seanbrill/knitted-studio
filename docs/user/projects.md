@@ -18,7 +18,7 @@ You can keep as many projects as you like. Each has its own Swatch, so a post fo
 
 ## Inside a project
 
-Each section of a project, Patterns, Brief, Yarn, Swatch, Parts and Knits, has a tab, and each tab says what it is for when you point at it. Each can be sorted into folders of its own (see [Folders](/docs/folders/)), shown as a grid or a list, sorted, and searched.
+Each section of a project, Patterns, Brief, Yarn, Swatch, Parts, Designs, Knits and Posts, has a tab, and each tab says what it is for when you point at it. Patterns, the Brief's reference, Yarn, Swatches, Parts and Knits can each be sorted into folders of their own (see [Folders](/docs/folders/)), shown as a grid or a list, sorted, and searched. Designs are [design sheets](/docs/designs/): whole sites on one board.
 
 The trail at the top says where you are, such as Projects, then the project, then Yarn, then a folder. Each step goes back there, and you can drop files on a folder's step to move them into it.
 

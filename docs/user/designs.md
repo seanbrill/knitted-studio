@@ -1,0 +1,45 @@
+---
+title: Design sheets
+order: 9.5
+summary: A whole site's design on one board, like a Figma file, in labelled sections and in your brand.
+status: shipped
+---
+# Design sheets
+
+A design sheet is a whole site on one board: its colours and type, the pieces every page shares, and each page on a computer and a phone, in labelled sections. You can design one yourself or with your model. Open a project's **Designs** tab to see its sheets.
+
+## Starting one
+
+Choose **New design**, name it, and choose how it starts:
+
+- **From your brand** starts with three sections. **Foundations** shows your colours, type, buttons and fields. **Components** has a header and a footer. **Pages** has a home page on a computer and on a phone. It is all drawn with your Swatch, so start by making the words your own.
+- **Blank** starts with one empty section.
+
+Or choose **Design with your model** and say what you want, like *our whole site: home, about, pricing and contact*. Your model designs it in a chat of its own while you carry on. You can watch the board change as it saves each frame.
+
+## The board
+
+- Each section has a name, and can have a note beside it. Use **Add a section** for one of your own, such as *Shop* or *Checkout*. A section's menu renames it, moves it up or down, downloads it as a picture, or deletes it.
+- A frame is a page, a screen or a piece of one, at a width: **Desktop** 1440, **Tablet** 834, **Mobile** 390, or one of your own. A frame is as tall as what is in it, unless you give it a fixed height, such as one phone screen.
+- **Fit** shows the widest section across the window. Zoom in to read the detail. The labels stay the same size at any zoom.
+- **Undo** takes back the last change to the sheet, whether you made it or your model did. Press it again to go further back.
+
+## Changing a frame
+
+Select a frame to open it beside the board. You can change its name, width, height and note, and the HTML and CSS it is written in. What you type shows on the board a moment later. **Save** keeps it (or press Ctrl+S), and **Discard** goes back to what was saved.
+
+- Colours, fonts and corners come from the Swatch as CSS variables, like `var(--color-primary)`, `var(--font-display)` and `var(--radius)`. Change the Swatch, and every frame follows.
+- A picture from Yarn is `yarn:` and its id, like `<img src="yarn:yn_01..." alt="...">`. Your logo is `yarn:logo`.
+- A design is a picture of a site: scripts do not run, and nothing loads from the web. Show each state as its own frame, such as *Menu, open*.
+- **Make a copy**, **Picture**, **Delete** and the **Section** list work on the frame you have open.
+
+## Taking it away
+
+**Download** has two choices:
+
+- **The sheet, as a picture**: a PNG of the whole board, with its labels. Each section's menu downloads just that section, and **Picture** on a frame downloads that frame at twice the size.
+- **The code**: a ZIP with a page of HTML for each frame, filed by section. It also holds `tokens.css` with your brand, your fonts and the pictures the design uses. Open its `index.html` to see every page. A developer, or a model building the real site, can start from it.
+
+## Your model
+
+Your model uses `create_design`, `set_design_frame`, `arrange_design`, `get_design` and `view_design`. Each frame it designs is drawn back to it, so it checks its own work. Its frames are marked **by your model** on the board.

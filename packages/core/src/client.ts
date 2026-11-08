@@ -14,6 +14,7 @@ import type { Platform } from "./social-pure.ts";
 import type { StockItem, StockKind, StockProvider, StockSource } from "./stock-pure.ts";
 import type { GenAspect, GenKind, GenProvider, GenQuality, GenSource } from "./gen-pure.ts";
 import type { Insights } from "./social-insights.ts";
+import type { Design, DesignLint, DesignOp } from "./design-pure.ts";
 
 export interface ProjectSummary extends Project { counts: { patterns: number; yarn: number; knits: number; newKnits: number }; cover: { id: string; hash: string } | null; }
 export interface ActivityItem { id: string; projectId: string | null; actor: string; action: string; subject: string | null; detail: unknown; createdAt: string; }
@@ -120,6 +121,19 @@ export const api = {
     import: (projectId: string, file: unknown, scope: "project" | "library" = "project", folder?: string) => call<Part>("POST", `/api/projects/${projectId}/parts`, { name: "import", file, scope, folder }),
     /** The pattern a Part is edited through, to open in the editor. Every change there is the Part's. */
     edit: (id: string, projectId: string) => call<Pattern>("POST", `/api/parts/${id}`, { action: "edit", projectId }),
+  },
+  designs: {
+    list: (projectId: string) => call<Design[]>("GET", `/api/projects/${projectId}/designs`),
+    create: (projectId: string, b: { name: string; start?: "brand" | "blank" }) => call<Design>("POST", `/api/projects/${projectId}/designs`, b),
+    get: (id: string) => call<Design>("GET", `/api/designs/${id}`),
+    change: (id: string, ops: DesignOp[]) => call<Design & { made: { sections: string[]; frames: string[] }; lint: Record<string, DesignLint[]> }>("PATCH", `/api/designs/${id}`, { ops }),
+    undo: (id: string) => call<Design>("PATCH", `/api/designs/${id}`, { undo: true }),
+    restore: (id: string) => call<Design>("PATCH", `/api/designs/${id}`, { restore: true }),
+    duplicate: (id: string) => call<Design>("POST", `/api/designs/${id}/duplicate`),
+    remove: (id: string) => call<{ ok: true }>("DELETE", `/api/designs/${id}`),
+    /** The sheet, a section or a frame as a PNG to download. */
+    pictureUrl: (id: string, o: { section?: string; frame?: string; scale?: 1 | 2 } = {}) => `/api/designs/${id}/picture?${new URLSearchParams(Object.entries(o).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)]))}`,
+    codeUrl: (id: string) => `/api/designs/${id}/code`,
   },
   voice: {
     config: () => call<VoiceConfig>("GET", "/api/voice/config"),

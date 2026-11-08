@@ -81,6 +81,7 @@ export function pathFor(c: AgentCall): string | null {
   if (c.tool === "get_brief" || c.tool === "set_profile" || c.tool === "capture_website") return `${pj}/brief`;
   if (w.section) return pj + SECTION_PATH[w.section];
   if (w.patternId) return `${pj}/patterns/${w.patternId}`;
+  if (w.designId) return `${pj}/designs/${w.designId}`;
   if (w.yarnId || c.tool === "import_yarn") return `${pj}/yarn`;
   if (w.swatchId || c.tool === "propose_swatch") return `${pj}/swatch`;
   if (w.partId) return `${pj}/parts`;

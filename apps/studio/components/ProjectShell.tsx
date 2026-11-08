@@ -14,11 +14,12 @@ const { Pencil, Sparkles } = icons;
 
 /** A project's sections, each with a line on what it is for: shown on hover, and under the tabs for the one open. */
 const TABS = [
-  { href: "", label: "Patterns", what: "Designs with slots to fill: a post, a story, a banner. Open one to edit it, or knit it into files." },
+  { href: "", label: "Patterns", what: "Layouts with slots to fill: a post, a story, a banner. Open one to edit it, or knit it into files." },
   { href: "/brief", label: "Brief", what: "What your model knows about the business: a profile from its website or from you, and reference files to look at." },
   { href: "/yarn", label: "Yarn", what: "Your files to put in patterns: photos, logos, video, sound, fonts, PDFs and saved text." },
   { href: "/swatch", label: "Swatch", what: "The brand: its colours, fonts, logo and voice. Every pattern draws with it." },
   { href: "/parts", label: "Parts", what: "Pieces to reuse in any pattern, like a lower third, a quote or a price tag." },
+  { href: "/designs", label: "Designs", what: "Whole sites on one board, like a Figma file: pages and the pieces they share, in labelled sections, in your brand." },
   { href: "/knits", label: "Knits", what: "The finished files: every picture and video knitted from your patterns." },
   { href: "/posts", label: "Posts", what: "What is posted to your accounts, scheduled, or waiting as a draft." },
 ];
