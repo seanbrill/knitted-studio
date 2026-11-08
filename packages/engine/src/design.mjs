@@ -182,13 +182,15 @@ export async function forModel(png, { max = 2000 } = {}) {
 /**
  * A design as files a developer can build from: a page per frame, the brand's tokens and
  * fonts, and the pictures it uses. Written to a folder under the project's .pages, which is
- * cleared of older ones each time. Returns the files, for a zip.
+ * cleared of older ones each time. Returns the files, for a zip. With `sectionId`, only that
+ * section: its frames, and the fonts and pictures they use.
  * @param {any} store
  * @param {string} designId
+ * @param {{ sectionId?: string }} [opts]
  * @returns {Promise<{ name: string, entries: { name: string, path: string }[], dir: string, root: string, used: Map<string, string>, logo: string | undefined }>}
  */
-export async function designCode(store, designId) {
-  const design = getDesign(store, designId);
+export async function designCode(store, designId, { sectionId } = {}) {
+  const design = designOrSection(getDesign(store, designId), sectionId);
   const swatch = activeSwatch(store, design.projectId);
   const files = filesFor(store, design.projectId, swatch);
   const pages = join(store.paths.projectDir(design.projectId), ".pages");
@@ -200,7 +202,7 @@ export async function designCode(store, designId) {
   }
   const dir = join(pages, `code-${designId}-${Date.now()}`);
   await mkdir(dir, { recursive: true });
-  const root = slug(design.name);
+  const root = slug(design.title);
   const entries = [];
   const put = async (name, text) => { const at = join(dir, ...name.split("/")); await mkdir(join(at, ".."), { recursive: true }); await writeFile(at, text, "utf8"); entries.push({ name: `${root}/${name}`, path: at }); };
 
@@ -245,9 +247,19 @@ export async function designCode(store, designId) {
     }
     contents.push(`<h2>${esc(s.name)}</h2>${s.note ? `<p>${esc(s.note)}</p>` : ""}<ul>${links.join("") || "<li>No frames</li>"}</ul>`);
   }
-  await put("index.html", `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(design.name)}</title><style>body{font:16px/1.5 system-ui,sans-serif;max-width:720px;margin:48px auto;padding:0 24px}small,span{color:#666}li{margin:6px 0}</style></head><body><h1>${esc(design.name)}</h1><p>Every frame of the design, as a page. They use tokens.css, the brand's colours, fonts and corners, so a change there changes them all.</p>${contents.join("")}</body></html>`);
-  await put("README.md", `# ${design.name}\n\nA design from knitted: each frame is a page of HTML and CSS, in a folder for its section. Open index.html to see them all.\n\n- tokens.css holds the brand: \`${"--color-primary"}\` and the other colours, \`--font-display\`, \`--font-body\`, \`--font-mono\` and \`--radius\`. Build with these, not with the values.\n- fonts/ has the brand's fonts, and images/ the pictures the design uses.\n- A design shows one state of each screen. A menu open and a menu closed are two frames.\n`);
+  await put("index.html", `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(design.title)}</title><style>body{font:16px/1.5 system-ui,sans-serif;max-width:720px;margin:48px auto;padding:0 24px}small,span{color:#666}li{margin:6px 0}</style></head><body><h1>${esc(design.title)}</h1><p>Every frame of the ${design.section ? "section" : "design"}, as a page. They use tokens.css, the brand's colours, fonts and corners, so a change there changes them all.</p>${contents.join("")}</body></html>`);
+  await put("README.md", `# ${design.title}\n\n${design.section ? `The section ${design.section} of a design from knitted` : "A design from knitted"}: each frame is a page of HTML and CSS, in a folder for its section. Open index.html to see them all.\n\n- tokens.css holds the brand: \`${"--color-primary"}\` and the other colours, \`--font-display\`, \`--font-body\`, \`--font-mono\` and \`--radius\`. Build with these, not with the values.\n- fonts/ has the brand's fonts, and images/ the pictures the design uses.\n- A design shows one state of each screen. A menu open and a menu closed are two frames.\n`);
   return { name: `${root}.zip`, entries, dir, root, used, logo };
+}
+
+/**
+ * The design, or with `sectionId` the design with only that section in it, and the name its
+ * download goes by: "Website", or "Website, Pages".
+ */
+export function designOrSection(design, sectionId) {
+  if (!sectionId) return { ...design, title: design.name, section: null };
+  const s = findSection(design.sections, sectionId);
+  return { ...design, sections: [s], title: `${design.name}, ${s.name}`, section: s.name };
 }
 
 // For the download of everything (design-bundle.mjs): the tiled capture and where the files are.

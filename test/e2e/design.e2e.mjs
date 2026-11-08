@@ -219,6 +219,29 @@ test("everything downloads together: the pictures, the code, its fonts and image
   assert.ok(sheet.width > 1440, `the whole sheet, ${sheet.width} wide`);
 });
 
+test("a section downloads on its own: everything in it with a style guide, or its code", async () => {
+  await page.goto(`${studio.url}/projects/${projectId}/designs/${designId}`);
+  const grab = async (item) => {
+    await page.getByRole("button", { name: "Actions for Pages", exact: true }).click();
+    const [download] = await Promise.all([page.waitForEvent("download", { timeout: 120000 }), page.getByRole("menuitem", { name: item }).click()]);
+    const file = join(mkdtempSync(join(tmpdir(), "knitted-section-")), "s.zip");
+    await download.saveAs(file);
+    return { name: download.suggestedFilename(), file, names: execFileSync("unzip", ["-Z1", file], { encoding: "utf8" }).trim().split("\n") };
+  };
+  const all = await grab("Download everything, with a style guide");
+  assert.equal(all.name, "website-pages.zip");
+  for (const n of ["website-pages/section.png", "website-pages/style-guide.html", "website-pages/style-guide.png", "website-pages/tokens.json", "website-pages/index.html", "website-pages/01-pages/01-home.html"]) assert.ok(all.names.includes(n), `${n} in ${all.names.join(", ")}`);
+  assert.ok(!all.names.some((n) => n.includes("/sections/") || n.endsWith("/sheet.png")), "not the rest of the sheet");
+  assert.deepEqual([...new Set(all.names.filter((n) => n.endsWith(".html") && n.split("/").length === 3).map((n) => n.split("/")[1]))], ["01-pages"], "only the frames of that section");
+  assert.match(execFileSync("unzip", ["-p", all.file, "website-pages/style-guide.html"], { encoding: "utf8" }), /Website, Pages<small>Style guide[^<]*what this section is drawn with/);
+  const picture = await sharp(execFileSync("unzip", ["-p", all.file, "website-pages/section.png"], { maxBuffer: 1 << 28 })).metadata();
+  assert.ok(picture.width > 0);
+  const code = await grab("Download its code");
+  assert.equal(code.name, "website-pages.zip");
+  assert.ok(code.names.includes("website-pages/01-pages/01-home.html"));
+  assert.ok(!code.names.some((n) => n.endsWith("style-guide.html")), "the code alone");
+});
+
 test("a sheet is deleted from the list, and Undo brings it back", async () => {
   await page.goto(`${studio.url}/projects/${projectId}/designs`);
   await page.getByText(/4 sections, 10 frames/).waitFor();

@@ -20,7 +20,7 @@ import { leadOf, useMarks, type Mark } from "@/lib/agent";
 import { ZoomControls } from "./ZoomControls";
 import { stepZoom, typingIn, useSpaceHeld, wheelZoom, zoomKey } from "@/lib/zoom";
 
-const { ArrowLeft, ArrowUp, ArrowDown, ChevronRight, Copy, Download, MoreHorizontal, Pencil, Plus, Trash2, Undo2, X, AlertTriangle } = icons;
+const { ArrowLeft, ArrowUp, ArrowDown, ChevronRight, Copy, Download, FileCode, MoreHorizontal, Package, Pencil, Plus, Trash2, Undo2, X, AlertTriangle } = icons;
 const ZOOM_MIN = 0.05;
 const ZOOM_MAX = 4;
 // Round a frame zoomed to: room to see it is the whole frame, and its label.
@@ -278,6 +278,8 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
     { label: "Move up", icon: <ArrowUp size={14} />, disabled: i === 0, onSelect: () => void change([{ op: "moveSection", section: s.id, to: i - 1 }]) },
     { label: "Move down", icon: <ArrowDown size={14} />, disabled: i === design.sections.length - 1, onSelect: () => void change([{ op: "moveSection", section: s.id, to: i + 1 }]) },
     { label: "Download as a picture", icon: <Download size={14} />, disabled: !s.frames.length, onSelect: () => { window.location.href = api.designs.pictureUrl(design.id, { section: s.id }); } },
+    { label: "Download its code", icon: <FileCode size={14} />, disabled: !s.frames.length, onSelect: () => { window.location.href = api.designs.codeUrl(design.id, { section: s.id }); } },
+    { label: "Download everything, with a style guide", icon: <Package size={14} />, disabled: !s.frames.length, onSelect: () => { toast(`Putting ${s.name} together. It takes a moment to draw.`); window.location.href = api.designs.bundleUrl(design.id, { section: s.id }); } },
     { label: "Delete the section", icon: <Trash2 size={14} />, danger: true, onSelect: () => (s.frames.length ? setAsking({ kind: "delete-section", section: s }) : void change([{ op: "removeSection", section: s.id }], `Deleted ${s.name}`)) },
   ];
 

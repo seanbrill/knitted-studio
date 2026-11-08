@@ -1,5 +1,12 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
+  "next": {
+    "title": "Download one section with everything in it",
+    "items": [
+      "A section's menu on a design sheet downloads everything in that section: a ZIP with the section as a picture, its frames as HTML and CSS, the fonts and pictures they use, tokens.css and tokens.json, and a style guide of just what that section is drawn with.",
+      "A section's menu downloads its code on its own too, beside the picture it already had."
+    ]
+  },
   "entries": [
     {
       "version": "0.1.30",

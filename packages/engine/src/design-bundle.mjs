@@ -9,13 +9,13 @@ import { pathToFileURL } from "node:url";
 import { designStyles, tokensCss } from "@knitted/core";
 import { fontFaceCss } from "@knitted/fonts";
 import { activeSwatch, getDesign } from "@knitted/core/node";
-import { captureTiles, designCode, designFiles, renderDesign } from "./design.mjs";
+import { captureTiles, designCode, designFiles, designOrSection, renderDesign } from "./design.mjs";
 import { openRenderer } from "./renderer.mjs";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const slug = (s) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "section";
 const times = (n) => `${n} use${n === 1 ? "" : "s"}`;
-const where = (u) => (u.frames.length ? `${times(u.uses)}, in ${u.frames.slice(0, 4).map(esc).join(", ")}${u.frames.length > 4 ? ` and ${u.frames.length - 4} more` : ""}` : "Not used yet");
+const whereIn = (u, none) => (u.frames.length ? `${times(u.uses)}, in ${u.frames.slice(0, 4).map(esc).join(", ")}${u.frames.length > 4 ? ` and ${u.frames.length - 4} more` : ""}` : none);
 /** A value from the code, safe inside a style attribute. */
 const css = (v) => String(v).replace(/[<>"{};]/g, "");
 
@@ -25,6 +25,7 @@ const css = (v) => String(v).replace(/[<>"{};]/g, "");
  */
 export function styleGuidePage({ design, project, swatch, styles, fontFaces, logoSrc }) {
   const s = styles;
+  const where = (u) => whereIn(u, design.section ? "Not used in this section" : "Not used yet");
   const color = (c) => `<figure class="chip"><div class="sw" style="background:${css(c.value)}"></div><figcaption><b>${esc(c.label)}</b><code>var(${esc(c.variable)})</code><code>${esc(c.value)}</code><small>${where(c)}</small></figcaption></figure>`;
   const other = (c) => `<figure class="chip sm"><div class="sw" style="background:${css(c.value)}"></div><figcaption><code>${esc(c.value)}</code><small>${c.sameAs ? `Same as ${esc(c.sameAs)}: use the variable` : "Not one of the brand's colours"}</small><small>${where(c)}</small></figcaption></figure>`;
   const font = (f) => `<div class="font"><p class="spec" style="font-family:${css(`"${f.family}"`)}">${esc(f.family)}</p><p class="pangram" style="font-family:${css(`"${f.family}"`)}">The quick brown fox jumps over the lazy dog. 0123456789</p><p class="meta"><b>${esc(f.label)}</b> <code>var(${esc(f.variable)})</code> <small>${where(f)}</small></p></div>`;
@@ -35,7 +36,7 @@ export function styleGuidePage({ design, project, swatch, styles, fontFaces, log
   const space = (p) => `<div class="space"><code>${esc(p.value)}</code><span style="width:${Math.max(2, Math.min(p.px, 640))}px"></span><small>${times(p.uses)}</small></div>`;
   const shadow = (h) => `<figure class="shadow"><div style="box-shadow:${css(h.value)}"></div><figcaption><code>${esc(h.value)}</code><small>${where(h)}</small></figcaption></figure>`;
   const part = (title, note, body) => (body ? `<section><h2>${esc(title)}</h2>${note ? `<p class="note">${note}</p>` : ""}${body}</section>` : "");
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(design.name)}: style guide</title><style>${fontFaces}
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(design.title ?? design.name)}: style guide</title><style>${fontFaces}
 ${tokensCss(swatch)}
 *{box-sizing:border-box}html,body{margin:0;background:#fbf9f6;color:#17110b;font:15px/1.5 "Geist",system-ui,sans-serif}
 main{width:1200px;padding:64px 72px 80px}
@@ -53,7 +54,7 @@ code{font:12px/1.4 ui-monospace,Menlo,monospace;color:#3d342b;display:block;over
 .spaces{columns:2;column-gap:56px}.space{display:grid;grid-template-columns:64px 1fr 64px;gap:12px;align-items:center;padding:3px 0;break-inside:avoid}.space span{height:12px;background:#d9cfc2;border-radius:3px;display:block;max-width:100%}.space small{text-align:right}
 .shadows{display:flex;gap:36px;flex-wrap:wrap;padding:8px}.shadow{margin:0;width:220px}.shadow div{height:120px;background:#fff;border-radius:12px;margin-bottom:12px}
 </style></head><body><main>
-<header>${logoSrc ? `<img src="${esc(logoSrc)}" alt="">` : ""}<h1>${esc(design.name)}<small>Style guide${project ? ` for ${esc(project)}` : ""}: what this design is drawn with</small></h1></header>
+<header>${logoSrc ? `<img src="${esc(logoSrc)}" alt="">` : ""}<h1>${esc(design.title ?? design.name)}<small>Style guide${project ? ` for ${esc(project)}` : ""}: what this ${design.section ? "section" : "design"} is drawn with</small></h1></header>
 ${part("Colours", "The brand's colours, as the CSS variables every page uses (in tokens.css). The <i>on</i> colours are for text set on that colour.", `<div class="grid six">${s.colors.map(color).join("")}</div>`)}
 ${part("Other colours in the code", "Colours written out in a frame's CSS or HTML, not through a variable.", s.otherColors.length ? `<div class="grid six">${s.otherColors.map(other).join("")}</div>` : "")}
 ${part("Fonts", "", s.fonts.map(font).join(""))}
@@ -71,21 +72,26 @@ function fontFor(styles, label) { return styles.fonts.find((f) => f.label === la
 
 /**
  * Everything, ready to zip: what designCode makes, with the pictures, the style guide and tokens.json.
+ * With `sectionId`, everything for that section alone: its picture, its frames' code, the fonts and
+ * pictures they use, and a style guide of what they are drawn with.
+ * @param {any} store
+ * @param {string} designId
+ * @param {{ sectionId?: string, renderer?: any }} [opts]
  * @returns {Promise<{ name: string, entries: { name: string, path: string }[] }>}
  */
-export async function designBundle(store, designId, { renderer: injected } = {}) {
-  const design = getDesign(store, designId);
+export async function designBundle(store, designId, { sectionId, renderer: injected } = {}) {
+  const design = designOrSection(getDesign(store, designId), sectionId);
   const swatch = activeSwatch(store, design.projectId);
   let project = null; try { project = store.getProject(design.projectId).name; } catch { /* gone */ }
-  const code = await designCode(store, designId);
+  const code = await designCode(store, designId, { sectionId });
   const { dir, root, entries } = code;
   const put = async (name, data) => { const at = join(dir, ...name.split("/")); await writeFile(at, data); entries.push({ name: `${root}/${name}`, path: at }); };
   const renderer = injected ?? (await openRenderer());
   try {
-    // The sheet, and each section on its own, as pictures.
-    await put("sheet.png", await renderDesign(store, designId, { renderer }));
-    await mkdir(join(dir, "sections"), { recursive: true });
-    for (const [i, s] of design.sections.entries()) {
+    // The sheet, and each section on its own, as pictures; or the one section.
+    await put(design.section ? "section.png" : "sheet.png", await renderDesign(store, designId, { sectionId, renderer }));
+    if (!design.section) await mkdir(join(dir, "sections"), { recursive: true });
+    for (const [i, s] of design.section ? [] : design.sections.entries()) {
       if (!s.frames.length) continue;
       await put(`sections/${String(i + 1).padStart(2, "0")}-${slug(s.name)}.png`, await renderDesign(store, designId, { sectionId: s.id, renderer }));
     }
@@ -120,6 +126,6 @@ export async function designBundle(store, designId, { renderer: injected } = {})
 
   // The README says what is in it all.
   const readme = entries.find((e) => e.name === `${root}/README.md`);
-  if (readme) await writeFile(readme.path, `# ${design.name}\n\nA design from knitted, with everything that goes with it.\n\n- sheet.png is the whole sheet, and sections/ has each section on its own.\n- style-guide.html (and style-guide.png, a picture of it) shows what the design is drawn with: the brand's colours, fonts and corners as the CSS variables the pages use, and the type sizes, weights, spacing and shadows in its code.\n- tokens.css holds the brand as CSS variables, and tokens.json the same as data.\n- Each frame is a page of HTML and CSS, in a folder for its section. Open index.html to see them all.\n- fonts/ has the brand's fonts, and images/ the pictures the design uses.\n- A design shows one state of each screen. A menu open and a menu closed are two frames.\n`, "utf8");
+  if (readme) await writeFile(readme.path, `# ${design.title}\n\n${design.section ? `The section ${design.section} of a design from knitted` : "A design from knitted"}, with everything that goes with it.\n\n${design.section ? "- section.png is the section, as a picture." : "- sheet.png is the whole sheet, and sections/ has each section on its own."}\n- style-guide.html (and style-guide.png, a picture of it) shows what the ${design.section ? "section" : "design"} is drawn with: the brand's colours, fonts and corners as the CSS variables the pages use, and the type sizes, weights, spacing and shadows in its code.\n- tokens.css holds the brand as CSS variables, and tokens.json the same as data.\n- Each frame is a page of HTML and CSS, in a folder for its section. Open index.html to see them all.\n- fonts/ has the brand's fonts, and images/ the pictures the design uses.\n- A design shows one state of each screen. A menu open and a menu closed are two frames.\n`, "utf8");
   return { name: `${root}.zip`, entries };
 }

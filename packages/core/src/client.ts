@@ -133,8 +133,8 @@ export const api = {
     remove: (id: string) => call<{ ok: true }>("DELETE", `/api/designs/${id}`),
     /** The sheet, a section or a frame as a PNG to download. */
     pictureUrl: (id: string, o: { section?: string; frame?: string; scale?: 1 | 2 } = {}) => `/api/designs/${id}/picture?${new URLSearchParams(Object.entries(o).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)]))}`,
-    codeUrl: (id: string) => `/api/designs/${id}/code`,
-    bundleUrl: (id: string) => `/api/designs/${id}/bundle`,
+    codeUrl: (id: string, o: { section?: string } = {}) => `/api/designs/${id}/code${o.section ? `?section=${encodeURIComponent(o.section)}` : ""}`,
+    bundleUrl: (id: string, o: { section?: string } = {}) => `/api/designs/${id}/bundle${o.section ? `?section=${encodeURIComponent(o.section)}` : ""}`,
   },
   voice: {
     config: () => call<VoiceConfig>("GET", "/api/voice/config"),

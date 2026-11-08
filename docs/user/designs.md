@@ -19,7 +19,7 @@ Or choose **Design with your model** and say what you want, like *our whole site
 
 ## The board
 
-- Each section has a name, and can have a note beside it. Use **Add a section** for one of your own, such as *Shop* or *Checkout*. A section's menu renames it, moves it up or down, downloads it as a picture, or deletes it.
+- Each section has a name, and can have a note beside it. Use **Add a section** for one of your own, such as *Shop* or *Checkout*. A section's menu renames it, moves it up or down, downloads it (as a picture, as code, or everything in it with a style guide), or deletes it.
 - A frame is a page, a screen or a piece of one, at a width: **Desktop** 1440, **Tablet** 834, **Mobile** 390, or one of your own. A frame is as tall as what is in it, unless you give it a fixed height, such as one phone screen.
 - **Fit** shows the widest section across the window. Zoom in as far as 400% to read the detail. Pinch, or hold Ctrl and scroll, to zoom about the pointer, or use the zoom menu. The labels stay the same size at any zoom.
 - Double-click a frame to zoom to it, whole and in the middle. Double-click the space between frames to fit again.
@@ -39,7 +39,7 @@ Select a frame to open it beside the board. You can change its name, width, heig
 
 **Download** has three choices:
 
-- **The sheet, as a picture**: a PNG of the whole board, with its labels. Each section's menu downloads just that section, and **Picture** on a frame downloads that frame at twice the size.
+- **The sheet, as a picture**: a PNG of the whole board, with its labels. **Picture** on a frame downloads that frame at twice the size.
 - **The code**: a ZIP with a page of HTML for each frame, filed by section. It also holds `tokens.css` with your brand, your fonts and the pictures the design uses. Open its `index.html` to see every page. A developer, or a model building the real site, can start from it.
 - **Everything**: a ZIP with the sheet as a picture, each section as a picture, all of the code, the fonts and the pictures the design uses, and a style guide. A big sheet takes a moment to put together. The style guide comes as `style-guide.html` and as a picture of it, and shows what the design is drawn with:
   - the brand's colours, fonts and corners, each with the CSS variable the pages use, such as `var(--color-primary)`, and how often and where it is used
@@ -50,6 +50,8 @@ Select a frame to open it beside the board. You can change its name, width, heig
   `tokens.json` has the brand's colours, fonts, corners, type sizes and spacing as data, for a design tool or a build.
 
 The list of design sheets has **Download the code** and **Download everything** in each sheet's menu too.
+
+Each section downloads on its own from its menu, in the same three ways: **Download as a picture**, **Download its code**, and **Download everything, with a style guide**. Everything for a section is a ZIP named for the sheet and the section, such as `website-pages.zip`. It has `section.png`, that section's frames as code, the fonts and pictures they use, and a style guide of just what that section is drawn with.
 
 ## Your model
 
