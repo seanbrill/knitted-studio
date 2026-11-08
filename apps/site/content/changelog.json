@@ -1,14 +1,16 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
-  "next": {
-    "title": "Download a design with everything, and a style guide",
-    "items": [
-      "A design sheet's Download menu has Everything: a ZIP with the sheet and each section as pictures, every frame as HTML and CSS, the fonts and pictures it uses, tokens.css and tokens.json, and a style guide.",
-      "The style guide, as a page and as a picture, shows what the design is drawn with: the brand's colours, fonts and corners with the CSS variable for each and where it is used, every type size and weight, the spacing, the shadows, and any colour written in the code that is not the brand's.",
-      "The list of design sheets can download everything from each sheet's menu too."
-    ]
-  },
   "entries": [
+    {
+      "version": "0.1.30",
+      "date": "2026-11-08",
+      "title": "Download a design with everything, and a style guide",
+      "items": [
+        "A design sheet's Download menu has Everything: a ZIP with the sheet and each section as pictures, every frame as HTML and CSS, the fonts and pictures it uses, tokens.css and tokens.json, and a style guide.",
+        "The style guide, as a page and as a picture, shows what the design is drawn with: the brand's colours, fonts and corners with the CSS variable for each and where it is used, every type size and weight, the spacing, the shadows, and any colour written in the code that is not the brand's.",
+        "The list of design sheets can download everything from each sheet's menu too."
+      ]
+    },
     {
       "version": "0.1.29",
       "date": "2026-11-08",
