@@ -1,17 +1,19 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
-  "next": {
-    "title": "Your model draws: icon sets, mascot poses and badges, as SVG",
-    "items": [
-      "Draw with your model, on a project's Yarn page: say what to draw, such as icons for your website or your mascot waving, and your model draws it as SVG and keeps it in Yarn. SVG stays sharp at any size.",
-      "To draw from your mascot or your logo, upload it and name it in what you ask. Ask your model, on a picture, now suggests drawing it in new poses.",
-      "Your model sees each drawing on white, on dark and at icon sizes before you do, and puts a set side by side to check it belongs together. It draws one again in place, so every Pattern that uses it updates, and never draws over a file you uploaded.",
-      "A drawing is marked Drawn by your model, with what you asked for and what it was drawn from.",
-      "SVG thumbnails are sharp: an icon was drawn at its own small size and blown up.",
-      "The activity panel says what your model is doing when it searches and adds free stock."
-    ]
-  },
   "entries": [
+    {
+      "version": "0.1.22",
+      "date": "2026-11-07",
+      "title": "Your model draws: icon sets, mascot poses and badges, as SVG",
+      "items": [
+        "Draw with your model, on a project's Yarn page: say what to draw, such as icons for your website or your mascot waving, and your model draws it as SVG and keeps it in Yarn. SVG stays sharp at any size.",
+        "To draw from your mascot or your logo, upload it and name it in what you ask. Ask your model, on a picture, now suggests drawing it in new poses.",
+        "Your model sees each drawing on white, on dark and at icon sizes before you do, and puts a set side by side to check it belongs together. It draws one again in place, so every Pattern that uses it updates, and never draws over a file you uploaded.",
+        "A drawing is marked Drawn by your model, with what you asked for and what it was drawn from.",
+        "SVG thumbnails are sharp: an icon was drawn at its own small size and blown up.",
+        "The activity panel says what your model is doing when it searches and adds free stock."
+      ]
+    },
     {
       "version": "0.1.21",
       "date": "2026-11-07",
