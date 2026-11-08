@@ -1,17 +1,19 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
-  "next": {
-    "title": "Comments your model can act on, pinned to the spot",
-    "items": [
-      "Open a knit and press Add a comment, then click the spot that should change and say what. In a video the comment is at the moment you chose, and its pin shows round then.",
-      "On a design sheet, Comments on the bar opens the comments, and a click on a frame pins one there. Pins stay on the board at any zoom, and press one to open it.",
-      "Each comment is numbered with its pin. Reply, resolve, open again or delete it. A knit's card and a sheet's card show how many comments are open.",
-      "Ask your model to do this, on a comment, or Ask your model to do all: your model sees the spot with the pin on it and a close-up, is told which stitch or which element of the HTML is under it, makes the change, and answers each comment, resolving it when it is done.",
-      "For models: list_comments, view_comment and reply_comment.",
-      "A link written on a button, such as the whole knit, is drawn as a link, not a grey button. The Brief's Look at it in the Swatch tab is fixed the same way."
-    ]
-  },
   "entries": [
+    {
+      "version": "0.1.32",
+      "date": "2026-11-08",
+      "title": "Comments your model can act on, pinned to the spot",
+      "items": [
+        "Open a knit and press Add a comment, then click the spot that should change and say what. In a video the comment is at the moment you chose, and its pin shows round then.",
+        "On a design sheet, Comments on the bar opens the comments, and a click on a frame pins one there. Pins stay on the board at any zoom, and press one to open it.",
+        "Each comment is numbered with its pin. Reply, resolve, open again or delete it. A knit's card and a sheet's card show how many comments are open.",
+        "Ask your model to do this, on a comment, or Ask your model to do all: your model sees the spot with the pin on it and a close-up, is told which stitch or which element of the HTML is under it, makes the change, and answers each comment, resolving it when it is done.",
+        "For models: list_comments, view_comment and reply_comment.",
+        "A link written on a button, such as the whole knit, is drawn as a link, not a grey button. The Brief's Look at it in the Swatch tab is fixed the same way."
+      ]
+    },
     {
       "version": "0.1.31",
       "date": "2026-11-08",
