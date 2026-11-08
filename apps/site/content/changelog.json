@@ -1,13 +1,15 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
-  "next": {
-    "title": "A whole design sheet downloads as a picture again",
-    "items": [
-      "A design sheet too big for one browser window, like a whole site of a hundred frames, downloaded as a blank picture of a few kilobytes. It is now drawn in tiles and put together, so every frame is in the picture.",
-      "Your model, looking at a whole sheet, had the same blank picture, and now sees every frame too."
-    ]
-  },
   "entries": [
+    {
+      "version": "0.1.27",
+      "date": "2026-11-08",
+      "title": "A whole design sheet downloads as a picture again",
+      "items": [
+        "A design sheet too big for one browser window, like a whole site of a hundred frames, downloaded as a blank picture of a few kilobytes. It is now drawn in tiles and put together, so every frame is in the picture.",
+        "Your model, looking at a whole sheet, had the same blank picture, and now sees every frame too."
+      ]
+    },
     {
       "version": "0.1.26",
       "date": "2026-11-08",
