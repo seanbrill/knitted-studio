@@ -15,6 +15,11 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
 const slug = (s) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "frame";
 /** Chromium draws a page up to about this many pixels a side; a bigger sheet is drawn smaller. */
 const MAX_SIDE = 16_000;
+/**
+ * A window this many pixels a side at most. Chromium leaves a bigger window partly or wholly
+ * undrawn (a whole sheet of 13,000 by 24,000 came out blank), so a sheet is drawn in tiles.
+ */
+const TILE = 4096;
 
 /** What is drawn: the whole sheet, one section, or one frame. */
 function pick(design, { sectionId, frameId } = {}) {
@@ -84,6 +89,38 @@ async function settle(page, n) {
 }
 
 /**
+ * The page from its top left, `size` wide and tall, drawn at `s` pixels a pixel, a tile at a
+ * time: the window is a tile, scrolled across and down the page, and the tiles put together.
+ */
+async function capture(page, size, s) {
+  const tile = Math.max(1, Math.floor(TILE / s));
+  const vw = Math.min(size.width, tile), vh = Math.min(size.height, tile);
+  await page.setViewportSize({ width: vw, height: vh });
+  if (size.width <= tile && size.height <= tile) return page.screenshot({ type: "png", clip: { x: 0, y: 0, width: size.width, height: size.height } });
+  const W = Math.round(size.width * s), H = Math.round(size.height * s);
+  const parts = [];
+  for (let y = 0; y < size.height; y += tile) for (let x = 0; x < size.width; x += tile) {
+    // Scrolled past the end, the window stops at the edge: the tile is placed where it stopped.
+    // A frame off screen is not drawn until it has been on screen a moment, so the tile waits for
+    // each frame in it to draw twice (one not drawing runs no animation frames), then the page once.
+    const at = await page.evaluate(async ([tx, ty]) => {
+      window.scrollTo(tx, ty);
+      const drawn = (w) => new Promise((r) => { const t = setTimeout(r, 3000); w.requestAnimationFrame(() => w.requestAnimationFrame(() => { clearTimeout(t); r(); })); });
+      const shown = [...document.querySelectorAll("iframe")].filter((f) => { const b = f.getBoundingClientRect(); return b.bottom > 0 && b.top < window.innerHeight && b.right > 0 && b.left < window.innerWidth; });
+      await Promise.all([drawn(window), ...shown.map((f) => drawn(f.contentWindow))]);
+      await drawn(window);
+      return { x: window.scrollX, y: window.scrollY };
+    }, [x, y]);
+    const shot = await page.screenshot({ type: "png" });
+    const left = Math.min(W - 1, Math.round(at.x * s)), top = Math.min(H - 1, Math.round(at.y * s));
+    const m = await sharp(shot).metadata();
+    const w = Math.min(m.width, W - left), h = Math.min(m.height, H - top);
+    parts.push({ input: w < m.width || h < m.height ? await sharp(shot).extract({ left: 0, top: 0, width: w, height: h }).png().toBuffer() : shot, left, top });
+  }
+  return sharp({ create: { width: W, height: H, channels: 3, background: "#ebe6de" } }).composite(parts).removeAlpha().png().toBuffer();
+}
+
+/**
  * A design, a section of it or one frame, as PNG bytes. `scale` 2 draws twice the pixels; a
  * sheet too big for the browser is drawn smaller rather than not at all.
  * @param {any} store
@@ -109,11 +146,11 @@ export async function renderDesign(store, designId, { sectionId, frameId, scale 
       await page.goto(pathToFileURL(file).href);
       const size = frames ? await settle(page, frames) : await page.evaluate(() => ({ width: document.body.scrollWidth, height: document.body.scrollHeight }));
       if (Math.max(size.width, size.height) * s > MAX_SIDE) return { again: MAX_SIDE / Math.max(size.width, size.height) };
-      if (one) return { png: await page.locator("iframe").screenshot({ type: "png" }) };
-      // The window made the board's size, so the picture is the board, not a 900-pixel window round it.
-      await page.setViewportSize({ width: size.width, height: size.height });
-      const png = await page.screenshot({ type: "png" });
-      return { png };
+      if (one) {
+        const r = await page.locator("iframe").boundingBox();
+        return { png: await capture(page, { width: Math.ceil(r.width), height: Math.ceil(r.height) }, s) };
+      }
+      return { png: await capture(page, size, s) };
     } finally { await page.close(); }
   };
   try {
