@@ -88,6 +88,10 @@ test("a page is read as text: its main part, marked as markdown marks it, with n
   assert.ok(!p.links.some((l) => l.endsWith(".pdf")), "a file is not a page");
   assert.equal(p.structured[0].name, "Hollow Oak Bakery");
   assert.equal(p.structured[0].image, undefined, "how the page is built is left out");
+  // A short name in a picture is what a "Works with" band says; a bare "logo" says nothing.
+  const band = readPage(`<main><p>Works with</p><img src="s.svg" alt="Spotify"><img src="l.png" alt="logo"><img src="x.png" alt="hero.png"></main>`, "https://x.example/").text;
+  assert.match(band, /\[picture: Spotify\]/);
+  assert.doesNotMatch(band, /picture: (logo|hero\.png)/);
   assert.equal(p.structured[0].address.streetAddress, "12 Elm St");
 });
 

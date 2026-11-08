@@ -159,7 +159,8 @@ test("settings choose the provider, and the built-in voice is the default", () =
 test("the built-in voice really speaks on this machine", { skip: process.platform !== "darwin" }, async () => {
   assert.equal(await system.available(), true);
   const r = await speak(system, { text: "Make it knitted.", voice: "default", cacheDir: join(dir, "sys") });
-  assert.ok(r.durationMs > 600 && r.durationMs < 5000, `a real utterance: ${r.durationMs}ms`);
+  // A real utterance, not silence or a click: CI's Macs speak the three words in about 570 ms.
+  assert.ok(r.durationMs > 300 && r.durationMs < 5000, `a real utterance: ${r.durationMs}ms`);
   assert.ok((await system.voices()).length > 5);
 });
 
@@ -184,6 +185,28 @@ test("a take is cut at the sentence pauses, not at a breath inside a line", () =
   assert.equal(Math.round(parts.at(-1).toMs), 6430);
   assert.equal(readWav(parts[1].wav).dataLength, Math.round(((4480 - 2450) / 1000) * 24000) * 2, "each line is its own WAV, cut from the take");
   assert.equal(cutTake(Buffer.from("not a wav"), ["a", "b"]), null, "a file it cannot read stays whole");
+  assert.deepEqual(parts.map((p) => p.lines.length), [1, 1, 1], "each line its own clip when the voice paused between them");
+});
+
+test("lines the voice ran together stay one clip, so no word is split; captions inside it go by length", () => {
+  // Three lines, a clear pause after the first, none between the second and third.
+  const wav = takeOf([[100, false], [1500, true], [500, false], [3000, true], [100, false]]);
+  const lines = ["Friday. Four fifty-nine.", "It's broken, and the weekend", "is about to start."];
+  const clips = cutTake(wav, lines);
+  assert.equal(clips.length, 2);
+  assert.deepEqual(clips[1].lines.map((l) => l.text), lines.slice(1));
+  assert.equal(clips[1].text, `${lines[1]} ${lines[2]}`);
+  const [a, b] = clips[1].lines;
+  assert.equal(Math.round(a.fromMs), Math.round(clips[1].fromMs));
+  assert.equal(Math.round(a.toMs), Math.round(b.fromMs), "one after the other");
+  assert.ok(Math.abs((a.toMs - a.fromMs) / (b.toMs - b.fromMs) - lines[1].length / lines[2].length) < 0.01, "timed by their length");
+});
+
+test("a pause inside a line is not taken for the end of it when that leaves a line far too fast", () => {
+  // A long line then a short one, but the only pause comes a fifth of the way into the long line.
+  const wav = takeOf([[100, false], [600, true], [400, false], [3400, true], [100, false]]);
+  const clips = cutTake(wav, ["When a tag is wrong, your correction is the one that sticks, everywhere.", "Always."]);
+  assert.equal(clips.length, 1, "kept whole rather than cut where the pace says it is not the line's end");
 });
 
 test("a voice server gets the voice, the style as instructions and any other options, and its own error comes back", async () => {

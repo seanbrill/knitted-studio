@@ -122,7 +122,7 @@ export const api = {
       if (!res.ok) { const j = await res.json().catch(() => null); throw new ApiError(res.status, j?.error?.kind ?? "error", j?.error?.message ?? "That voice did not answer."); }
       return { url: URL.createObjectURL(await res.blob()), durationMs: Number(res.headers.get("x-duration-ms") ?? 0) };
     },
-    generate: (patternId: string, b: { lines: string[]; voice?: string; speed?: number; startMs?: number; gapMs?: number; captions?: boolean }) => call<JobItem>("POST", `/api/patterns/${patternId}/voiceover`, b),
+    generate: (patternId: string, b: { lines: (string | { say: string; show?: string })[]; voice?: string; speed?: number; startMs?: number; gapMs?: number; captions?: boolean }) => call<JobItem>("POST", `/api/patterns/${patternId}/voiceover`, b),
   },
   knit: {
     start: (patternId: string, params: KnitParams) => call<JobItem>("POST", `/api/patterns/${patternId}/knit`, { params }),

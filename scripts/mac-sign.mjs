@@ -79,7 +79,8 @@ export async function signArgs(app) {
   for (const e of await readdir(app, { withFileTypes: true, recursive: true })) {
     if (!e.isFile() || e.parentPath === own) continue;
     const file = join(e.parentPath, e.name);
-    if (await isProgram(file)) programs.push(relative(app, file));
+    // rcodesign scopes are paths inside the bundle, forward slashes on any system that signs.
+    if (await isProgram(file)) programs.push(relative(app, file).split(/[\\/]/).join("/"));
   }
   // rcodesign reads a colon or an @ in a path as part of the scope. No program's path has one.
   const scoped = programs.filter((p) => !/[:@]/.test(p)).sort();

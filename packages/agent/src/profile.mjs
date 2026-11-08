@@ -14,7 +14,7 @@
 // is told it is material to describe, never instructions to follow.
 
 import { createSwatchFromProposal, getBrief, getSecret, getYarn, listYarn, pdfText, proposeFromWebsite, readWebsite, setBriefSite, setProfile, ValidationError } from "@knitted/core/node";
-import { captureSite } from "@knitted/engine";
+import { captureSite, renderingFetcher } from "@knitted/engine";
 import { untrusted } from "@knitted/mcp/tools";
 import { AgentError, API_VERSION, DEFAULT_MODEL, mayAsk, spend } from "./index.mjs";
 import { readMessage, StreamError } from "./stream.mjs";
@@ -35,6 +35,9 @@ Two or three sentences: what it is, who it is for, where it is (if it is anywher
 ## What they offer
 The products, services or programs, grouped as the business groups them. Prices, sizes and terms exactly as stated, with where it says so. Signature items first.
 
+## Available now, and what is not yet
+What a customer can use or buy today, and, apart from it, everything the material calls planned, coming soon, in beta, on a waitlist, a roadmap item or "not yet", each with the words it uses and where it says so, and any date it gives. Then anything it says it does not do. A writer must never present something planned as available: when two places disagree (a page's summary says "works with X" and the page says X is planned), say so here and under Gaps, and treat the more cautious as true.
+
 ## Who it is for
 The customers it speaks to, what they want, and what they worry about, as the material shows them.
 
@@ -51,16 +54,17 @@ A list of what a writer must not get wrong: the name's spelling and capitals, pr
 The calls to action: book, order, visit, sign up, call. Each with the words they use and the address it leads to.
 
 ## Ideas to write about
-Eight to twelve concrete ideas for posts, ads or pages, each one line, each grounded in something in the material (a product, a season, a story, a review, a fact).
+As many concrete ideas for posts, ads or pages as the material really supports, from three to twelve: each one line, each grounded in something in the material (a product, a season, a story, a review, a fact), and each a different kind (a moment from a customer's day, a how-to, a comparison, behind the scenes, an offer). Only about what is available now.
 
 ## Gaps
-What a writer would want to know that the material does not say, as questions for the person.
+What a writer would want to know that the material does not say, and where the sources disagree, as questions for the person.
 
 Rules:
+- Today's date is given. Judge what is current by it: an offer that ended, an event that has passed, "new" from two years ago.
 - Only what the material says. Never make up a fact, a number, a price, a date, a quote or a name. Where you infer something, say "seems" or "likely".
 - Keep their own words for their products and claims. Do not improve their claims.
 - Plain markdown: headings, short paragraphs, lists, bold for names that matter. No tables, no HTML, no links other than the business's own addresses.
-- Between 600 and 1600 words. Dense, specific and plain: no filler, no praise of the business.
+- Between 600 and 1800 words. Dense, specific and plain: no filler, no praise of the business.
 - Write the profile only: nothing before the first heading, nothing after the last section.`;
 
 const quote = (s) => String(s).replace(/["<>\n]/g, " ").slice(0, 120);
@@ -102,8 +106,8 @@ export async function referenceMaterial(store, projectId, ids) {
 }
 
 /** The request's one message: everything the profile is written from, labelled. */
-export function profilePrompt({ site, reference, writeUp, notes, current, mode }) {
-  const out = [];
+export function profilePrompt({ site, reference, writeUp, notes, current, mode, today = new Date().toISOString().slice(0, 10) }) {
+  const out = [`Today is ${today}.`];
   if (site) out.push(siteMaterial(site));
   if (reference) out.push(`Reference files:\n${reference}`);
   if (writeUp?.trim()) out.push(`<write_up from="the person">\n${writeUp.trim()}\n</write_up>`);
@@ -207,7 +211,11 @@ export function startSync(store, o) {
       if (steps.read.status === "waiting") {
         step("read", "running");
         try {
-          site = await readWebsite(url, { fetcher, maxPages, signal: ctl.signal, onPage: (p) => { pages.push({ url: p.url, title: p.title }); report(); } });
+          // Read as a visitor sees it, in the browser, when there is one: a page drawn by
+          // JavaScript arrives with whole sections empty (see renderingFetcher).
+          const drawn = fetcher ? null : await (o.render ?? renderingFetcher)().catch(() => null);
+          try { site = await readWebsite(url, { fetcher: fetcher ?? drawn?.fetcher, maxPages, signal: ctl.signal, onPage: (p) => { pages.push({ url: p.url, title: p.title }); report(); } }); }
+          finally { await drawn?.close(); }
           pages.splice(0, pages.length, ...site.pages.map((p) => ({ url: p.url, title: p.title })));
           notes.push(...site.notes);
           setBriefSite(store, projectId, { url: site.url });

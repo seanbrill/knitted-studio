@@ -127,7 +127,7 @@ export function textOf(html: string): string {
   s = s.replace(/<li\b[^>]*>/gi, "\n- ");
   s = s.replace(/<(td|th)\b[^>]*>/gi, " | ");
   s = s.replace(/<br\s*\/?>/gi, "\n");
-  s = s.replace(/<img\b[^>]*\balt\s*=\s*("([^"]*)"|'([^']*)')[^>]*>/gi, (_, _q, a?: string, b?: string) => { const alt = (a ?? b ?? "").trim(); return alt.length > 12 && !/logo|icon|avatar|spacer/i.test(alt) ? ` [picture: ${alt}] ` : " "; });
+  s = s.replace(/<img\b[^>]*\balt\s*=\s*("([^"]*)"|'([^']*)')[^>]*>/gi, (_, _q, a?: string, b?: string) => { const alt = (a ?? b ?? "").trim(); return alt.length > 2 && !/^(the |a )?(logo|icon|image|img|photo|picture|avatar|spacer|banner|graphic)s?$/i.test(alt) && !/\.(png|jpe?g|gif|svg|webp|avif)$/i.test(alt) ? ` [picture: ${alt}] ` : " "; });
   s = s.replace(new RegExp(`<\\/?(?:${BLOCK})\\b[^>]*>`, "gi"), "\n");
   s = s.replace(/<[^>]+>/g, " ");
   s = decode(s);

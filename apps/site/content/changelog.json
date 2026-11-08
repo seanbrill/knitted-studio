@@ -219,5 +219,19 @@
         "This site, the docs and the vocabulary: Pattern, Swatch, Yarn, Stitch, Knit and Part."
       ]
     }
-  ]
+  ],
+  "next": {
+    "title": "Voices that say it, Briefs that know what is ready",
+    "items": [
+      "A voiceover line can say one thing and caption another. Write the caption after a bar, like Roll it back from the terminal | filefreak sites rollback 3, and the voice says the words, while the screen shows the command. Your model does the same.",
+      "The voice no longer reads code aloud without a warning. Check and Knit say when a line reads out a command, a path or a file name, or the command typed on screen, and suggest saying what it does instead.",
+      "One take is cut into lines only where the voice really paused, and where each line's length fits its words. Lines it ran together stay one clip, so a word is never split between two, and the voiceover says which lines those are.",
+      "Asking your model costs less. It used to check on a voiceover again and again while it was spoken, each time re-reading the whole conversation: 41 of 59 steps in one real ask. Now it waits for the voiceover in one step, and is told to do independent steps at once.",
+      "Your model has a copywriting guide: only what the Brief says is true and available now, no invented prices, quotes or reviews, a hook from the reader's own day, and variety across a batch. The posts guide now covers Instagram, TikTok, LinkedIn, X, Threads and YouTube one by one.",
+      "Building the Brief reads your website as a visitor sees it, in the browser, so sections a page draws with JavaScript are read too. notch.fm's Works with band, which says Spotify is planned, used to arrive empty.",
+      "The Brief gets today's date and a section for what is available now and what is planned, coming soon or in beta, so nothing planned is written as ready. It suggests as many ideas as the material supports, not always twelve.",
+      "Short picture descriptions, like a service's name in a Works with band, are read now; a bare 'logo' still is not.",
+      "Music advice is the same everywhere: 0.4 to 0.6 under a voice, since every track is brought to one loudness first."
+    ]
+  }
 }

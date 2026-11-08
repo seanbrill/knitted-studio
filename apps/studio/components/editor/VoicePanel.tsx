@@ -42,7 +42,12 @@ export function VoicePanel({ projectId }: { projectId: string }) {
     return () => clearInterval(t);
   }, [job?.id, busy]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const lines = script.split("\n").map((l) => l.trim()).filter(Boolean);
+  // "Said | shown": the caption shows the words after the bar, like a command, while the voice says the words before it.
+  const lines = script.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => {
+    const bar = l.indexOf(" | ");
+    return bar > 0 ? { say: l.slice(0, bar).trim(), show: l.slice(bar + 3).trim() || undefined } : l;
+  });
+  const warnings = job?.status === "done" ? (job.progress?.units ?? []).flatMap((u) => u.issues ?? []).map((i) => i.message) : [];
   const go = async () => {
     try { setJob(await api.voice.generate(st.pattern.id, { lines, voice: voice ?? cfg?.voice, speed, startMs: Math.max(500, Math.round(st.playhead)), captions })); setScript(""); }
     catch (e) { toast((e as Error).message); }
@@ -59,7 +64,7 @@ export function VoicePanel({ projectId }: { projectId: string }) {
           <Link className="link body-sm" href="/settings">Choose a voice in Settings</Link>
         </div>
       )}
-      <Field label="What should it say?" hint="One line per spoken sentence. Each becomes its own clip you can move." htmlFor="vp-script">
+      <Field label="What should it say?" hint="One line per spoken sentence. Each becomes its own clip you can move. To caption a line with other words, like a command, put them after a bar: Roll it back from the terminal | filefreak sites rollback 3" htmlFor="vp-script">
         <Textarea id="vp-script" rows={5} value={script} onChange={(e) => setScript(e.target.value)} placeholder={"Make it knitted.\nPattern once. Knit forever."} />
       </Field>
       {v && v.voices.length > 1 && (
@@ -69,6 +74,11 @@ export function VoicePanel({ projectId }: { projectId: string }) {
       <label style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "12px 0" }}><span className="body-sm">Add captions<br /><span style={{ color: "var(--ink-muted)" }}>Timed to each line.</span></span><Switch label="Add captions" checked={captions} onCheckedChange={setCaptions} /></label>
       <Button variant="primary" block disabled={!lines.length || busy || !!unavailable} onClick={go}>{busy ? `Speaking ${job?.progress?.done ?? 0} of ${job?.progress?.total ?? lines.length}...` : `Make voiceover${lines.length > 1 ? ` (${lines.length} lines)` : ""}`}</Button>
       {job?.status === "failed" && <p className="field-error" role="alert" style={{ marginTop: 8 }}>{job.error}</p>}
+      {warnings.length > 0 && (
+        <ul className="body-sm" aria-label="About this voiceover" style={{ margin: "8px 0 0", paddingLeft: 18, color: "var(--ink-muted)" }}>
+          {warnings.map((w, i) => <li key={i}>{w}</li>)}
+        </ul>
+      )}
 
       <h3 className="eyebrow" style={{ margin: "var(--space-6) 0 var(--space-2)" }}>On the timeline</h3>
       {audio.length === 0 ? <p className="body-sm" style={{ color: "var(--ink-muted)" }}>No sound yet.</p> : (

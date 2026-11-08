@@ -85,6 +85,8 @@ test("what was read is labelled: the website as untrusted data, the person's wri
   assert.match(prompt, /<notes from="the person">\nClosed Mondays now\.\n<\/notes>/);
   assert.match(prompt, /<current_profile>\n# Old\n<\/current_profile>/);
   assert.doesNotMatch(profilePrompt({ writeUp: "x", current: "# Old", mode: "replace" }), /current_profile/, "starting again leaves the old one out");
+  assert.match(profilePrompt({ writeUp: "x", today: "2026-11-08" }), /^Today is 2026-11-08\./, "the builder knows the date, to judge what is current");
+  assert.match(PROFILE_SYSTEM, /## Available now, and what is not yet/);
 });
 
 /** The engine's pictures, stood in for: what it was asked to picture. */

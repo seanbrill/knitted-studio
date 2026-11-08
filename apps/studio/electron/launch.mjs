@@ -18,6 +18,9 @@ const main = join(dirname(fileURLToPath(import.meta.url)), "main.mjs");
 const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
 
-const child = spawn(electron, [main, ...process.argv.slice(2)], { env, stdio: "inherit" });
+// Chromium checks its Linux sandbox helper as it starts, before main.mjs can append a switch,
+// so a machine without a set-up helper (a CI runner) needs the flag on the command line.
+const early = process.env.KNITTED_NO_SANDBOX === "1" ? ["--no-sandbox"] : [];
+const child = spawn(electron, [...early, main, ...process.argv.slice(2)], { env, stdio: "inherit" });
 child.on("exit", (code, signal) => process.exit(code ?? (signal ? 1 : 0)));
 for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => child.kill(sig));

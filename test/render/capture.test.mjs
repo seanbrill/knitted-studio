@@ -69,3 +69,28 @@ test("taken again, a page's picture is replaced where it is, and shows the page 
   const { data } = await sharp(yarnPath(store, now[0])).raw().toBuffer({ resolveWithObject: true });
   assert.ok(data[2] > 180 && data[0] < 60, "blue now");
 });
+
+test("the site reader reads a page as it is drawn: a section its script fills in is there to read", async () => {
+  const drawn = createServer((req, res) => {
+    res.setHeader("content-type", "text/html");
+    if (req.url === "/robots.txt") { res.setHeader("content-type", "text/plain"); return res.end("User-agent: *\nAllow: /\n"); }
+    // As notch.fm's "Works with" band arrives: an empty box its script fills in.
+    res.end(`<!doctype html><title>Works with</title><body><main><h2>Nothing to connect</h2><section id="works-with"></section></main>
+      <script>document.querySelector("#works-with").innerHTML = "<p>Apple Music <b>Ready now</b></p><p>Spotify <b>Planned</b></p>";</script></body>`);
+  });
+  await new Promise((r) => drawn.listen(0, "127.0.0.1", r));
+  const at = `http://127.0.0.1:${drawn.address().port}/`;
+  const { readWebsite } = await import("@knitted/core/node");
+  const { renderingFetcher } = await import("@knitted/engine");
+  // The test's server is on this computer, which the real reader refuses: a stand-in that lets it through.
+  const plain = async (url) => { const r = await fetch(url); return { buf: Buffer.from(await r.arrayBuffer()), url: new URL(r.url), type: r.headers.get("content-type") ?? "", truncated: false, status: r.status }; };
+  try {
+    const before = await readWebsite(at, { fetcher: plain, maxPages: 1 });
+    assert.doesNotMatch(before.pages[0].text, /Spotify/, "as it arrives, the band is empty");
+    const r = await renderingFetcher({ browser, allow: async (u) => u.host === new URL(at).host, fetcher: plain });
+    const after_ = await readWebsite(at, { fetcher: r.fetcher, maxPages: 1 });
+    await r.close();
+    assert.match(after_.pages[0].text, /Spotify Planned/);
+    assert.match(after_.pages[0].text, /Apple Music Ready now/);
+  } finally { drawn.close(); }
+});

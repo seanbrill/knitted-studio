@@ -12,6 +12,7 @@ export * from "./contrast.ts";
 export * from "./tokens.ts";
 export * from "./geometry.ts";
 export * from "./checks.ts";
+export * from "./spoken.ts";
 export type { KnitIssue, KnitPost } from "./knits.ts";
 export * from "./parts-pure.ts";
 export * from "./folders-pure.ts";

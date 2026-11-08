@@ -16,7 +16,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import sharp from "sharp";
-import { assertPublicUrl, importYarn, listYarn, sameSite, uploadTempPath } from "@knitted/core/node";
+import { assertPublicUrl, fetchPublic, importYarn, listYarn, sameSite, uploadTempPath } from "@knitted/core/node";
 import { openBrowser } from "./renderer.mjs";
 
 /**
@@ -135,4 +135,43 @@ export async function captureSite(store, projectId, pages, { devices = ["desktop
     if (!given) await browser.close().catch(() => {});
   }
   return { shots, skipped };
+}
+
+/**
+ * A fetcher for the site reader (core's readWebsite) that reads each page as a visitor sees it:
+ * fetched as before, then, when it is a web page, opened in the shut-in browser, scrolled
+ * through, and read from what is drawn. Sites built with React and the like fill whole
+ * sections in by JavaScript: notch.fm's "Works with" band, which says Spotify is planned, is
+ * an empty box in the page as it arrives, so a Brief built from that said it worked with
+ * Spotify. robots.txt and the sitemap are read as they arrive. When a page cannot be drawn,
+ * it is read as it arrived. Close it when the reading is done.
+ */
+export async function renderingFetcher({ browser: given, allow = isPublic, fetcher = fetchPublic } = {}) {
+  const browser = given ?? (await openBrowser());
+  const get = async (url, o) => {
+    const first = await fetcher(url, o);
+    const html = first.buf.toString("utf8", 0, Math.min(first.buf.length, 4000));
+    if (!/html/.test(o.accept) || first.status >= 400 || (!/html/.test(first.type) && !/<(html|head|body)\b/i.test(html))) return first;
+    let context;
+    try {
+      context = await browser.newContext({ viewport: DEVICES.desktop.viewport, userAgent: DESKTOP_AGENT, serviceWorkers: "block", acceptDownloads: false, reducedMotion: "reduce", locale: "en-US", javaScriptEnabled: true });
+      await context.route("**/*", gate(allow));
+      await context.routeWebSocket?.(/.*/, (ws) => ws.close());
+      const page = await context.newPage();
+      page.on("dialog", (dlg) => dlg.dismiss().catch(() => {}));
+      context.on("page", (other) => { if (other !== page) other.close().catch(() => {}); });
+      await page.goto(first.url.href, { waitUntil: "load", timeout: o.timeoutMs ?? 20_000 });
+      await page.waitForLoadState("networkidle", { timeout: 6_000 }).catch(() => {});
+      await settle(page, 12_000);
+      const drawn = await page.content();
+      const at = new URL(page.url());
+      if (!sameSite(at, first.url)) return first;
+      return { ...first, url: at, buf: Buffer.from(drawn, "utf8").subarray(0, o.max), truncated: Buffer.byteLength(drawn) > o.max, type: "text/html" };
+    } catch {
+      return first; // it could not be drawn: as it arrived is still something
+    } finally {
+      await context?.close().catch(() => {});
+    }
+  };
+  return { fetcher: get, close: () => (given ? Promise.resolve() : browser.close().catch(() => {})) };
 }

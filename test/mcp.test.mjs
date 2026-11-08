@@ -640,3 +640,23 @@ test("a model tags a knit and writes what goes with it, with a track from the pr
   await assert.rejects(tools.set_knit_post({ knitId: k.id, audioId: hero.id }), /not a sound in this knit's project/);
   assert.equal((await tools.set_knit_post({ knitId: k.id, audioId: "" })).post.audioId, null);
 });
+
+test("synthesize_voiceover waits for its job and get_job can wait, so a model never polls on the person's key", async () => {
+  // Real asks spent 41 of 59 calls on get_job, each re-reading the whole conversation.
+  const job = store.createJob("tts", project.id, { patternId: pattern.id, lines: 2 });
+  const engine = { startVoiceJob: (_, o) => {
+    setTimeout(() => store.updateJob(job.id, { status: "done", progress: { total: 2, done: 2, units: [{ label: o.lines[0].say, status: "done", issues: [{ level: "warning", code: "voice-joined", message: "Lines 1 to 2 are one clip" }] }] }, result: { clips: 1, spoken: [{ text: "filefreak sites rollback 3", startMs: 500, endMs: 1900 }] } }), 400);
+    return store.getJob(job.id);
+  } };
+  const t = toolByName();
+  const r = await t.synthesize_voiceover.handler({ patternId: pattern.id, lines: [{ say: "Roll it back from the terminal", show: "filefreak sites rollback 3" }, "Live again."] }, { store, engine });
+  assert.equal(r.status, "done");
+  assert.deepEqual(r.lines, [{ text: "filefreak sites rollback 3", startMs: 500, endMs: 1900 }], "the caption shows the command; the voice said what it does");
+  assert.deepEqual(r.issues, ["Lines 1 to 2 are one clip"]);
+  const later = store.createJob("knit", project.id, {});
+  setTimeout(() => store.updateJob(later.id, { status: "done", result: { knitIds: [] } }), 300);
+  const t0 = Date.now();
+  const g = await t.get_job.handler({ jobId: later.id, waitSeconds: 5 }, { store });
+  assert.equal(g.status, "done");
+  assert.ok(Date.now() - t0 < 3000, "it answers when the job ends, not when the wait runs out");
+});

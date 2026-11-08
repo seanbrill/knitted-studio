@@ -99,6 +99,21 @@ test("removing a spoken line from the panel removes its clip", { skip: !mac }, a
   await serverHas(studio, `/api/patterns/${patternId}`, (p) => p.motion.audio.length === 1);
 });
 
+test("a line written 'said | shown' is spoken one way and captioned the other, and reading a command aloud is warned of", { skip: !mac }, async () => {
+  const other = (await j("POST", "/api/projects", { name: "Said and shown", starter: "social" })).body.id;
+  const pid = (await j("GET", `/api/projects/${other}/patterns`)).body[0].id;
+  await page.goto(`${studio.url}/projects/${other}/patterns/${pid}`);
+  await page.getByRole("application", { name: "Pattern canvas" }).waitFor();
+  await page.getByRole("button", { name: "Voice", exact: true }).click();
+  await page.getByLabel("What should it say?").fill("Roll it back from the terminal. | filefreak sites rollback 3\nRun it with --force.");
+  await page.getByRole("button", { name: /Make voiceover \(2 lines\)/ }).click();
+  await page.getByText("Voiceover added to the timeline.").waitFor({ timeout: 60000 });
+  const p = (await j("GET", `/api/patterns/${pid}`)).body;
+  assert.equal(p.motion.audio.filter((a) => a.kind === "voice")[0].label, "Roll it back from the terminal.", "the voice said what it does");
+  assert.equal(p.stitches.find((s) => s.slot === "caption_1").content, "filefreak sites rollback 3", "the caption shows the command");
+  await page.getByRole("list", { name: "About this voiceover" }).getByText(/"--force\.", which is code/).waitFor();
+});
+
 for (const theme of ["day", "night"]) {
   test(`no serious accessibility violations on the Voice panel and the Voice settings in ${theme}`, async () => {
     await page.goto(`${studio.url}/settings`);

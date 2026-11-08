@@ -1,13 +1,13 @@
 [
   {
     "name": "get_guide",
-    "summary": "How to use knitted well, a topic at a time: the numbers and habits that make work look designed, not merely generated. Read start first, then the topic before your first task of that kind. Topics: start, patterns, motion, voice, yarn, knitting, brief, parts, posts, organizing.",
+    "summary": "How to use knitted well, a topic at a time: the numbers and habits that make work look designed, not merely generated. Read start first, then the topic before your first task of that kind. Topics: start, patterns, motion, voice, yarn, knitting, brief, parts, posts, copywriting, organizing.",
     "params": [
       {
         "name": "topic",
         "type": "string",
         "required": false,
-        "description": "Leave out for start. One of start, patterns, motion, voice, yarn, knitting, brief, parts, posts, organizing."
+        "description": "Leave out for start. One of start, patterns, motion, voice, yarn, knitting, brief, parts, posts, copywriting, organizing."
       }
     ]
   },
@@ -749,7 +749,7 @@
   },
   {
     "name": "apply_batch",
-    "summary": "Apply several edit commands as ONE step, so a person can undo it as one. `atomic: true` applies all or nothing. Each command is {type, ...}: addStitch {stitch}, updateStitch {id, patch}, removeStitch {id}, reorder {id, toIndex}, setSize {size}, fillSlot {slot, content} (text slots only; set an image with updateStitch and a yarnId), setMeta {name, durationMs}, setMotion {stitchId, clips}, setAudio {audio}: the WHOLE list of sound clips, replacing what is there, so send every clip to keep (read them with get_pattern, motion.audio). A clip is {id, yarnId, startMs, kind: voice or music, gain (loudness: 1 as recorded, 0 silent, up to 2; music under a voice sits well at 0.15 to 0.3, and the knit also lowers music while a voice speaks), fadeInMs, fadeOutMs, loop, label}; any other field is refused. To change one clip's loudness, send the list with that clip's gain changed. setLocked is refused: only a person locks or unlocks.",
+    "summary": "Apply several edit commands as ONE step, so a person can undo it as one. `atomic: true` applies all or nothing. Each command is {type, ...}: addStitch {stitch}, updateStitch {id, patch}, removeStitch {id}, reorder {id, toIndex}, setSize {size}, fillSlot {slot, content} (text slots only; set an image with updateStitch and a yarnId), setMeta {name, durationMs}, setMotion {stitchId, clips}, setAudio {audio}: the WHOLE list of sound clips, replacing what is there, so send every clip to keep (read them with get_pattern, motion.audio). A clip is {id, yarnId, startMs, kind: voice or music, gain (loudness: 1 as recorded, 0 silent, up to 2; every track is brought to one loudness first, so music sits well at 0.4 to 0.6, and the knit lowers it by itself while a voice speaks), fadeInMs, fadeOutMs, loop, label}; any other field is refused. To change one clip's loudness, send the list with that clip's gain changed. setLocked is refused: only a person locks or unlocks.",
     "params": [
       {
         "name": "patternId",
@@ -921,7 +921,7 @@
   },
   {
     "name": "synthesize_voiceover",
-    "summary": "Speak a script and put it on the pattern's timeline as sound, optionally with timed captions. Give the WHOLE script in one call, a line per caption, never one call per line: it is spoken in one take, so the voice stays the same from start to end (a voice model asked line by line drifts in pitch and pace), then cut at the pauses into a clip per line, placed as spoken. Pick the voice from list_voices. style is how to say it, in words (\"warm, confident, slower at the end\"), for models that take one; options are any other fields the voice server takes. oneTake: false speaks each line on its own, only for lines that must stay separate. Returns a job id: check it with get_job. The pattern becomes a video long enough for the speech.",
+    "summary": "Speak a script and put it on the pattern's timeline as sound, optionally with timed captions. Write it to be HEARD: never have the voice read a command, a file name, a path or code word for word (nobody follows 'filefreak sites rollback my-site 3' by ear); say what it does ('roll it back from the terminal') and leave the command on screen, or give that line as {say, show}. Give the WHOLE script in one call, a line per caption, never one call per line: it is spoken in one take, so the voice stays the same from start to end (a voice model asked line by line drifts in pitch and pace), then cut at the pauses into a clip per line, placed as spoken. Pick the voice from list_voices. style is how to say it, in words (\"warm, confident, slower at the end\"), for models that take one; options are any other fields the voice server takes. oneTake: false speaks each line on its own, only for lines that must stay separate. It waits until the voiceover is on the timeline and returns each line's clip and times (wait: false returns a job id at once). The pattern becomes a video long enough for the speech.",
     "params": [
       {
         "name": "patternId",
@@ -931,9 +931,9 @@
       },
       {
         "name": "lines",
-        "type": "string[]",
+        "type": "array",
         "required": true,
-        "description": "The whole script, in order: a line per caption"
+        "description": "The whole script, in order: a line per caption. A string is said and shown; {say, show} when the screen should show other words, like a command"
       },
       {
         "name": "voice",
@@ -964,6 +964,12 @@
         "type": "boolean",
         "required": false,
         "description": ""
+      },
+      {
+        "name": "wait",
+        "type": "boolean",
+        "required": false,
+        "description": "Default true: wait until it is spoken and placed, and return the clips and their times"
       }
     ]
   },
@@ -1035,13 +1041,19 @@
   },
   {
     "name": "get_job",
-    "summary": "Check on a job: a knit, a voiceover or pictures of a website.",
+    "summary": "Check on a job: a knit, a voiceover or pictures of a website. Give waitSeconds to wait for it to finish, rather than calling again and again: every call re-reads the whole conversation, which costs the person.",
     "params": [
       {
         "name": "jobId",
         "type": "string",
         "required": true,
         "description": "From knit_pattern, synthesize_voiceover or capture_website"
+      },
+      {
+        "name": "waitSeconds",
+        "type": "number",
+        "required": false,
+        "description": "Wait up to this long for it to finish before answering"
       }
     ]
   },

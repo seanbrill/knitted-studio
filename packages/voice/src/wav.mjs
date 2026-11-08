@@ -44,7 +44,10 @@ function loudness(buf, w, frameMs) {
  * Where to cut one take of `weights.length` lines: at the pause nearest where each line
  * should end, going by how long each line is. Returns the cuts in ms, one fewer than lines.
  */
-export function cutPoints(buf, w, weights, { frameMs = 10, minPauseMs = 120 } = {}) {
+export function cutPoints(buf, w, weights, o) { return planCuts(buf, w, weights, o).map((c) => c.at); }
+
+/** As cutPoints, each cut saying whether it falls in a real pause (true) or was only a guess. */
+export function planCuts(buf, w, weights, { frameMs = 10, minPauseMs = 120 } = {}) {
   const rms = loudness(buf, w, frameMs);
   const sorted = [...rms].sort((a, b) => a - b);
   const floor = sorted[Math.floor(sorted.length * 0.1)] ?? 0, loud = sorted[Math.floor(sorted.length * 0.95)] ?? 0;
@@ -63,12 +66,16 @@ export function cutPoints(buf, w, weights, { frameMs = 10, minPauseMs = 120 } = 
     sum += weights[i];
     const want = span[0] + (span[1] - span[0]) * (sum / total);
     const left = weights.length - 2 - i; // pauses still needed after this one
-    const open = pauses.filter((p) => p.mid > after + 200 && pauses.filter((q) => q.mid > p.mid).length >= left);
+    // Leave enough pauses for the cuts still to come, when the take has that many; when it has
+    // fewer (the voice ran some lines together), each cut takes the best pause near it.
+    const enough = pauses.length >= weights.length - 1;
+    const open = pauses.filter((p) => p.mid > after + 200 && (!enough || pauses.filter((q) => q.mid > p.mid).length >= left));
     // Near where the line should end, and long: a sentence's end is a longer pause than a breath.
     const score = (p) => Math.abs(p.mid - want) / (p.len + 100);
     const pick = open.sort((a, b) => score(a) - score(b))[0];
-    const at = pick && Math.abs(pick.mid - want) < (span[1] - span[0]) / weights.length ? pick.mid : want;
-    cuts.push(Math.round(at)); after = at;
+    const pause = !!pick && Math.abs(pick.mid - want) < (span[1] - span[0]) / weights.length;
+    const at = pause ? pick.mid : want;
+    cuts.push({ at: Math.round(at), pause }); after = at;
   }
   return cuts;
 }
@@ -84,15 +91,40 @@ export function sliceWav(buf, w, fromMs, toMs) {
   return Buffer.concat([h, data]);
 }
 
+/** How far a line's pace may stray from the take's before its cut is not trusted. */
+const PACE = { slow: 0.5, fast: 2 };
+
 /**
- * Cut one take into its lines: each line's WAV, and where it starts and ends in the take.
- * Null when the WAV is not one this can read: then the take stays whole.
+ * Cut one take into clips, checked against the script: a clip per line where the voice paused
+ * between lines and each line took about as long as its words should. Where it ran two lines
+ * together, or a cut would leave one line far too fast or slow (the pause found was inside a
+ * line), those lines stay one clip, so no word is ever split; `lines` then times each inside it
+ * by its length. Null when the WAV is not one this can read: then the take stays whole.
  */
 export function cutTake(buf, lines) {
   const w = readWav(buf);
   if (!w) return null;
   const totalMs = (w.dataLength / w.frameBytes / w.sampleRate) * 1000;
-  const cuts = lines.length > 1 ? cutPoints(buf, w, lines.map((l) => Math.max(1, l.length))) : [];
-  const edges = [0, ...cuts, totalMs];
-  return lines.map((text, i) => ({ text, fromMs: edges[i], toMs: edges[i + 1], wav: sliceWav(buf, w, edges[i], edges[i + 1]) }));
+  const weights = lines.map((l) => Math.max(1, l.length));
+  const cuts = lines.length > 1 ? planCuts(buf, w, weights) : [];
+  const edges = [0, ...cuts.map((c) => c.at), totalMs];
+  const all = weights.reduce((a, b) => a + b, 0);
+  const pace = (i) => (edges[i + 1] - edges[i]) / weights[i] / (totalMs / all); // 1: as the take goes
+  const fair = (i) => pace(i) >= PACE.slow && pace(i) <= PACE.fast;
+  const trusted = cuts.map((c, i) => c.pause && fair(i) && fair(i + 1));
+  const clips = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = { text: lines[i], fromMs: edges[i], toMs: edges[i + 1] };
+    if (i > 0 && !trusted[i - 1]) clips.at(-1).lines.push(line);
+    else clips.push({ lines: [line] });
+  }
+  return clips.map((c) => {
+    const fromMs = c.lines[0].fromMs, toMs = c.lines.at(-1).toMs;
+    if (c.lines.length > 1) { // timed by length inside the clip: the guessed cuts are not to be relied on
+      const sum = c.lines.reduce((a, l) => a + Math.max(1, l.text.length), 0);
+      let at = fromMs;
+      for (const l of c.lines) { const d = ((toMs - fromMs) * Math.max(1, l.text.length)) / sum; l.fromMs = at; l.toMs = at + d; at += d; }
+    }
+    return { text: c.lines.map((l) => l.text).join(" "), fromMs, toMs, lines: c.lines, wav: sliceWav(buf, w, fromMs, toMs) };
+  });
 }

@@ -41,9 +41,10 @@ async function walk(dir) {
 
 const plan = [];
 for (const file of await walk(assets)) {
-  const rel = relative(assets, file);
-  const top = rel.split(/[\\/]/)[0];
-  const group = rel.includes("/") || rel.includes("\\") ? (GROUPS[top] ?? top.toLowerCase()) : "loose";
+  // Forward slashes on every system, so the id map reads the same from Windows as from a Mac.
+  const rel = relative(assets, file).split(/[\\/]/).join("/");
+  const top = rel.split("/")[0];
+  const group = rel.includes("/") ? (GROUPS[top] ?? top.toLowerCase()) : "loose";
   plan.push({ file, rel, group, bytes: (await stat(file)).size, ext: extname(file).toLowerCase() });
 }
 

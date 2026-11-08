@@ -10,6 +10,7 @@ import type { KnitIssue } from "./knits.ts";
 import { colorFor, resolveStyle } from "./tokens.ts";
 import { ratio } from "./contrast.ts";
 import { motionLint } from "./motion.ts";
+import { codeOnScreen, spokenProblem } from "./spoken.ts";
 
 export interface PreflightOpts { scale?: number; yarn: Record<string, Yarn | undefined>; }
 
@@ -104,7 +105,10 @@ export function preflight(p: Pattern, sw: Swatch, o: PreflightOpts): KnitIssue[]
     }
   }
   const voiced = (p.motion?.audio ?? []).some((a) => a.kind === "voice");
+  const code = codeOnScreen(p);
   for (const a of p.motion?.audio ?? []) {
+    const said = a.kind === "voice" && a.label ? spokenProblem(a.label, code) : null;
+    if (said) issues.push({ level: "warning", code: "voice-reads-code", message: said });
     const y = o.yarn[a.yarnId];
     if (!y || y.deletedAt) issues.push({ level: "error", code: "missing-yarn", message: `The ${a.kind === "voice" ? "voiceover" : "music"} "${a.label ?? "sound"}" uses a file that was deleted. Choose another or remove it.` });
     // Every track is levelled to the voice's loudness before mixing, so gain is how far under the
