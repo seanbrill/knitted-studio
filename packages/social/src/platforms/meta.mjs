@@ -72,9 +72,23 @@ function graph({ name, host, version, authHost, scopes, exchangeGrant, refreshGr
       try { url = (await http.json(`${api}/${r.id}?${q(c.tokens, { fields: "permalink" })}`, {}, ctx)).permalink ?? null; } catch { /* the post is out; its link is a nicety */ }
       return { externalId: r.id, url };
     },
+    /** A post's lifetime numbers, by Meta's names. One Meta has none of yet is left out, not 0. */
+    async insights(http, t, id, metrics) {
+      const r = await http.json(`${api}/${id}/insights?${q(t, { metric: metrics.join(",") })}`, {}, ctx);
+      return Object.fromEntries((r.data ?? []).filter((d) => d.values?.length).map((d) => [d.name, Number(d.values[0].value)]));
+    },
     textField,
   };
 }
+
+/** Meta's names for what it counts, as knitted keeps them. */
+const META_NAMES = { views: "views", reach: "reach", likes: "likes", comments: "comments", replies: "comments", saved: "saves", shares: "shares", reposts: "reposts", quotes: "quotes" };
+const fromMeta = (got) => {
+  const m = {};
+  for (const [k, v] of Object.entries(got)) if (META_NAMES[k] && Number.isFinite(v)) m[META_NAMES[k]] = v;
+  if (Number.isFinite(got.ig_reels_avg_watch_time)) m.avgWatchSec = got.ig_reels_avg_watch_time / 1000;
+  return m;
+};
 
 const ig = graph({
   name: "Instagram", host: "graph.instagram.com", version: "v27.0", authHost: "www.instagram.com",
@@ -93,14 +107,38 @@ export const instagram = {
     const tall = (m) => m.width / m.height < 0.79;
     const [one] = c.media;
     if (c.media.length === 1) {
+      const story = one.kind === "image" && tall(one);
       const fields = one.kind === "video"
         ? { media_type: "REELS", video_url: one.url, caption: c.post.caption, share_to_feed: c.post.options?.shareToFeed === false ? "false" : "true" }
-        : tall(one) ? { media_type: "STORIES", image_url: one.url } : { image_url: one.url, caption: c.post.caption, ...(c.post.options?.alt?.[0] ? { alt_text: String(c.post.options.alt[0]) } : {}) };
-      return this.publishContainer(http, c, await this.container(http, c, fields));
+        : story ? { media_type: "STORIES", image_url: one.url } : { image_url: one.url, caption: c.post.caption, ...(c.post.options?.alt?.[0] ? { alt_text: String(c.post.options.alt[0]) } : {}) };
+      const r = await this.publishContainer(http, c, await this.container(http, c, fields));
+      // A Story's numbers go with it after a day, so they are asked for sooner (core's STORY_AGES).
+      return story ? { ...r, options: { story: true } } : r;
     }
     const children = [];
     for (const [i, m] of c.media.entries()) children.push(await this.container(http, c, m.kind === "video" ? { media_type: "VIDEO", video_url: m.url, is_carousel_item: "true" } : { image_url: m.url, is_carousel_item: "true", ...(c.post.options?.alt?.[i] ? { alt_text: String(c.post.options.alt[i]) } : {}) }));
     return this.publishContainer(http, c, await this.container(http, c, { media_type: "CAROUSEL", children: children.join(","), caption: c.post.caption }));
+  },
+  /**
+   * How a post is doing. Each kind of post has its own numbers; one Meta does not take for
+   * it is an error for the lot, so then the counts on the post itself are read instead.
+   */
+  async metrics(http, c) {
+    const { post, tokens } = c;
+    const story = !!post.options.story, reel = post.options.shape?.kind === "video";
+    const want = story ? ["views", "reach", "replies", "shares"] : ["views", "reach", "likes", "comments", "saved", "shares", ...(reel ? ["ig_reels_avg_watch_time"] : [])];
+    try {
+      return { metrics: fromMeta(await this.insights(http, tokens, post.externalId, want)) };
+    } catch (e) {
+      if (/\(#10\)|not enough viewers/i.test(e.message)) return { metrics: null, note: "Instagram shows a Story's numbers once 5 people have seen it." };
+      if (story && /\(#100\)|does not exist|expired/i.test(e.message)) return { metrics: null, note: "Instagram keeps a Story's numbers only while the Story is up, for a day." };
+      if (e.reconnect) throw e;
+      const r = await http.json(`${this.api}/${post.externalId}?${new URLSearchParams({ fields: "like_count,comments_count", access_token: tokens.access })}`, {}, this.ctx);
+      const m = {};
+      if (Number.isFinite(r.like_count)) m.likes = r.like_count;
+      if (Number.isFinite(r.comments_count)) m.comments = r.comments_count;
+      return { metrics: m, note: `Instagram gave only its likes and comments: ${e.message}` };
+    }
   },
 };
 
@@ -128,5 +166,8 @@ export const threads = {
     const children = [];
     for (const [i, m] of c.media.entries()) children.push(await this.container(http, c, item(m, i, true)));
     return this.publishContainer(http, c, await this.container(http, c, { media_type: "CAROUSEL", children: children.join(","), text }));
+  },
+  async metrics(http, c) {
+    return { metrics: fromMeta(await this.insights(http, c.tokens, c.post.externalId, ["views", "likes", "replies", "reposts", "quotes", "shares"])) };
   },
 };

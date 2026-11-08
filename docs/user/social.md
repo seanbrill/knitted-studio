@@ -1,9 +1,8 @@
 ---
 title: Posting to social accounts
 order: 11.5
-summary: Post knits to Instagram, TikTok, LinkedIn, Threads, X and YouTube, now or at a time.
-status: partial
-note: Posting and scheduling are built. Seeing how each post did is not built yet.
+summary: Post knits to Instagram, TikTok, LinkedIn, Threads, X and YouTube, now or at a time, and see what works.
+status: shipped
 ---
 # Posting to social accounts
 
@@ -17,7 +16,9 @@ Making an app takes ten minutes or so per platform, and the sections below walk 
 
 ## When posts go out
 
-Posts go out while knitted is open. A post due while it was closed goes out when you open it, if that is within two hours. Later than that, it waits as **missed**, for you to post it now or pick another time, because a post meant for 9 in the morning may be wrong at 4 in the afternoon.
+Posts go out while knitted is running. A post due while it was closed goes out when you open it, if that is within two hours. Later than that, it waits as **missed**, for you to post it now or pick another time, because a post meant for 9 in the morning may be wrong at 4 in the afternoon.
+
+So knitted keeps running while posts are waiting. Close its window and it stays in the menu bar (the system tray on Windows and Linux), saying how many posts are to go out and when the next goes. Once the last one is out, it quits, as closing the window would have. Its menu opens the window again, or quits. Quitting from the menu or with Cmd+Q asks first while posts are waiting. To have closing the window always quit, turn off **Keep knitted running when its window is closed** in Settings, Social.
 
 YouTube is the exception. A post scheduled at least 15 minutes ahead is uploaded straight away as a private video with its time, and YouTube makes it public then, whether or not your computer is on. Cancelling it in knitted takes it off YouTube.
 
@@ -26,6 +27,29 @@ If a post fails because the network dropped or the platform was busy, before any
 ## Your model and posts
 
 Your model can make posts too (the `schedule_post` tool). Unless you turn on **Let your model schedule posts** in Settings, Social, what it makes are drafts, and you schedule them from Posts.
+
+## How posts did
+
+knitted asks each platform how a post is doing an hour after it goes out, then after 6 hours, a day, 3 days, a week, 2 weeks and a month, while it is running. Each post that went out shows its numbers in Posts, like "1,240 views · 87 likes · 12 comments · 8.5% engaged", and **Check now** asks straight away. Engaged is likes, comments, shares, reposts and saves, out of views.
+
+**Insights**, in the side bar, puts them together, for every project or one:
+
+- **By platform**: the views on each, and, from 3 posts on, the views and engagement of a usual post.
+- **What your posts say**: what did better, in a sentence, such as "Videos got 1.8 times your usual views (6 posts); single pictures 0.7 times (4)." It looks at what the post was (a video, a carousel, one picture), how long a video was, whether it had sound, the time it went out, the length of the caption, how many hashtags, which pattern made it, and whether you or your model wrote it.
+- **Every post**, with its numbers and how it did against its usual.
+
+To be fair to each post, it is compared with the usual for its own account, using its numbers about a week in: a new post has not had its week yet, and a big account's usual is not a small one's. So comparing starts once an account has 3 posts at least three days old, and a difference is said only when each side has 3 posts or more and one is clearly ahead. Even then it is what happened, not proof: a few posts can be lucky.
+
+Your model reads the same with `post_insights`, and the guide asks it to before it plans posts for an account that has posted before.
+
+What each platform gives:
+
+- **Instagram**: views, reach, likes, comments, saves and shares; for a Reel, how long it was watched on average. A Story's numbers go when the Story does, after a day, so knitted asks sooner, and Instagram shows them only once 5 people have seen it.
+- **Threads**: views, likes, replies, reposts, quotes and shares.
+- **TikTok**: views, likes, comments and shares, for a public video, once TikTok has checked it. Until TikTok has audited your app, what it posts is private, so there are none.
+- **X**: views, likes, replies, reposts, quotes and bookmarks. X charges your developer credits for each look, so knitted asks only once you turn on **Ask X for numbers too** in Settings, Social.
+- **YouTube**: views, likes and comments, and from three days in, when YouTube Analytics has caught up, minutes watched, the average watch, shares and new subscribers. A YouTube connected before November 9, 2026 needs **Connect again** for the last of those.
+- **LinkedIn**: none. LinkedIn gives a post's numbers only to apps it has approved for registered businesses. See them on the post.
 
 ## Instagram
 
@@ -64,7 +88,7 @@ LinkedIn's sign-in for an app like this lasts 60 days and cannot be renewed with
 
 Posts words, up to 4 pictures, or one video.
 
-X charges for each post from credits you buy in its developer console, and a post with a link costs more. See the prices there before you start.
+X charges for each post from credits you buy in its developer console, and a post with a link costs more. Asking how a post did costs a little too, so it is off until you turn it on. See the prices there before you start.
 
 1. At [console.x.com](https://console.x.com/), make an app, and buy some credits.
 2. In the app's **User authentication settings**, turn on OAuth 2.0, set **App permissions** to **Read and write**, and pick **Native App** as the type. (A **Web App** works too, and comes with a client secret to add in knitted.)
@@ -90,7 +114,7 @@ Until TikTok has audited your app for posting, what it posts is visible only to 
 Posts videos, and Shorts when they are upright and up to 3 minutes. Scheduled posts are published by YouTube itself.
 
 1. At [console.cloud.google.com](https://console.cloud.google.com/), make a project.
-2. In **APIs and Services, Library**, turn on **YouTube Data API v3** (and **YouTube Analytics API**, for later).
+2. In **APIs and Services, Library**, turn on **YouTube Data API v3** and **YouTube Analytics API** (for how long people watched).
 3. In **Google Auth Platform**, set it up for external users, with your own address as the support email, and add yourself as a test user. Then, in **Audience**, press **Publish app**. While it is in testing, Google ends its sign-ins after 7 days. Published, it shows a warning that Google has not verified it, which is about your own app: press **Advanced**, then go on.
 4. In **Clients**, make an OAuth client of the type **Desktop app**. It needs no redirect.
 5. Copy the **Client ID** and **Client secret** into knitted, then press **Connect YouTube**.

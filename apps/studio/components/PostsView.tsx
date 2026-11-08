@@ -3,13 +3,14 @@
 // A project's posts: what needs the person (failed, missed, drafts), what is scheduled, and
 // what went out, with a link to each on its platform.
 
+import Link from "next/link";
 import { useState } from "react";
-import { PLATFORMS } from "@knitted/core";
+import { PLATFORMS, metricsLine } from "@knitted/core";
 import { api, knitFileUrl, type KnitRecord, type SocialAccount, type SocialPost } from "@knitted/core/client";
 import { Button, ConfirmDialog, Dialog, EmptyState, Field, Input, Skeleton, icons, useToast } from "@knitted/ui";
 import { timeAgo, useLive } from "@/lib/hooks";
 
-const { AlertTriangle, CalendarClock, ExternalLink, Send, Trash2, Check } = icons;
+const { AlertTriangle, CalendarClock, ExternalLink, Send, Trash2, Check, RefreshCw } = icons;
 
 const GROUPS: { title: string; status: SocialPost["status"][]; empty?: string }[] = [
   { title: "Needs you", status: ["failed", "missed"] },
@@ -36,7 +37,10 @@ export function PostsView({ projectId }: { projectId: string }) {
   const sorted = (list: SocialPost[], g: (typeof GROUPS)[number]) => g.title === "Scheduled" ? [...list].sort((a, b) => (a.scheduledAt ?? "").localeCompare(b.scheduledAt ?? "")) : list;
   return (
     <div>
-      <h2 className="h2" style={{ marginBottom: "var(--space-4)" }}>Posts</h2>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "var(--space-4)", flexWrap: "wrap", marginBottom: "var(--space-4)" }}>
+        <h2 className="h2" style={{ margin: 0 }}>Posts</h2>
+        {posts.some((p) => p.status === "posted") && <Link className="link body-sm" href={`/insights?project=${encodeURIComponent(projectId)}`}>What works, in Insights</Link>}
+      </div>
       {posts.length === 0 ? (
         <EmptyState title="Nothing posted yet" body={accounts.length ? "Open a knit and press Post, or pick several and post them together." : "Connect your accounts in Settings, Social, then open a knit and press Post."} />
       ) : (
@@ -77,6 +81,7 @@ function PostRow({ p, knit, count, account, onMove }: { p: SocialPost; knit?: Kn
         <p className="label" style={{ margin: 0 }}>{name} · {who}{count > 1 ? ` · ${count} knits` : ""}</p>
         <p className="body-sm" style={{ margin: "2px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.title ? `${p.title}: ` : ""}{p.caption || "No caption"}</p>
         <p className="eyebrow" style={{ margin: "2px 0 0", textTransform: "none", letterSpacing: 0 }}>{p.status === "posting" ? "Posting now..." : time}{p.by === "model" ? " · made by your model" : ""}{p.options.uploaded ? " · on YouTube, waiting for its time" : ""}</p>
+        {p.status === "posted" && <Numbers p={p} />}
         {p.error && <p className="body-sm" role={failed ? "alert" : undefined} style={{ margin: "4px 0 0", color: failed ? "var(--danger)" : "var(--ink-muted)", display: "flex", gap: 4, alignItems: "flex-start" }}>{failed && <AlertTriangle size={13} aria-hidden style={{ flex: "none", marginTop: 3 }} />}{p.error}</p>}
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -89,6 +94,27 @@ function PostRow({ p, knit, count, account, onMove }: { p: SocialPost; knit?: Kn
       </div>
       <ConfirmDialog open={del} onOpenChange={setDel} title="Remove it from knitted?" description={p.status === "posted" ? `It stays on ${name}: this only removes it from this list.` : "It will not be posted."} confirmLabel="Remove" onConfirm={() => act(() => api.posts.remove(p.id), "Removed.")} />
     </li>
+  );
+}
+
+/** How a post that went out is doing, when knitted last asked, and asking again. */
+function Numbers({ p }: { p: SocialPost }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const line = metricsLine(p.metrics);
+  const check = async () => {
+    setBusy(true);
+    try { const r = await api.posts.checkMetrics(p.id); toast(r.metricsNote && !r.metrics ? r.metricsNote : "Up to date."); }
+    catch (e) { toast((e as Error).message); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="body-sm" style={{ margin: "4px 0 0", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+      {line ? <span style={{ fontVariantNumeric: "tabular-nums" }}>{line}</span> : !p.metricsNote && <span style={{ color: "var(--ink-muted)" }}>No numbers yet: knitted asks an hour after it goes out.</span>}
+      {p.metricsAt && line && <span style={{ color: "var(--ink-muted)" }}>as of {timeAgo(p.metricsAt)}</span>}
+      {p.metricsNote && <span style={{ color: "var(--ink-muted)" }}>{p.metricsNote}</span>}
+      <Button size="sm" variant="ghost" disabled={busy} onClick={check} aria-label={`Check now how this ${PLATFORMS[p.platform].name} post is doing`}><RefreshCw size={13} aria-hidden /> {busy ? "Checking..." : "Check now"}</Button>
+    </div>
   );
 }
 

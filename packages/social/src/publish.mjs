@@ -11,10 +11,11 @@
 // have gone out, is not: the person is told to look first, rather than post it twice.
 
 import { PLATFORMS } from "@knitted/core";
-import { claimPost, duePosts, finishPost, getAccount, getKnit, getPost, listAccounts, listPosts, recoverInterrupted, setAccountState, cancelPost } from "@knitted/core/node";
+import { claimPost, duePosts, finishPost, getAccount, getKnit, getPost, listAccounts, listPosts, postShape, recoverInterrupted, setAccountState, cancelPost } from "@knitted/core/node";
 import { ADAPTERS, freshTokens, hostFor } from "./accounts.mjs";
 import { SocialError, makeHttp } from "./http.mjs";
 import { prepareMedia } from "./media.mjs";
+import { runMetrics } from "./metrics.mjs";
 
 export const GRACE_MS = 2 * 3600_000;
 /** How far ahead a YouTube post must be for it to go up now and be published by YouTube. */
@@ -70,9 +71,11 @@ async function postOne(store, p, deps, now) {
   const fresh = getPost(store, p.id);
   if (!claimPost(store, fresh.id, fresh.updatedAt)) return null;
   const taken = getPost(store, p.id);
+  // What it was of, kept for Insights: its knits may be deleted later.
+  const shape = postShape(store, taken);
   try {
     const r = await publishPost(store, taken, deps);
-    return finishPost(store, p.id, { status: "posted", externalId: r.externalId ?? null, url: r.url ?? null, note: r.note ?? null });
+    return finishPost(store, p.id, { status: "posted", externalId: r.externalId ?? null, url: r.url ?? null, note: r.note ?? null, options: { shape, ...(r.options ?? {}) } });
   } catch (e) { return failed(store, taken, e, now); }
 }
 
@@ -83,7 +86,7 @@ async function uploadAhead(store, p, deps, now) {
   const taken = getPost(store, p.id);
   try {
     const r = await publishPost(store, taken, deps, { publishAt: new Date(taken.scheduledAt).toISOString() });
-    return finishPost(store, p.id, { status: "scheduled", at: taken.scheduledAt, error: null, externalId: r.externalId, url: r.url, options: { uploaded: true } });
+    return finishPost(store, p.id, { status: "scheduled", at: taken.scheduledAt, error: null, externalId: r.externalId, url: r.url, options: { uploaded: true, shape: postShape(store, taken) } });
   } catch (e) { return failed(store, taken, e, now); }
 }
 
@@ -132,13 +135,15 @@ const g = globalThis;
 export function startScheduler(store, deps = {}) {
   if (g.__knittedScheduler) return g.__knittedScheduler;
   recoverInterrupted(store);
-  let running = null, again = false, lastFresh = 0;
+  let running = null, again = false, lastFresh = 0, lastMetrics = 0;
   const tick = async () => {
     if (running) { again = true; return running; }
     running = (async () => {
       try {
         do { again = false; await runDue(store, deps); } while (again);
         if (Date.now() - lastFresh > 6 * 3600_000) { lastFresh = Date.now(); await keepFresh(store, deps); }
+        // How posts are doing: after posting, which matters more, and not every tick.
+        if (Date.now() - lastMetrics > (deps.metricsEvery ?? 5 * 60_000)) { lastMetrics = Date.now(); await runMetrics(store, deps); }
       } catch (e) { console.error("social scheduler:", e?.message ?? e); }
       finally { running = null; }
     })();

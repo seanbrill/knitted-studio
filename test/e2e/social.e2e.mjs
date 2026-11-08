@@ -10,6 +10,7 @@ import { axeProblems, launchBrowser, serverHas, startStudio } from "./harness.mj
 
 let studio, browser, context, page, fake, projectId, knitId;
 const tweets = [];
+let looks = 0;
 const j = async (method, path, body) => {
   const res = await fetch(studio.url + path, { method, headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
   const text = await res.text();
@@ -32,6 +33,11 @@ function fakeX() {
     }
     if (path === "/api.x.com/2/users/me") return send(200, { data: { id: "42", name: "Knit Studio", username: "knitted" } });
     if (path === "/api.x.com/2/media/upload") return send(200, { data: { id: `m${tweets.length + 1}` } });
+    if (path === "/api.x.com/2/tweets" && req.method === "GET") {
+      looks++;
+      const ids = new URL(req.url, "http://x").searchParams.get("ids").split(",");
+      return send(200, { data: ids.map((id) => ({ id, text: "", public_metrics: { impression_count: 1240, like_count: 87, reply_count: 12, retweet_count: 3, quote_count: 0, bookmark_count: 4 } })) });
+    }
     if (path === "/api.x.com/2/tweets") { tweets.push(JSON.parse(raw)); return send(201, { data: { id: `t${tweets.length}` } }); }
     send(404, { title: "Not here", detail: path });
   });
@@ -153,6 +159,42 @@ test("a draft waits in Posts until the person schedules it", async () => {
   await page.getByRole("dialog").getByLabel("Post at").waitFor();
   await page.keyboard.press("Escape");
 });
+
+test("a post's numbers: X is asked only once the person turns X numbers on; then Posts and Insights show them", async () => {
+  await page.goto(`${studio.url}/projects/${projectId}/posts`);
+  const row = page.getByRole("region", { name: "Posted" }).getByRole("listitem").first();
+  await row.getByRole("button", { name: "Check now how this X post is doing" }).click();
+  await row.getByText(/X charges your developer account for each look/).waitFor();
+  assert.equal(looks, 0, "nothing asked of X, which would cost the person");
+  await page.goto(`${studio.url}/settings?tab=social`);
+  await page.getByRole("switch", { name: "Ask X for numbers too" }).click();
+  await serverHas(studio, "/api/social/config", (c) => c.metricsX === true);
+  await page.goto(`${studio.url}/projects/${projectId}/posts`);
+  await row.getByRole("button", { name: "Check now how this X post is doing" }).click();
+  await row.getByText("1,240 views · 87 likes · 12 comments · 3 reposts · 0 quotes · 4 saves · 8.5% engaged").waitFor();
+  assert.equal(looks, 1);
+  await page.getByRole("link", { name: "What works, in Insights" }).click();
+  await page.getByRole("heading", { name: "What works" }).waitFor();
+  assert.match(page.url(), /\/insights\?project=/);
+  const x = page.getByRole("region", { name: "By platform" }).getByRole("listitem").filter({ hasText: "X" });
+  await x.getByText("1,240 views", { exact: true }).waitFor();
+  const posts = page.getByRole("region", { name: "Every post" });
+  await posts.getByRole("row", { name: /Made with knitted #knit/ }).getByText("8.5%").waitFor();
+  await posts.getByText(/Too new to compare/).first().waitFor();
+  // From the side bar too, for every project.
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Insights" }).click();
+  await page.waitForURL(/\/insights$/);
+});
+
+for (const theme of ["day", "night"]) {
+  test(`no serious accessibility problems on Insights in ${theme}`, async () => {
+    await page.goto(`${studio.url}/insights`);
+    await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
+    await page.getByRole("region", { name: "Every post" }).waitFor();
+    await page.waitForTimeout(300);
+    assert.deepEqual(await axeProblems(page), []);
+  });
+}
 
 for (const theme of ["day", "night"]) {
   test(`no serious accessibility problems on Settings, Social, the Post dialog and Posts in ${theme}`, async () => {

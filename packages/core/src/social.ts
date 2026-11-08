@@ -8,6 +8,7 @@ import { newId } from "./ids.ts";
 import { NotFoundError, ValidationError, type Store } from "./store.ts";
 import { getKnit } from "./knits.ts";
 import { PLATFORM_IDS, checkPost, type Platform, type PostStatus } from "./social-pure.ts";
+import { insights, type Insights, type PostShape } from "./social-insights.ts";
 
 export interface SocialAccount {
   id: string; platform: Platform; externalId: string; name: string; handle: string; avatar: string | null;
@@ -31,6 +32,8 @@ export interface SocialPost {
   externalId: string | null; url: string | null; error: string | null; attempts: number; postedAt: string | null;
   by: "human" | "model";
   metrics: PostMetrics | null; metricsAt: string | null;
+  /** Why it has no numbers, or not all: the platform gives none, or the post is gone from it. */
+  metricsNote: string | null;
   createdAt: string; updatedAt: string;
 }
 
@@ -48,7 +51,7 @@ const toPost = (r: Row): SocialPost => ({
   knitIds: JSON.parse((r.knit_ids as string) ?? "[]"), caption: r.caption as string, title: r.title as string, options: JSON.parse((r.options as string) ?? "{}"),
   scheduledAt: s(r.scheduled_at), status: r.status as PostStatus, externalId: s(r.external_id), url: s(r.url), error: s(r.error), attempts: Number(r.attempts ?? 0),
   postedAt: s(r.posted_at), by: r.by === "model" ? "model" : "human", metrics: r.metrics ? JSON.parse(r.metrics as string) : null, metricsAt: s(r.metrics_at),
-  createdAt: r.created_at as string, updatedAt: r.updated_at as string,
+  metricsNote: s(r.metrics_note), createdAt: r.created_at as string, updatedAt: r.updated_at as string,
 });
 
 // ── accounts ───────────────────────────────────────────────────────────────
@@ -231,8 +234,64 @@ export function recoverInterrupted(store: Store): number {
   return store.write(() => Number(store.db.prepare("update social_posts set status = 'failed', error = 'knitted was closed while this was being posted. Look on the platform before you post it again: it may be there.', updated_at = ? where status = 'posting'").run(now()).changes));
 }
 
-export function saveMetrics(store: Store, id: string, metrics: PostMetrics) {
-  store.write(() => store.db.prepare("update social_posts set metrics = ?, metrics_at = ? where id = ?").run(JSON.stringify(metrics), now(), id));
+/**
+ * What the platform counted for a post just now. Kept as its latest, and in its history.
+ * With no numbers, only the note is kept (and the time, so it is not asked again at once).
+ */
+export function saveMetrics(store: Store, id: string, metrics: PostMetrics | null, note: string | null = null, at = now()) {
+  const clean = metrics && Object.fromEntries(Object.entries(metrics).filter(([, v]) => typeof v === "number" && Number.isFinite(v)));
+  store.write(() => {
+    if (clean && Object.keys(clean).length) {
+      store.db.prepare("update social_posts set metrics = ?, metrics_at = ?, metrics_note = ? where id = ?").run(JSON.stringify(clean), at, note, id);
+      store.db.prepare("insert into social_metrics (post_id, at, metrics) values (?, ?, ?)").run(id, at, JSON.stringify(clean));
+    } else store.db.prepare("update social_posts set metrics_at = ?, metrics_note = ? where id = ?").run(at, note, id);
+  });
+}
+
+/** A post's id and link on its platform, learned after it went out (TikTok gives them once it is processed). */
+export function setPostLink(store: Store, id: string, externalId: string, url: string | null) {
+  store.write(() => store.db.prepare("update social_posts set external_id = ?, url = ?, updated_at = ? where id = ?").run(externalId, url, now(), id));
+}
+
+/** Each time a post's numbers were taken, oldest first. */
+export function metricsHistory(store: Store, ids: string[]): Map<string, { at: string; metrics: PostMetrics }[]> {
+  const out = new Map<string, { at: string; metrics: PostMetrics }[]>(ids.map((id) => [id, []]));
+  for (let i = 0; i < ids.length; i += 500) {
+    const part = ids.slice(i, i + 500);
+    const rows = store.db.prepare(`select post_id, at, metrics from social_metrics where post_id in (${part.map(() => "?").join(", ")}) order by at`).all(...part) as Row[];
+    for (const r of rows) out.get(r.post_id as string)!.push({ at: r.at as string, metrics: JSON.parse(r.metrics as string) });
+  }
+  return out;
+}
+
+/** Every post that went out, in any project, newest first, for the Insights page. */
+export function postedPosts(store: Store, f: { projectId?: string; since?: string } = {}): SocialPost[] {
+  const where = ["status = 'posted'"], args: string[] = [];
+  if (f.projectId) { where.push("project_id = ?"); args.push(f.projectId); }
+  if (f.since) { where.push("posted_at >= ?"); args.push(f.since); }
+  return (store.db.prepare(`select * from social_posts where ${where.join(" and ")} order by posted_at desc limit 2000`).all(...args) as Row[]).map(toPost);
+}
+
+/**
+ * What a post was of. Kept on the post when it goes out (options.shape), as its knits may be
+ * deleted later; read from the knits for a post from before that.
+ */
+export function postShape(store: Store, p: Pick<SocialPost, "knitIds" | "options">): PostShape {
+  const kept = p.options.shape as PostShape | undefined;
+  if (kept?.kind) return kept;
+  if (!p.knitIds.length) return { kind: "words", durationMs: null, sound: false, patternName: null };
+  let k = null;
+  try { k = getKnit(store, p.knitIds[0]); } catch { /* deleted */ }
+  return {
+    kind: k?.kind === "video" ? "video" : p.knitIds.length > 1 ? "pictures" : "picture",
+    durationMs: k?.durationMs ?? null, sound: Number.isFinite(k?.report?.lufs), patternName: k?.patternName ?? null,
+  };
+}
+
+/** Everything the Insights page shows, for one project or all of them. */
+export function postInsights(store: Store, f: { projectId?: string } = {}, now = Date.now()): Insights {
+  const posts = postedPosts(store, f);
+  return insights(posts, metricsHistory(store, posts.map((p) => p.id)), (p) => postShape(store, p), now);
 }
 
 export const isPlatform = (v: unknown): v is Platform => PLATFORM_IDS.includes(v as Platform);

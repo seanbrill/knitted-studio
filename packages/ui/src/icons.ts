@@ -14,5 +14,7 @@ export { Tag } from "lucide-react";
 // Posting to social accounts: send, at a time, and a link out to the post.
 export { Send, CalendarClock, ExternalLink } from "lucide-react";
 export { SlidersHorizontal } from "lucide-react";
+// Insights: how posts did.
+export { ChartNoAxesColumn } from "lucide-react";
 // The timeline: hear the sound while it plays, or not.
 export { Volume2, VolumeX } from "lucide-react";

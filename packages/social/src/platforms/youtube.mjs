@@ -29,8 +29,9 @@ const ctx = { name, explain };
 
 export const youtube = {
   id: "youtube",
-  // force-ssl, not upload alone: a scheduled video can then be moved or taken back.
-  scopes: ["https://www.googleapis.com/auth/youtube.force-ssl", "https://www.googleapis.com/auth/yt-analytics.readonly"],
+  // force-ssl, not upload alone: a scheduled video can then be moved or taken back. YouTube
+  // Analytics asks for youtube.readonly as well as its own.
+  scopes: ["https://www.googleapis.com/auth/youtube.force-ssl", "https://www.googleapis.com/auth/youtube.readonly", "https://www.googleapis.com/auth/yt-analytics.readonly"],
   pkce: "s256",
   authorizeUrl({ clientId, redirectUri, state, challenge }) {
     return `https://accounts.google.com/o/oauth2/v2/auth?${new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri, response_type: "code", scope: this.scopes.join(" "), state, code_challenge: challenge, code_challenge_method: "S256", access_type: "offline", prompt: "consent" })}`;
@@ -71,6 +72,36 @@ export const youtube = {
     const r = await (await http.call(session, { method: "PUT", headers: { "content-type": v.mime }, body: buf }, ctx)).json();
     const short = v.height >= v.width && (v.durationMs ?? 0) <= 180_000;
     return { externalId: r.id, url: r.id ? (short ? `https://www.youtube.com/shorts/${r.id}` : `https://www.youtube.com/watch?v=${r.id}`) : null };
+  },
+  /**
+   * How a video is doing: its counts now (one unit of the day's allowance), and from three
+   * days in, when YouTube Analytics has caught up, how long people watched and what they did.
+   * Analytics is a nicety: if it says no, the counts still stand.
+   */
+  async metrics(http, c) {
+    const id = c.post.externalId;
+    const r = await http.json(`${API}/videos?${new URLSearchParams({ part: "statistics", id })}`, { headers: bearer(c.tokens) }, ctx);
+    const st = r.items?.[0]?.statistics;
+    if (!st) return { metrics: null, note: "YouTube did not find the video: it may be private, or deleted." };
+    const n = (x) => (x == null || !Number.isFinite(Number(x)) ? undefined : Number(x));
+    const m = { views: n(st.viewCount), likes: n(st.likeCount), comments: n(st.commentCount) };
+    const posted = Date.parse(c.post.postedAt ?? "");
+    const now = c.now ?? Date.now();
+    if (posted && now - posted >= 3 * 86400_000) {
+      const day = (t) => new Date(t).toISOString().slice(0, 10);
+      try {
+        const a = await http.json(`https://youtubeanalytics.googleapis.com/v2/reports?${new URLSearchParams({
+          ids: "channel==MINE", startDate: day(posted - 86400_000), endDate: day(now),
+          metrics: "estimatedMinutesWatched,averageViewDuration,shares,subscribersGained", filters: `video==${id}`,
+        })}`, { headers: bearer(c.tokens) }, ctx);
+        const row = a.rows?.[0];
+        if (row) {
+          const col = (name) => n(row[(a.columnHeaders ?? []).findIndex((h) => h.name === name)]);
+          Object.assign(m, { minutesWatched: col("estimatedMinutesWatched"), avgWatchSec: col("averageViewDuration"), shares: col("shares"), followers: col("subscribersGained") });
+        }
+      } catch (e) { if (e.reconnect) throw e; }
+    }
+    return { metrics: m };
   },
   /** Take back a video uploaded to publish later. */
   async remove(http, t, id) {

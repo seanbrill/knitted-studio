@@ -11,6 +11,7 @@ import type { Command } from "./commands.ts";
 import type { SpendLimits, UsageSummary } from "./usage.ts";
 import type { PostChange, SocialAccount, SocialPost } from "./social.ts";
 import type { Platform } from "./social-pure.ts";
+import type { Insights } from "./social-insights.ts";
 
 export interface ProjectSummary extends Project { counts: { patterns: number; yarn: number; knits: number; newKnits: number }; cover: { id: string; hash: string } | null; }
 export interface ActivityItem { id: string; projectId: string | null; actor: string; action: string; subject: string | null; detail: unknown; createdAt: string; }
@@ -191,6 +192,10 @@ export const api = {
     update: (id: string, b: PostChange) => call<SocialPost>("PATCH", `/api/posts/${id}`, b),
     cancel: (id: string) => call<SocialPost>("POST", `/api/posts/${id}/cancel`, {}),
     remove: (id: string) => call<{ ok: true }>("DELETE", `/api/posts/${id}`),
+    /** Ask its platform how it is doing now, rather than at its next time. */
+    checkMetrics: (id: string) => call<SocialPost>("POST", `/api/posts/${id}/metrics`, {}),
+    /** How posts did, and what the person's own posts say works: for one project, or all. */
+    insights: (projectId?: string) => call<Insights>("GET", `/api/insights${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ""}`),
   },
   fonts: () => call<{ family: string; category: string; file: string; style: string; weight: [number, number]; license: string }[]>("GET", "/api/fonts"),
   storage: () => call<{ root: string; bytes: number; projects: number }>("GET", "/api/storage"),
@@ -306,7 +311,7 @@ export const knitFileUrl = (k: { id: string }, download = false) => `/api/knits/
 export type { KnitRecord, KnitIssue };
 export type { SpendLimits, UsageSummary };
 
-export type { SocialAccount, SocialPost, PostChange, Platform };
+export type { SocialAccount, SocialPost, PostChange, Platform, Insights };
 export interface SocialConfigView {
   apps: Record<Platform, { clientId: string; secret: boolean }>;
   host: {
@@ -315,6 +320,10 @@ export interface SocialConfigView {
     filefreak: { folder: string; apiKey: boolean };
   };
   modelMaySchedule: boolean;
+  /** Ask X for each post's numbers, which X charges for. */
+  metricsX: boolean;
+  /** Keep the desktop app running without its window while posts wait to go out. */
+  stayOpen: boolean;
   /** This server's port: the redirect TikTok and YouTube come back to has it. */
   port: number;
 }
@@ -322,6 +331,8 @@ export interface SocialConfigChange {
   apps?: Partial<Record<Platform, { clientId?: string; clientSecret?: string; clearSecret?: boolean }>>;
   host?: { kind?: "none" | "s3" | "filefreak"; s3?: Partial<{ endpoint: string; region: string; bucket: string; keyId: string; publicBase: string; prefix: string; secret: string }>; filefreak?: Partial<{ folder: string; apiKey: string }> };
   modelMaySchedule?: boolean;
+  metricsX?: boolean;
+  stayOpen?: boolean;
 }
 export interface TikTokCreator { creator_nickname?: string; creator_username?: string; creator_avatar_url?: string; privacy_level_options?: string[]; comment_disabled?: boolean; duet_disabled?: boolean; stitch_disabled?: boolean; max_video_post_duration_sec?: number }
 export interface NewPosts {

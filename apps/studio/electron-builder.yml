@@ -20,6 +20,8 @@ afterPack: ../../scripts/after-pack.mjs
 files:
   - electron/main.mjs
   - electron/update.mjs
+  - electron/background.mjs
+  - electron/tray/*.png
   - package.json
   - "!**/node_modules/**"
 # ffmpeg, ffprobe and sharp are not here: after-pack.mjs puts in the ones for each app's system.

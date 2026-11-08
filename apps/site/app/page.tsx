@@ -131,7 +131,7 @@ export default function Home() {
             <div className="card door">
               <h3 className="h1">{h.doors.studio.title}</h3>
               <p className="body-lg muted">{h.doors.studio.text}</p>
-              <p><Badge status="soon" /></p>
+              <p><Badge status={feature("pattern-editor").status} /></p>
               <div className="stitch-free" style={{ padding: "var(--space-4)", marginTop: "var(--space-4)" }}>
                 <span className="eyebrow">Headline, free</span>
                 <p className="label" style={{ margin: "4px 0 0" }}>Make it knitted.</p>

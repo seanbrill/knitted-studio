@@ -17,9 +17,9 @@
 //    propose_swatch adds a NEW swatch the person may choose to use; it never changes
 //    one, and never makes one the project's.
 
-import { applyCommand, instanceOf, joinFolder, motionLint, sceneChange, parentOf, partFromStitches, preflight, uniqueSlotName, checkPost, COLOR_ROLES, FOLDER_SECTIONS, PLATFORMS, PRESETS, SIZES, CommandSchema } from "@knitted/core";
+import { applyCommand, instanceOf, joinFolder, motionLint, sceneChange, parentOf, partFromStitches, preflight, uniqueSlotName, checkPost, metricsLine, COLOR_ROLES, FOLDER_SECTIONS, PLATFORMS, PRESETS, SIZES, CommandSchema } from "@knitted/core";
 import { GUIDE, GUIDE_TOPICS } from "./guide.mjs";
-import { activeSwatch, cancelPost, createPost, getAccount, getPost, listAccounts, listPosts, validatePost, cleanFolder, cropToYarn, getBrief, pdfText, readWebsite, setProfile, viewVideo, viewYarn, createFolder, createPart, createSwatch, createSwatchFromProposal, folderCounts, getKnit, getPart, getYarn, setKnitPost, setKnitTags, importYarn, importYarnFromPath, importYarnFromUrl, createCopy, knitPath, listFolders, listKnits, countKnits, changedSince, listParts, listYarn, moveAllToFolder, proposeFromWebsite, renameFolder, setCopyText, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
+import { activeSwatch, cancelPost, createPost, getAccount, getPost, listAccounts, listPosts, postInsights, validatePost, cleanFolder, cropToYarn, getBrief, pdfText, readWebsite, setProfile, viewVideo, viewYarn, createFolder, createPart, createSwatch, createSwatchFromProposal, folderCounts, getKnit, getPart, getYarn, setKnitPost, setKnitTags, importYarn, importYarnFromPath, importYarnFromUrl, createCopy, knitPath, listFolders, listKnits, countKnits, changedSince, listParts, listYarn, moveAllToFolder, proposeFromWebsite, renameFolder, setCopyText, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
 
 const obj = (properties, required = []) => ({ type: "object", properties, required, additionalProperties: false });
 const str = (description) => ({ type: "string", description });
@@ -50,7 +50,7 @@ async function settled(store, jobId, ms) {
   return j;
 }
 
-export const READ_ONLY = new Set(["get_guide", "get_studio_info", "list_projects", "get_project", "list_yarn", "view_yarn", "get_brand_guidelines", "get_brief", "read_website", "list_patterns", "get_pattern", "describe_pattern", "list_parts", "list_presets", "list_voices", "preview_pattern", "check_pattern", "get_job", "list_knits", "list_folders", "list_social_accounts", "list_posts"]);
+export const READ_ONLY = new Set(["get_guide", "get_studio_info", "list_projects", "get_project", "list_yarn", "view_yarn", "get_brand_guidelines", "get_brief", "read_website", "list_patterns", "get_pattern", "describe_pattern", "list_parts", "list_presets", "list_voices", "preview_pattern", "check_pattern", "get_job", "list_knits", "list_folders", "list_social_accounts", "list_posts", "post_insights"]);
 
 // When the process answering started. A build made after it means an older copy is answering.
 const STARTED_AT = new Date(Date.now() - process.uptime() * 1000).toISOString();
@@ -532,7 +532,24 @@ export const TOOLS = [
     async handler({ projectId, status, limit }, { store }) {
       store.getProject(projectId);
       const posts = listPosts(store, { projectId, status, limit: Math.max(1, Math.min(100, Number(limit) || 30)) });
-      return { posts: posts.map((p) => ({ id: p.id, platform: p.platform, status: p.status, knitIds: p.knitIds, caption: p.caption.length > 160 ? `${p.caption.slice(0, 160)}...` : p.caption, ...(p.title ? { title: p.title } : {}), ...(p.scheduledAt ? { at: p.scheduledAt } : {}), ...(p.url ? { url: p.url } : {}), ...(p.error ? { why: p.error } : {}), by: p.by })) };
+      return { posts: posts.map((p) => ({ id: p.id, platform: p.platform, status: p.status, knitIds: p.knitIds, caption: p.caption.length > 160 ? `${p.caption.slice(0, 160)}...` : p.caption, ...(p.title ? { title: p.title } : {}), ...(p.scheduledAt ? { at: p.scheduledAt } : {}), ...(p.url ? { url: p.url } : {}), ...(p.error ? { why: p.error } : {}), by: p.by, ...(p.metrics ? { numbers: metricsLine(p.metrics), numbersAt: p.metricsAt } : {}), ...(p.metricsNote ? { numbersNote: p.metricsNote } : {}) })) };
+    } },
+  { name: "post_insights", description: "How the person's posts did, and what did better, from their own numbers: each platform's totals, findings like 'Videos got 1.8 times your usual views (6 posts)' that need 3 posts on each side, and each post against the usual for its account about a week in. Read it before planning posts or writing captions for an account that has posted before. Leave out projectId for every project.", inputSchema: obj({ projectId: str("One project, by id; left out, all of them") }),
+    async handler({ projectId }, { store }) {
+      if (projectId) store.getProject(projectId);
+      const r = postInsights(store, { projectId });
+      const r1 = (x) => Math.round(x * 100) / 100;
+      return {
+        note: r.note,
+        platforms: r.platforms.map((p) => ({ platform: p.platform, posts: p.posts, ...(p.measured ? { views: p.views, usualViews: p.medianViews, usualEngaged: p.medianEngagement == null ? null : r1(p.medianEngagement) } : { numbers: "none yet" }) })),
+        findings: r.findings.map((f) => ({ factor: f.factor, said: f.text, clear: f.clear })),
+        posts: r.posts.slice(0, 40).map((p) => ({
+          id: p.id, platform: p.platform, postedAt: p.postedAt, caption: p.caption.length > 120 ? `${p.caption.slice(0, 120)}...` : p.caption, ...(p.title ? { title: p.title } : {}),
+          what: p.shape.kind, ...(p.shape.durationMs ? { seconds: Math.round(p.shape.durationMs / 100) / 10 } : {}), ...(p.shape.patternName ? { pattern: p.shape.patternName } : {}),
+          ...(p.metrics ? { numbers: metricsLine(p.metrics) } : {}), ...(p.lift != null ? { againstUsual: r1(p.lift) } : { notCompared: p.waiting }),
+        })),
+        ...(r.posts.length > 40 ? { more: `${r.posts.length - 40} older posts left out.` } : {}),
+      };
     } },
   { name: "cancel_post", description: "Stop a draft or scheduled post from going out. One already posted stays on its platform.", inputSchema: obj({ postId: str("The post, by id from list_posts") }, ["postId"]),
     async handler({ postId }, { store }) {

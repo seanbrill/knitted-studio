@@ -17,6 +17,8 @@ const Put = z.object({
     filefreak: z.object({ folder: z.string().max(200), apiKey: z.string().max(500) }).partial().optional(),
   }).optional(),
   modelMaySchedule: z.boolean().optional(),
+  metricsX: z.boolean().optional(),
+  stayOpen: z.boolean().optional(),
 }).strict();
 
 const isUrl = (v?: string) => !v || /^https?:\/\/[^\s]+$/.test(v);

@@ -40,7 +40,7 @@ export function SocialSettings() {
         <p className="body-sm" style={{ color: "var(--ink-muted)", margin: 0 }}>
           Post knits to your own accounts, now or at a time. Each platform needs a developer app of your own, made once: there is no knitted server in between, so your sign-ins stay on this computer. <a className="link" href={GUIDE} target="_blank" rel="noreferrer">The guide</a> walks through each.
         </p>
-        <p className="body-sm" style={{ color: "var(--ink-muted)", margin: "var(--space-2) 0 0" }}>Posts go out while knitted is open. One due while it was closed goes out when it opens, if that is within two hours.</p>
+        <p className="body-sm" style={{ color: "var(--ink-muted)", margin: "var(--space-2) 0 0" }}>Posts go out while knitted is running. One due while it was closed goes out when it opens, if that is within two hours.</p>
       </div>
       {err && <p className="field-error" role="alert"><AlertTriangle size={14} aria-hidden /> {err}</p>}
       {PLATFORM_IDS.map((p) => <PlatformCard key={p} platform={p} cfg={cfg} accounts={(accounts ?? []).filter((a) => a.platform === p)} save={save} />)}
@@ -52,6 +52,23 @@ export function SocialSettings() {
           Let your model schedule posts
         </label>
         <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>{cfg.modelMaySchedule ? "It can schedule and post for you. You can still cancel anything in a project's Posts." : "Off: it makes drafts, and you schedule them from a project's Posts."}</p>
+      </section>
+      <section aria-label="While posts wait" className="card" style={{ padding: "var(--space-4)", display: "grid", gap: 8 }}>
+        <h3 className="label" style={{ margin: 0 }}>While posts wait</h3>
+        <label style={{ display: "flex", gap: 10, alignItems: "center" }} className="body-sm">
+          <Switch label="Keep knitted running when its window is closed" checked={cfg.stayOpen} onCheckedChange={(v) => void save({ stayOpen: v })} />
+          Keep knitted running when its window is closed
+        </label>
+        <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>{cfg.stayOpen ? "On: with posts still to go out, closing the window leaves knitted in the menu bar (the system tray on Windows and Linux) until the last one is out, then it quits. YouTube posts scheduled ahead go out without it." : "Off: closing the window quits knitted, and posts wait until you open it again."}</p>
+      </section>
+      <section aria-label="How posts did" className="card" style={{ padding: "var(--space-4)", display: "grid", gap: 8 }}>
+        <h3 className="label" style={{ margin: 0 }}>How posts did</h3>
+        <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>knitted asks each platform how a post is doing an hour after it goes out, then after 6 hours, a day, 3 days, a week, 2 weeks and a month, and shows it in Posts and Insights. LinkedIn gives no numbers to apps like this one.</p>
+        <label style={{ display: "flex", gap: 10, alignItems: "center" }} className="body-sm">
+          <Switch label="Ask X for numbers too" checked={cfg.metricsX} onCheckedChange={(v) => void save({ metricsX: v })} />
+          Ask X for numbers too
+        </label>
+        <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>X takes credits from your developer account for each look: about 7 looks per post over its first month.</p>
       </section>
     </div>
   );

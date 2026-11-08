@@ -22,6 +22,10 @@ export const DEFAULT_CONFIG = {
   host: { kind: "none", s3: { endpoint: "", region: "auto", bucket: "", keyId: "", publicBase: "", prefix: "knitted/" }, filefreak: { folder: "knitted posts" } },
   /** Off: the person's model makes drafts, which the person schedules. On: it may schedule them itself. */
   modelMaySchedule: false,
+  /** X charges for each read of a post's numbers, so they are asked for only when this is on. */
+  metricsX: false,
+  /** The desktop app keeps running, without its window, while posts are waiting to go out. */
+  stayOpen: true,
 };
 
 const KEY = {
@@ -44,7 +48,8 @@ export function socialConfig(store) {
 export async function setSocialConfig(store, change, deps = {}) {
   const c = socialConfig(store);
   const dir = store.paths.root;
-  const next = { ...c, ...(change.modelMaySchedule === undefined ? {} : { modelMaySchedule: !!change.modelMaySchedule }) };
+  const next = { ...c };
+  for (const k of ["modelMaySchedule", "metricsX", "stayOpen"]) if (change[k] !== undefined) next[k] = !!change[k];
   for (const [p, a] of Object.entries(change.apps ?? {})) {
     if (!ADAPTERS[p]) continue;
     if (a.clientId !== undefined) next.apps[p] = { ...next.apps[p], clientId: String(a.clientId).trim() };
@@ -69,7 +74,7 @@ export async function socialView(store, deps = {}) {
   const apps = {};
   for (const p of PLATFORM_IDS) apps[p] = { clientId: c.apps[p].clientId, secret: (await secretStatus(KEY.app(p), dir, deps.secrets)).present };
   return {
-    apps, modelMaySchedule: c.modelMaySchedule,
+    apps, modelMaySchedule: c.modelMaySchedule, metricsX: c.metricsX, stayOpen: c.stayOpen,
     host: { ...c.host, s3: { ...c.host.s3, secret: (await secretStatus(KEY.s3, dir, deps.secrets)).present }, filefreak: { ...c.host.filefreak, apiKey: (await secretStatus(KEY.filefreak, dir, deps.secrets)).present } },
   };
 }

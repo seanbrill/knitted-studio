@@ -51,6 +51,16 @@ export const x = {
     const id = r.data?.id;
     return { externalId: id ?? null, url: id ? `https://x.com/${c.account.handle || "i"}/status/${id}` : null };
   },
+  /**
+   * How a post is doing: its public counts, which X gives for as long as the post is up.
+   * Each look costs the person's X credits, so knitted asks only when they turned it on.
+   */
+  async metrics(http, c) {
+    const r = await http.json(`${API}/tweets?${new URLSearchParams({ ids: c.post.externalId, "tweet.fields": "public_metrics" })}`, { headers: bearer(c.tokens) }, ctx);
+    const p = r.data?.find((d) => d.id === c.post.externalId)?.public_metrics;
+    if (!p) return { metrics: null, note: "X did not find the post: it may have been deleted." };
+    return { metrics: { views: p.impression_count, likes: p.like_count, comments: p.reply_count, reposts: p.retweet_count ?? p.repost_count, quotes: p.quote_count, saves: p.bookmark_count } };
+  },
 };
 
 async function uploadImage(http, c, m) {

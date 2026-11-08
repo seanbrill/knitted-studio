@@ -332,4 +332,20 @@ export const MIGRATIONS: Migration[] = [
       create index social_posts_project on social_posts (project_id, created_at);
     `,
   },
+  {
+    version: 14,
+    name: "post-metrics",
+    // How each post did, as the platform counted it each time knitted asked: a few times over
+    // its first month, so a post can be compared with others at the same age. The post keeps
+    // its latest numbers too, and a note when the platform gives none (LinkedIn, a Story gone).
+    sql: `
+      create table social_metrics (
+        post_id text not null references social_posts(id) on delete cascade,
+        at text not null,
+        metrics text not null
+      );
+      create index social_metrics_post on social_metrics (post_id, at);
+      alter table social_posts add column metrics_note text;
+    `,
+  },
 ];

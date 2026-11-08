@@ -1291,6 +1291,18 @@
     ]
   },
   {
+    "name": "post_insights",
+    "summary": "How the person's posts did, and what did better, from their own numbers: each platform's totals, findings like 'Videos got 1.8 times your usual views (6 posts)' that need 3 posts on each side, and each post against the usual for its account about a week in. Read it before planning posts or writing captions for an account that has posted before. Leave out projectId for every project.",
+    "params": [
+      {
+        "name": "projectId",
+        "type": "string",
+        "required": false,
+        "description": "One project, by id; left out, all of them"
+      }
+    ]
+  },
+  {
     "name": "cancel_post",
     "summary": "Stop a draft or scheduled post from going out. One already posted stays on its platform.",
     "params": [

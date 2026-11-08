@@ -6,19 +6,23 @@
 //   electron electron/main.mjs --prod          runs the built dist/app server
 //   electron electron/main.mjs --prod --smoke  load, call /api/health, print, exit
 //
+// While posts wait to go out, closing the window leaves knitted running in the menu bar or
+// tray, so they still go (background.mjs).
+//
 // The Next server runs as a CHILD process using this same Electron binary as
 // plain Node (ELECTRON_RUN_AS_NODE), on a free port bound to 127.0.0.1: chosen at
 // random the first time, then the same one each launch while it stays free.
 // Any port works, so there is no fixed :4100 assumption anywhere in the code
 // (desktop-readiness rule 4), and a crash in it cannot take the window down.
 
-import { app, BrowserWindow, dialog, Menu, net, session, shell } from "electron";
+import { app, BrowserWindow, dialog, Menu, nativeImage, net, Notification, session, shell, Tray } from "electron";
 import { randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createBackground } from "./background.mjs";
 import { createUpdater } from "./update.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -39,7 +43,8 @@ process.env.KNITTED_HOME ||= join(app.getPath("userData"), "library");
 
 // One copy at a time: a second launch brings the first to the front.
 if (!app.requestSingleInstanceLock()) app.exit(0);
-app.on("second-instance", () => { const w = BrowserWindow.getAllWindows()[0]; if (w) { if (w.isMinimized()) w.restore(); w.focus(); } });
+// Running in the background, it opens its window again.
+app.on("second-instance", () => { const w = BrowserWindow.getAllWindows()[0]; if (w) { if (w.isMinimized()) w.restore(); w.focus(); } else void openWindow?.(); });
 
 // CI Linux runners have no setuid chrome-sandbox. Opt-in only, never default.
 if (process.env.KNITTED_NO_SANDBOX === "1") app.commandLine.appendSwitch("no-sandbox");
@@ -112,13 +117,22 @@ async function waitFor(url, child, ms = 60_000) {
   throw new Error(`server did not answer at ${url} within ${ms}ms\n${child.tail()}`);
 }
 
-let server;
+let server, background, openWindow;
 const quit = (code = 0) => {
+  background?.stop();
   server?.kill("SIGKILL");
   updater.finish();
   app.exit(code);
 };
 const updater = createUpdater({ app, dialog, net, shell, BrowserWindow, Menu }, { quit });
+
+/** The menu bar's icon on a Mac (black, which macOS tints), the app's own elsewhere. */
+const trayIcon = () => {
+  const mac = process.platform === "darwin";
+  const img = nativeImage.createFromPath(join(here, "tray", mac ? "trayTemplate.png" : "tray.png"));
+  if (mac) img.setTemplateImage(true);
+  return img;
+};
 
 app.whenReady().then(async () => {
   try {
@@ -140,33 +154,41 @@ app.whenReady().then(async () => {
       { role: "help", submenu: [{ label: "Reveal my library", click: () => shell.openPath(process.env.KNITTED_HOME) }, { label: "knitted.studio on GitHub", click: () => shell.openExternal("https://github.com/seanbrill/knitted-studio") }, ...(mac ? [] : [sep, ...updater.menu()])] },
     ]));
 
-    const win = new BrowserWindow({
-      width: 1440,
-      height: 900,
-      show: !smoke,
-      backgroundColor: "#faf7f2",
-      webPreferences: {
-        // Non-negotiable hardening, from the first commit rather than the last.
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-      },
-    });
-    // No second windows, and nothing navigates away from our own origin: links
-    // to elsewhere open in the user's browser instead.
-    win.webContents.setWindowOpenHandler(({ url }) => {
-      if (/^https?:/.test(url)) shell.openExternal(url);
-      return { action: "deny" };
-    });
-    win.webContents.on("will-navigate", (e, url) => {
-      if (!url.startsWith(origin)) { e.preventDefault(); if (/^https?:/.test(url)) shell.openExternal(url); }
-    });
-
     const dbg = (...a) => process.env.KNITTED_DEBUG && console.error("[main]", ...a);
-    win.webContents.on("did-fail-load", (_e, code, desc) => dbg("did-fail-load", code, desc));
-    dbg("loading", origin);
-    await win.loadURL(origin);
-    dbg("loaded");
+    openWindow = async () => {
+      const open = BrowserWindow.getAllWindows()[0];
+      if (open) { open.show(); open.focus(); return open; }
+      const win = new BrowserWindow({
+        width: 1440,
+        height: 900,
+        show: !smoke,
+        backgroundColor: "#faf7f2",
+        webPreferences: {
+          // Non-negotiable hardening, from the first commit rather than the last.
+          contextIsolation: true,
+          nodeIntegration: false,
+          sandbox: true,
+        },
+      });
+      // No second windows, and nothing navigates away from our own origin: links
+      // to elsewhere open in the user's browser instead.
+      win.webContents.setWindowOpenHandler(({ url }) => {
+        if (/^https?:/.test(url)) shell.openExternal(url);
+        return { action: "deny" };
+      });
+      win.webContents.on("will-navigate", (e, url) => {
+        if (!url.startsWith(origin)) { e.preventDefault(); if (/^https?:/.test(url)) shell.openExternal(url); }
+      });
+      win.webContents.on("did-fail-load", (_e, code, desc) => dbg("did-fail-load", code, desc));
+      background?.shown();
+      dbg("loading", origin);
+      await win.loadURL(origin);
+      dbg("loaded");
+      return win;
+    };
+    const win = await openWindow();
+    background = createBackground({ app, Tray, Menu, nativeImage, Notification, dialog, BrowserWindow }, { origin, token, openWindow, quit, icon: trayIcon });
+    if (!smoke) background.start();
 
     if (!smoke) updater.start();
 
@@ -183,7 +205,11 @@ app.whenReady().then(async () => {
   }
 });
 
-app.on("window-all-closed", () => quit(0));
-app.on("before-quit", () => server?.kill("SIGKILL"));
+// Closing the last window quits, unless posts are waiting to go out (background.mjs).
+app.on("window-all-closed", () => { if (background) void background.allClosed(); else quit(0); });
+// The dock icon, clicked while knitted runs without a window.
+app.on("activate", () => { if (!BrowserWindow.getAllWindows().length) void openWindow?.(); });
+// Quitting with posts waiting asks first; the server stops only once it is really quitting.
+app.on("before-quit", (e) => { if (!background?.beforeQuit(e)) server?.kill("SIGKILL"); });
 // Quitting from the menu (or Cmd+Q) comes here instead of quit(): an update waiting for it goes in.
 app.on("will-quit", () => updater.finish());

@@ -154,7 +154,11 @@ Posting them. list_social_accounts says which accounts the person connected, wha
 - A time is the person's: ask when, unless they said. Use their time zone, with its offset.
 - Each platform's caption fits it: give captions for the ones that need a shorter one (X) rather than one cut off.
 - TikTok asks the person to pick who sees each post: leave TikTok to them unless they said.
-- Instagram and Threads fetch the files from the person's media host: if schedule_post says there is none, tell them to set one up in Settings, Social.`,
+- Instagram and Threads fetch the files from the person's media host: if schedule_post says there is none, tell them to set one up in Settings, Social.
+
+What works. post_insights says how the person's posts did and what did better, from their own numbers: each post against the usual for its account, about a week in. Read it before planning posts or writing captions for an account that has posted before, and lean towards what did well.
+- A finding needs 3 posts on each side; with fewer, it says nothing. Never claim more than it says, and say it is what happened, not proof.
+- LinkedIn gives apps like knitted no numbers, and X only when the person turned X numbers on; say so rather than guess.`,
 
   copywriting: `# Copywriting: words that are true and land
 

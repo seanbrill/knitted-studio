@@ -105,10 +105,33 @@ export const tiktok = {
       if (s.status === "PUBLISH_COMPLETE") {
         const id = s.publicaly_available_post_id?.[0];
         return id
-          ? { externalId: String(id), url: profile ? `${profile}/video/${id}` : null }
-          : { externalId: publishId, url: profile, note: o.privacy === "SELF_ONLY" ? "Posted so only you can see it. TikTok gives no link to a private post." : null };
+          ? { externalId: String(id), url: profile ? `${profile}/video/${id}` : null, options: { publishId } }
+          : { externalId: publishId, url: profile, note: o.privacy === "SELF_ONLY" ? "Posted so only you can see it. TikTok gives no link to a private post." : null, options: { publishId } };
       }
     }
-    return { externalId: publishId, url: profile, note: "TikTok has it and is still processing it. It shows on your profile when it is done." };
+    return { externalId: publishId, url: profile, note: "TikTok has it and is still processing it. It shows on your profile when it is done.", options: { publishId } };
+  },
+  /**
+   * How a video is doing. TikTok gives a video's id only once it is public and has passed its
+   * checks, so a post kept by its publish id asks for the id first; until TikTok has reviewed
+   * the person's app every post is private, and there is none.
+   */
+  async metrics(http, c) {
+    const { post, tokens: t, account } = c;
+    let id = post.externalId, url = post.url;
+    if (/^v_(pub|inbox)_/.test(id) || id === post.options.publishId) {
+      const s = checked(await http.json(`${API}/post/publish/status/fetch/`, { method: "POST", headers: bearer(t, { "content-type": "application/json; charset=UTF-8" }), body: JSON.stringify({ publish_id: post.options.publishId ?? id }) }, ctx)).data ?? {};
+      const found = s.publicaly_available_post_id?.[0];
+      if (!found) return { metrics: null, note: "TikTok gives numbers only for a public video, once it has checked it. Until TikTok has reviewed your app, what it posts is private." };
+      id = String(found);
+      url = account.handle ? `https://www.tiktok.com/@${account.handle}/video/${id}` : url;
+    }
+    const fields = "id,view_count,like_count,comment_count,share_count";
+    const r = checked(await http.json(`${API}/video/query/?fields=${fields}`, { method: "POST", headers: bearer(t, { "content-type": "application/json; charset=UTF-8" }), body: JSON.stringify({ filters: { video_ids: [id] } }) }, ctx));
+    const v = r.data?.videos?.find((x) => String(x.id) === id);
+    const out = id !== post.externalId ? { externalId: id, url } : {};
+    if (!v) return { ...out, metrics: null, note: "TikTok did not find the video: it may be private, or deleted." };
+    const n = (x) => (Number.isFinite(Number(x)) ? Number(x) : undefined);
+    return { ...out, metrics: { views: n(v.view_count), likes: n(v.like_count), comments: n(v.comment_count), shares: n(v.share_count) } };
   },
 };

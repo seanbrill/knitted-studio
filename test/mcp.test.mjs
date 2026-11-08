@@ -681,6 +681,20 @@ test("posting: the model makes drafts until the person lets it schedule, and eve
   const listedPosts = await tools.list_posts({ projectId: project.id });
   assert.equal(listedPosts.posts.length, 2);
   assert.equal((await tools.cancel_post({ postId: sched.posts[0].id })).status, "cancelled");
+
+  // Once a post has gone out and been looked at, the model sees its numbers, and what Insights says.
+  const { saveMetrics } = await import("@knitted/core/node");
+  const out = drafts.posts[0].id;
+  store.db.prepare("update social_posts set status = 'posted', external_id = '1900', posted_at = ? where id = ?").run(new Date(Date.now() - 10 * 86400_000).toISOString(), out);
+  saveMetrics(store, out, { views: 800, likes: 30, comments: 2 });
+  const withNumbers = (await tools.list_posts({ projectId: project.id })).posts.find((p) => p.id === out);
+  assert.equal(withNumbers.numbers, "800 views · 30 likes · 2 comments · 4% engaged");
+  const ins = await tools.post_insights({ projectId: project.id });
+  assert.equal(ins.platforms[0].platform, "x");
+  assert.equal(ins.posts[0].numbers, "800 views · 30 likes · 2 comments · 4% engaged");
+  assert.match(ins.posts[0].notCompared, /once this account has 3 posts/, "one post is compared with nothing");
+  assert.deepEqual(ins.findings, []);
+  assert.match(ins.note, /Comparisons start/);
 });
 
 test("change_scene: the old scene goes out, all gone by the moment, the new one comes in from it; a locked stitch is refused", async () => {

@@ -5,7 +5,7 @@ import { pageMeta } from "../../lib/meta";
 
 export const metadata = pageMeta({
   title: "Features",
-  description: "Patterns, Swatches, Yarn, Parts, Motion, Voice and your model. What knitted.studio does today and what is still coming.",
+  description: "Patterns, Swatches, Yarn, Parts, Motion, Voice, your model and posting. What knitted.studio does today, and anything still coming.",
   path: "/features/",
 });
 
@@ -13,10 +13,12 @@ export default function Features() {
   const shipped = FEATURES.filter((f) => f.status === "shipped").length;
   return (
     <>
-      <PageHero eyebrow="Features" title="Everything on the needle." lead="Seven things you work with. Each one says plainly whether it is available now or still coming." />
+      <PageHero eyebrow="Features" title="Everything on the needle." lead="What you work with. Each one says plainly whether it is available now or still coming." />
       <div className="wrap">
         <p className="notice" style={{ margin: "var(--space-10) 0 0" }}>
-          {shipped} of {FEATURES.length} features are available today. The rest are labelled <strong>Coming soon</strong> and are not promises with dates.
+          {shipped === FEATURES.length
+            ? <>All {FEATURES.length} features here are available today. Anything still to come is labelled <strong>Coming soon</strong>, and is not a promise with a date.</>
+            : <>{shipped} of {FEATURES.length} features are available today. The rest are labelled <strong>Coming soon</strong> and are not promises with dates.</>}
         </p>
         {GROUPS.map((g) => (
           <section key={g.id} className="feature-group" id={g.id} aria-labelledby={`${g.id}-t`}>

@@ -31,6 +31,9 @@ export function littleText(text) {
 export const linkedin = {
   id: "linkedin",
   scopes: ["openid", "profile", "w_member_social"],
+  // A post's numbers need LinkedIn's Community Management API, which it grants only to
+  // registered businesses, on an app with no other products. So: no metrics() here.
+  noMetrics: "LinkedIn gives a post's numbers only to apps it has approved for businesses, so knitted cannot show them. See them on the post.",
   pkce: null,
   authorizeUrl({ clientId, redirectUri, state }) {
     return `https://www.linkedin.com/oauth/v2/authorization?${new URLSearchParams({ response_type: "code", client_id: clientId, redirect_uri: redirectUri, state, scope: this.scopes.join(" ") })}`;
