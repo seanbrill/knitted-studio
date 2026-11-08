@@ -2,12 +2,11 @@
 title: Using your model
 order: 12
 summary: Ask your model in the studio, or connect Claude or another model, so it can read Patterns, fill free slots and knit.
-status: partial
-note: Ask your model in the studio with your own Anthropic key, or connect one through its MCP address (desktop app) or the stdio server (a clone).
+status: shipped
 ---
 # Using your model
 
-Your model can do what you can do in the studio, through the same tools. Talk to it in the studio itself, with **Ask**, or from Claude Code or another app that speaks MCP.
+Your model gets the same set of tools wherever you talk to it: in the studio itself, with **Ask**, or from Claude Code or another app that speaks MCP. With them it reads Patterns, fills free slots, knits, and more.
 
 ## Ask, in the studio
 
@@ -16,12 +15,15 @@ Add your own Anthropic key in Settings, Model, and your model answers you inside
 - Choose where it works: one of your projects, or **The whole studio**. A chat about a project knows its brand.
 - Write what you want and press Enter. Shift+Enter starts a new line. While it works you see each step: what it reads, what it changes, and anything a lock refused. **Stop** ends it.
 - Reply to go on. It reads the whole conversation each time, so "make it shorter" means what you think it means.
+- Write while it works and Enter, or **Queue it**, adds your message to a queue. It goes when the answer is in. You can take one out of the queue before then.
 - Under each answer is what it changed, with a link to each Pattern. **Undo all** puts back every Pattern that answer changed. A Pattern it made stays, for you to keep or delete.
 - Your chats are listed on the left, newest first. Deleting one deletes the conversation only: what your model made stays, and so does each Pattern's history.
 
 In the editor, the **Ask** panel is a conversation about the Pattern in front of you. Tick **Suggest only** and it works on a copy, so your Pattern is untouched until you choose. **Open in Ask** shows the same chat on the Ask page.
 
-Each message is paid for on your key, and the whole conversation goes with it. A long chat costs more a message than a new one, so start a new chat when you change the subject.
+To change one thing, choose **Ask your model...** in a Pattern's menu, or **Ask your model** on a file in Yarn or a knit. Say what should change, and your model does it in a chat of its own while you keep working.
+
+Each message is paid for on your key, and the whole conversation goes with it. A long chat costs more a message than a new one, so start a new chat when you change the subject. **Settings, Spending** shows what the answers have cost this month, by model, and sets a **Monthly limit, in dollars** and a **Limit for one answer, in dollars**. At the monthly limit, your model waits until next month. In **Settings, Model**, **Steps per request** and **Files it may knit per request** set how far one request may go.
 
 ## Connect it
 
@@ -56,6 +58,8 @@ You and your model can work on the same Pattern at once. Its changes appear on y
 ## What it cannot do
 
 It cannot change a locked Stitch. If it tries, knitted refuses and tells your model which slot was refused and why. Your model will tell you, so nobody thinks a change happened when it did not. Only a person unlocks a Stitch, in the studio.
+
+It has no way to delete a project, a Pattern or Yarn, or to change a Swatch's colours. It can propose a new Swatch, for you to choose in the Swatch tab. Unless you let it in Settings, Social, the posts it makes are drafts. See [Posting to social accounts](/docs/social/).
 
 ## Keys and privacy
 

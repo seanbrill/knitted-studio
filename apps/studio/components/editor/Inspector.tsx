@@ -9,7 +9,23 @@ import { NumberField, Section, TokenColor } from "./controls";
 import { PartInstanceInspector } from "./PartsUI";
 import { byFolder } from "../Folders";
 import { addClip } from "./Timeline";
-import { PRESETS } from "@knitted/core";
+import { PRESETS, presetInfo, type Preset } from "@knitted/core";
+
+const ANIMATE_GROUPS = { in: "Come in", out: "Go out", loop: "Keep moving" } as const;
+/** One animation on each of several stitches, at the playhead, in reading order: entrances 150 ms apart, exits 80 ms. One undo step. */
+function animateAll(stitches: Stitch[], preset: Preset) {
+  if (stitches.length === 1) return addClip(stitches[0].id, preset);
+  const st = useEditor.getState(), info = presetInfo(preset);
+  const gap = { in: 150, out: 80, loop: 0 }[info.kind];
+  const order = [...stitches].sort((a, b) => (Math.abs(a.y - b.y) > 0.02 ? a.y - b.y : a.x - b.x));
+  const cmds: Command[] = order.map((s, i) => {
+    const start = Math.round(st.playhead + i * gap);
+    return { type: "setMotion", stitchId: s.id, clips: [...(st.pattern.motion?.tracks[s.id] ?? []), { id: `cl_${Math.random().toString(36).slice(2, 8)}`, preset, startMs: start, endMs: start + info.defaultMs, ease: info.ease }] };
+  });
+  const end = Math.round(st.playhead + (order.length - 1) * gap + info.defaultMs);
+  if (st.pattern.durationMs < end + 500) cmds.push({ type: "setMeta", durationMs: Math.max(3000, end + 800) });
+  st.dispatch({ type: "batch", commands: cmds }, { label: `Animate ${order.length}: ${info.label}` });
+}
 
 const { AlignHorizontalJustifyStart, Trash2, Lock, Unlock } = icons as unknown as Record<string, React.ComponentType<{ size?: number }>>;
 void AlignHorizontalJustifyStart; void Lock; void Unlock;
@@ -141,6 +157,13 @@ export function Inspector({ fonts, onSavePart }: { fonts: string[]; onSavePart?:
           </Field>
           {first.yarnId && yarn[first.yarnId] && <img src={yarnThumbUrl(yarn[first.yarnId])} alt="" style={{ width: "100%", maxHeight: 120, objectFit: "contain", background: "var(--surface-sunken)", borderRadius: 6 }} />}
           {first.yarnId && !yarn[first.yarnId] && <p className="field-error">That yarn was deleted. Choose another.</p>}
+          {same((s) => s.kind) === "video" && first.yarnId && (yarn[first.yarnId]?.durationMs ?? 0) > 1000 && (
+            <>
+              <Slider label="Starts from" value={Number(rs.fromMs ?? 0) / 1000} min={0} max={Math.floor((yarn[first.yarnId].durationMs ?? 0) / 100) / 10} step={0.1} unit="s"
+                onChange={(v) => live({ fromMs: Math.round(v * 1000) })} onCommit={(v) => { st.setDraft(null); setStyle({ fromMs: Math.round(v * 1000) || undefined }); }} />
+              <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>The footage plays from here when it comes in.</p>
+            </>
+          )}
           <SegmentedControl label="Fit" value={String(rs.fit ?? "cover")} onChange={(v) => setStyle({ fit: v })} options={[{ value: "cover", label: "Cover" }, { value: "contain", label: "Contain" }, { value: "fill", label: "Fill" }]} />
           {sl("Focus left to right", "focalX", 0.5, 0, 1, 0.01, undefined, 100)}
           {sl("Focus top to bottom", "focalY", 0.5, 0, 1, 0.01, undefined, 100)}
@@ -162,14 +185,20 @@ export function Inspector({ fonts, onSavePart }: { fonts: string[]; onSavePart?:
         </Section>
       )}
 
-      {one && (
+      {sel.length > 0 && (
         <Section title="Animate" hint="How it comes in and goes, when the pattern plays as a video." defaultOpen={false}>
-          <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>Adds an animation at the playhead, then drag it on the timeline.</p>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-            {PRESETS.filter((p) => (!p.text || one.kind === "text") && (!p.image || one.kind === "image" || one.kind === "video")).map((p) => (
-              <Button key={p.id} size="sm" onClick={() => addClip(one.id, p.id)}>{p.label}</Button>
-            ))}
-          </div>
+          <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>{one ? "Adds an animation at the playhead, then drag it on the timeline." : `Adds it to all ${sel.length} at the playhead, a little apart, top to bottom.`}</p>
+          {(["in", "out", "loop"] as const).map((kind) => {
+            const fits = PRESETS.filter((p) => p.kind === kind && (!p.text || sel.every((s) => s.kind === "text")) && (!p.image || sel.every((s) => s.kind === "image" || s.kind === "video")));
+            return fits.length > 0 && (
+              <div key={kind} role="group" aria-label={ANIMATE_GROUPS[kind]} style={{ display: "grid", gap: 6 }}>
+                <span className="eyebrow">{ANIMATE_GROUPS[kind]}</span>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                  {fits.map((p) => <Button key={p.id} size="sm" onClick={() => animateAll(sel, p.id)}>{p.label}</Button>)}
+                </div>
+              </div>
+            );
+          })}
         </Section>
       )}
 

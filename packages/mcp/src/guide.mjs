@@ -52,7 +52,17 @@ Layout habits that look designed:
 
   motion: `# Motion: smooth, readable video
 
-A pattern plays as a video when it has motion. set_motion gives a stitch its clips, each {preset, startMs, endMs}; setMeta durationMs sets the video's length. Presets (list_presets has them all): fade-in, fade-out, slide-up, slide-down, slide-left, slide-right, pop, scale-in, stitch-in, type-on, wipe, ken-burns (a slow zoom on a picture), pulse. Eases: linear, ease-out, ease-in, ease-in-out, back-out, spring-soft.
+A pattern plays as a video when it has motion. set_motion gives a stitch its clips, each {preset, startMs, endMs}; setMeta durationMs sets the video's length. Presets (list_presets has them all, with kind in, out or loop):
+- In: fade-in, slide-up, slide-down, slide-left, slide-right, pop, scale-in, stitch-in, type-on, wipe.
+- Out: fade-out, slide-out-up, slide-out-down, slide-out-left, slide-out-right, shrink-out, wipe-out.
+- Loop: ken-burns (a slow zoom on a picture or footage), pulse.
+Eases: linear, ease-out, ease-in, ease-in-out, back-out, spring-soft.
+
+Scenes: a video of more than one scene CHANGES scene; it does not pile the next one on top. change_scene does it in one call: what leaves goes out a little apart, all gone by atMs, and what enters comes in from atMs, headline first. Leave out what stays through both, like the backdrop or the logo. A word left on screen while a picture comes in over it shows at its edges or through it, and check_pattern reports it as covered.
+
+Containers: something that sits in a box, like a button's words in its pill or the dots of a terminal window, comes in with its box or just after it (up to about 300 ms), never before, and leaves with it. A pill empty for seconds, or a label left behind when its pill goes, looks broken.
+
+Footage plays from its first frame when its stitch starts to come in, so a clip in a later scene does not begin part way through. To start it later in its file, set the stitch's style fromMs (ms into the file).
 
 What makes text look smooth, not choppy:
 - Entrances 450 to 700 ms with ease-out; exits 300 to 450 ms with ease-in. Shorter than 300 ms reads as a jump at 30 frames a second.
@@ -66,7 +76,7 @@ What makes text look smooth, not choppy:
 - Nothing still for more than 2.5 s in a short video: bring something in, or start a slow zoom.
 - Fast motion knits smoother at 60 frames a second: knit_pattern params fps 60. It takes about twice as long to knit.
 
-Check it: preview_pattern with time at the middle of each entrance and just after it, and check_pattern, which reports text that is up too briefly, too much at once, flashing, dead air and clips past the end.`,
+Check it: preview_pattern with time at the middle of each entrance and just after it, and check_pattern, which reports text that is up too briefly, too much at once, flashing, dead air, clips past the end, words covered by the next scene, and parts that come in before their container, sit empty in it, or are left behind by it.`,
 
   voice: `# Voiceovers
 
@@ -81,7 +91,8 @@ Check it: preview_pattern with time at the middle of each entrance and just afte
 4. Pass voice, a style in words ("warm and unhurried, smiling"), and any options the server takes. You can change the style from one voiceover to the next.
 5. captions: true puts timed captions on the pattern.
 6. Every voice take and every music track is brought to the same loudness before mixing, so gain is how far under the voice the music sits when nobody speaks: 0.4 to 0.6 suits most videos (setAudio in apply_batch). While a voice speaks the knit lowers the music another 12 dB, and holds it down through pauses shorter than about a second. To change one clip, send the whole list back with that clip changed.
-7. Make the video as long as the voice, plus half a second.`,
+7. A music clip's fromMs is where in the track it starts: the chorus at 30000 rather than a quiet opening. view_yarn on the track gives its loudness over time, which shows where it lifts.
+8. Make the video as long as the voice, plus half a second.`,
 
   yarn: `# Yarn: the project's files
 

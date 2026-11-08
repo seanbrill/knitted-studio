@@ -48,7 +48,7 @@ function groundFor(p: Pattern, sw: Swatch, text: Pattern["stitches"][number]): s
  * is stored and never drawn (`fontsize` for fontSize) is a warning, not a silent no-op.
  */
 export const STYLE_KEYS = [
-  "background", "blend", "blur", "borderColor", "borderWidth", "brightness", "color", "contrast", "count", "fit", "flipX", "focalX", "focalY",
+  "background", "blend", "blur", "borderColor", "borderWidth", "brightness", "color", "contrast", "count", "fit", "flipX", "focalX", "focalY", "fromMs",
   "fontFamily", "fontSize", "fontWeight", "heat", "heatGrade", "heatStrength", "hidden", "letterSpacing", "lineHeight", "maxLines", "opacity",
   "radius", "rotate", "saturate", "shadow", "shape", "textAlign", "textTransform", "verticalAlign",
 ] as const;

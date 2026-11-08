@@ -1,5 +1,21 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
+  "next": {
+    "title": "Scenes that change, sound you can hear and move, footage that knits fast",
+    "items": [
+      "Seven ways out: Fade out, Slide out up, down, left and right, Shrink away and Wipe away. The Inspector's Animate section groups the animations into Come in, Go out and Keep moving.",
+      "Change scene, on the timeline: at the playhead, what is on screen goes out, a little apart, and what comes next comes in from then, headline first. Before, scenes were only covered by the next one, with their words still underneath.",
+      "Select several things and animate them together: they start a little apart, top to bottom, and one Undo takes back the lot.",
+      "Checks for words still on screen when the next scene comes in over them, for a part that shows before the box it sits in (a terminal's dots before the window, a button's words after the button sat empty), and for a part left behind when its box goes. Text that something comes in over now counts as gone for reading time.",
+      "Footage plays from the start of its file when it comes in, so a clip in a second scene no longer begins part way through. Starts from, in the Inspector, starts it later.",
+      "Footage knits several times faster: each clip is copied once at the size it is drawn, and frames are saved with a faster setting that keeps every pixel. In a test with 4K footage, a frame took about 200 ms instead of 600, and every video knits faster.",
+      "Hear the voice and music while the timeline plays, with a button to turn it off.",
+      "Move a sound, start it later in its file, change its loudness and loop music, from the Voice panel. Music can start at its chorus instead of its quiet opening.",
+      "Fit to clips counts the sounds too, so a voiceover is not cut off where the last animation ends.",
+      "Your model changes scene with change_scene, and its guide covers exits, scenes, what sits in a box, and where music starts.",
+      "Seven pages of the guide said things were not built that are: Yarn, Patterns and the editor, Fill mode, Batch knitting, Motion, Voiceover and Using your model now describe what is there."
+    ]
+  },
   "entries": [
     {
       "version": "0.1.16",

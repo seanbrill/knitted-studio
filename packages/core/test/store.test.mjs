@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { ConflictError, NotFoundError, ValidationError, openStore, openDb, currentVersion, migrate } from "../src/node.ts";
 import { MIGRATIONS } from "../src/migrations.ts";
 import { DatabaseSync } from "node:sqlite";
@@ -171,7 +172,7 @@ test("two PROCESSES writing the same pattern lose no writes", async () => {
   const b = pat.stitches.find((s) => s.slot === "backdrop");
   const file = join(dir, "k.db");
   const run = (stitch) => new Promise((resolve, reject) => {
-    const c = spawn(process.execPath, [new URL("./fixtures/writer.mjs", import.meta.url).pathname, file, pat.id, stitch.id, "100"], { stdio: ["ignore", "pipe", "pipe"] });
+    const c = spawn(process.execPath, [fileURLToPath(new URL("./fixtures/writer.mjs", import.meta.url)), file, pat.id, stitch.id, "100"], { stdio: ["ignore", "pipe", "pipe"] });
     let err = ""; c.stderr.on("data", (d) => (err += d));
     c.on("close", (code) => (code === 0 ? resolve() : reject(new Error(err))));
   });

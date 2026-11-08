@@ -24,7 +24,7 @@ A Part is made of Stitches. A Pattern is made of Stitches and Parts. A Pattern u
 
 ## Locked and free
 
-Every Stitch is either locked or free. A locked Stitch is drawn with a dashed orange outline and cannot be changed by whoever uses the Pattern, your model included. A free Stitch has a solid outline and is yours to change.
+Every Stitch is either locked or free. A locked Stitch is drawn with a dashed orange outline and cannot be changed by whoever uses the Pattern, your model included. A free Stitch is yours to change, and shows a solid outline when you point at it or select it.
 
 ## If you are used to other tools
 

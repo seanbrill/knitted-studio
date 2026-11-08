@@ -32,7 +32,7 @@
 // different video on a loaded machine, and that is how you get a reel whose
 // captions drift.
 
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 
@@ -102,16 +102,42 @@ export async function captureFrames(page, outDir, { durationMs, fps = FPS, signa
   // knit came out a little different on a machine with more cores.
   const times = frameTimes(durationMs, fps);
   const files = [];
+  const shoot = await fastShots(page);
   for (let i = 0; i < times.length; i++) {
     if (signal?.aborted) throw Object.assign(new Error("Knit cancelled."), { kind: "cancelled" });
     // SET the time; never wait for it. See the note at the top.
     await page.evaluate((t) => window.__stage.seek(t), times[i]);
     const file = join(outDir, `${String(i).padStart(5, "0")}.png`);
-    await page.screenshot({ path: file, omitBackground: true });
+    if (shoot) await writeFile(file, await shoot());
+    else await page.screenshot({ path: file, omitBackground: true });
     files.push(file);
     onFrame?.(i + 1, times.length);
   }
   return files;
+}
+
+/**
+ * A frame of a video as PNG, compressed for speed. A frame of footage or a photo took
+ * Playwright's screenshot about 225 ms to compress, longer than everything else in a frame;
+ * Chrome's own fast setting takes about 50 ms for the same pixels, in a file a quarter bigger
+ * that is thrown away once encoded. At 2x, the frame is taken at 2x, as Playwright does.
+ *
+ * Over opaque black, not transparent: a video has no transparency, and the encoder drops it.
+ * Where the page was clear, Playwright's frames held black (the encoder showed black), while
+ * the fast capture can hold white there; and an edge that was half clear was shown at full
+ * strength. Over black, clear is black as before, and a fading edge fades from black. A page
+ * with a background of its own, which nearly every pattern has, comes out exactly as before.
+ * Null where the browser cannot do it, and the frames are taken as before.
+ */
+export async function fastShots(page) {
+  try {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Emulation.setDefaultBackgroundColorOverride", { color: { r: 0, g: 0, b: 0, a: 1 } });
+    const { width, height } = page.viewportSize();
+    const scale = await page.evaluate(() => window.devicePixelRatio || 1);
+    const clip = { x: 0, y: 0, width, height, scale };
+    return async () => Buffer.from((await cdp.send("Page.captureScreenshot", { format: "png", optimizeForSpeed: true, clip })).data, "base64");
+  } catch { return null; }
 }
 
 /**

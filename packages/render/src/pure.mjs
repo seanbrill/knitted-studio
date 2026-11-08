@@ -7,7 +7,7 @@
 // reason. Anything that is a token (`$color.primary`, `$font.display`) resolves
 // against the Swatch here, so changing the brand restyles every Pattern.
 
-import { FALLBACK_SWATCH, resolveStyle, colorFor, fontFor, fillTemplate, compileMotion, pieceTimes, textClip } from "@knitted/core";
+import { FALLBACK_SWATCH, resolveStyle, colorFor, fontFor, fillTemplate, compileMotion, entersAt, pieceTimes, textClip } from "@knitted/core";
 
 /**
  * @typedef {{ url: string, kind: string, mime?: string, width?: number, height?: number, meta?: Record<string, any> }} YarnRef
@@ -16,6 +16,7 @@ import { FALLBACK_SWATCH, resolveStyle, colorFor, fontFor, fillTemplate, compile
  *   yarn?: (id: string) => YarnRef | undefined,
  *   fontUrl?: (file: string) => string,
  *   part?: (id: string) => import("@knitted/core").Part | undefined,
+ *   footage?: (stitchId: string) => { url: string, offsetMs: number } | undefined,
  *   fontFaces?: string,
  *   mode?: "render" | "edit",
  * }} RenderCtx
@@ -186,10 +187,15 @@ export function stitchHtml(s, frame, ctx) {
     const bg = typeof st.background === "string" ? st.background : "transparent";
     if (y && (y.kind === "image" || y.kind === "video")) {
       // A video plays: its clock is the pattern's, set by seek(), so the editor and a knit show the same frame.
+      // It starts from its first frame (or from fromMs into the file) when its stitch starts to
+      // come in: on the pattern's own clock, footage in a second scene began 5 s into its file.
       // Where it cannot be read (no decoder for it), its still stays in its place.
       if (s.kind === "video" && y.kind === "video") {
         const poster = y.posterUrl ? ` poster="${esc(y.posterUrl)}"` : "";
-        return `<div ${attrs}><div class="media" style="background:${bg}"><video class="kn-video" src="${esc(y.url)}"${poster} muted playsinline preload="auto" style="width:100%;height:100%;display:block;object-fit:${fit};object-position:${pos};${flip}filter:${esc(mediaFilter(st, heat.filter))}"></video>${heat.overlay}</div></div>`;
+        // A knit plays a copy made the size it is drawn (engine footage.mjs), cut from the in-point.
+        const copy = ctx.footage?.(s.id);
+        const clock = ` data-from="${Math.round(entersAt(s.id, ctx.motion))}" data-in="${Math.max(0, Math.round(num(st.fromMs, 0) - (copy?.offsetMs ?? 0)))}"`;
+        return `<div ${attrs}><div class="media" style="background:${bg}"><video class="kn-video" src="${esc(copy?.url ?? y.url)}"${poster}${clock} muted playsinline preload="auto" style="width:100%;height:100%;display:block;object-fit:${fit};object-position:${pos};${flip}filter:${esc(mediaFilter(st, heat.filter))}"></video>${heat.overlay}</div></div>`;
       }
       const src = s.kind === "video" && y.meta?.thumb ? y.posterUrl ?? y.url : y.url;
       return `<div ${attrs}><div class="media" style="background:${bg}"><img src="${esc(src)}" alt="" style="object-fit:${fit};object-position:${pos};${flip}filter:${esc(mediaFilter(st, heat.filter))}">${heat.overlay}</div></div>`;
@@ -311,13 +317,15 @@ function stageScript(duration, mode) {
       // A code Part lives in its own (script-free, same-origin) frame: reach in and set its clock too.
       for (const f of document.querySelectorAll("iframe.partframe")) { try { for (const a of f.contentDocument.getAnimations()) a.currentTime = ms; } catch {} }
       document.documentElement.style.setProperty("--t", ms + "ms");
-      // Each video to the same moment, looping when the pattern runs longer: a frame is taken once they are there.
+      // Each video to its own moment (from when its stitch comes in), looping when the pattern runs
+      // longer: a frame is taken once they are all there.
       const vids = [...document.querySelectorAll("video.kn-video")].filter(v => v.readyState >= 1 && v.duration > 0);
       // A millisecond late. Frames are asked for at whole milliseconds (33, 67, 100, 133...), and
       // footage frame 1 starts at 33.33: at 33 the browser showed frame 0 again, every third frame,
       // so footage stuttered, a frame twice and then one skipped. Seen in real Story knits.
       return Promise.all(vids.map(v => new Promise(r => {
-        const at = Math.min((ms / 1000) % v.duration + 0.001, v.duration - 0.001);
+        const own = Math.max(0, ms - (+v.dataset.from || 0)) + (+v.dataset.in || 0);
+        const at = Math.min((own / 1000) % v.duration + 0.001, v.duration - 0.001);
         if (Math.abs(v.currentTime - at) < 0.0005) return r();
         const t = setTimeout(r, 1500);
         v.addEventListener("seeked", () => { clearTimeout(t); r(); }, { once: true });

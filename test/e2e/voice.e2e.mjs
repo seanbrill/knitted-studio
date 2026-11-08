@@ -91,6 +91,28 @@ test("knitting that pattern makes an MP4 with sound at a sensible loudness, and 
   assert.equal(frames, Math.round((p.durationMs / 1000) * 30));
 });
 
+test("a sound is moved, started later in its file and made quieter from the panel, and the timeline offers to play it", { skip: !mac }, async () => {
+  await page.goto(`${studio.url}/projects/${projectId}/patterns/${patternId}`);
+  await page.getByRole("application", { name: "Pattern canvas" }).waitFor();
+  await page.getByRole("button", { name: "Voice", exact: true }).click();
+  const name = "Pattern once. Knit forever.";
+  await page.getByRole("button", { name: `Change ${name}` }).click();
+  const g = page.getByRole("group", { name: `${name} settings` });
+  await g.getByLabel("Starts at").fill("2.5");
+  await g.getByLabel("Starts at").blur();
+  await serverHas(studio, `/api/patterns/${patternId}`, (p) => p.motion.audio.find((a) => a.label === name)?.startMs === 2500);
+  await g.getByRole("slider", { name: "Loudness" }).focus();
+  for (let i = 0; i < 4; i++) await page.keyboard.press("ArrowLeft");
+  await serverHas(studio, `/api/patterns/${patternId}`, (p) => (p.motion.audio.find((a) => a.label === name)?.gain ?? 1) < 1);
+  await g.getByRole("slider", { name: "Plays from" }).focus();
+  await page.keyboard.press("ArrowRight");
+  await serverHas(studio, `/api/patterns/${patternId}`, (p) => (p.motion.audio.find((a) => a.label === name)?.fromMs ?? 0) > 0);
+  await page.getByText(/at 2\.5s · from 0\.1s in/).waitFor();
+  await page.getByRole("button", { name: "Timeline" }).click();
+  await page.getByRole("button", { name: "Hear the sound" }).waitFor();
+  assert.equal(await page.getByRole("button", { name: "Hear the sound" }).getAttribute("aria-pressed"), "true");
+});
+
 test("removing a spoken line from the panel removes its clip", { skip: !mac }, async () => {
   await page.goto(`${studio.url}/projects/${projectId}/patterns/${patternId}`);
   await page.getByRole("application", { name: "Pattern canvas" }).waitFor();

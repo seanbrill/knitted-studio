@@ -49,7 +49,7 @@ const clampDb = (db, max) => Math.max(-max, Math.min(max, db));
 /** The stretches where a voice speaks, a pause shorter than DUCK.bridgeMs counting as speech. */
 export function voiceSpans(clips, durationMs) {
   const spans = clips.filter((c) => c.kind === "voice")
-    .map((c) => [c.startMs, Math.min(durationMs, c.startMs + (c.lengthMs ?? durationMs))])
+    .map((c) => [c.startMs, Math.min(durationMs, c.startMs + (c.lengthMs == null ? durationMs : Math.max(0, c.lengthMs - (c.fromMs ?? 0))))])
     .sort((a, b) => a[0] - b[0]);
   const out = [];
   for (const [a, b] of spans) {
@@ -67,7 +67,9 @@ function duckExpr(spans) {
 
 /**
  * Build the filter graph for a mix. Pure and exported so a test can read it.
- * @param {{ file: string, startMs: number, kind: "voice"|"music", gain?: number, fadeInMs?: number, fadeOutMs?: number, loop?: boolean, lengthMs?: number }[]} clips
+ * fromMs is where in the file it starts: a track's chorus rather than its quiet opening. Looped,
+ * it carries on from the file's start once the end is reached.
+ * @param {{ file: string, startMs: number, kind: "voice"|"music", gain?: number, fadeInMs?: number, fadeOutMs?: number, loop?: boolean, lengthMs?: number, fromMs?: number }[]} clips
  */
 export function buildMixGraph(clips, durationMs, { ceiling = -1.5, duck = true, gainDb = null } = {}) {
   const D = sec(durationMs);
@@ -75,15 +77,18 @@ export function buildMixGraph(clips, durationMs, { ceiling = -1.5, duck = true, 
   const voice = [], music = [];
   clips.forEach((c, i) => {
     let chain = `[${i}:a]aformat=sample_rates=48000:channel_layouts=stereo`;
+    const from = Math.max(0, c.fromMs ?? 0);
     if (c.kind === "music" && c.loop) chain += `,aloop=loop=-1:size=2147483647`;
+    if (from) chain += `,atrim=start=${sec(from)},asetpts=PTS-STARTPTS`;
     if (c.levelDb) chain += `,volume=${c.levelDb.toFixed(2)}dB`;
     if (c.gain && c.gain !== 1) chain += `,volume=${c.gain}`;
     // How much of it is heard: the file, or until the video ends, whichever is first. A fade
     // timed to the file's own length landed after the end of a two-minute track, long after
     // a twelve-second video had stopped, so the music was cut dead on the last frame.
     const room = Math.max(0, durationMs - c.startMs);
-    const heard = c.loop || c.lengthMs == null ? room : Math.min(c.lengthMs, room);
-    const cutByEnd = c.loop || c.lengthMs == null || c.lengthMs > room;
+    const left = c.lengthMs == null ? null : Math.max(0, c.lengthMs - from);
+    const heard = c.loop || left == null ? room : Math.min(left, room);
+    const cutByEnd = c.loop || left == null || left > room;
     // Music the video's end cuts off fades out by itself, unless a fade was asked for.
     const fadeOut = c.fadeOutMs ?? (c.kind === "music" && cutByEnd ? Math.min(MUSIC_TAIL_MS, heard / 4) : 0);
     if (c.fadeInMs) chain += `,afade=t=in:st=0:d=${sec(c.fadeInMs)}`;

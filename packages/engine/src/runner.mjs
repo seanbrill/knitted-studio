@@ -20,9 +20,10 @@ import { familiesUsed, pageFor } from "@knitted/render";
 import { FPS, frameTimes, run } from "./knit.mjs";
 import { openRenderer } from "./renderer.mjs";
 import { mixAudio, muxAudio, videoHash } from "./audio.mjs";
+import { prepareFootage } from "./footage.mjs";
 
 /** Bump when a change to rendering could change output bytes. It is part of every knit's hash. */
-export const ENGINE_VERSION = "2";
+export const ENGINE_VERSION = "3";
 
 export class Cancelled extends Error { constructor() { super("Knit cancelled."); this.kind = "cancelled"; } }
 
@@ -260,6 +261,12 @@ export async function runKnit(store, { jobId, projectId, patternId, params = {},
         if (prior && (await stat(knitPath(store, prior)).then(() => true, () => false))) { entry.status = "reused"; entry.knitId = prior.id; results.push(prior); continue; }
 
         const ctx = renderContext(store, projectId, unit.pattern, swatch, yarn, yarnMap);
+        if (motion) {
+          const copies = await prepareFootage({ cacheDir: store.paths.cacheDir, pattern: unit.pattern, swatch, scale,
+            yarnFile: (id) => { const y = yarnMap[id]; return y && !y.deletedAt && y.kind === "video" ? join(store.paths.yarnDir(projectId), y.file) : null; },
+            onStep: () => { progress.step = "Getting the footage ready"; publish(); } });
+          ctx.footage = (id) => copies.get(id);
+        }
         const bgForOpaque = fmt === "jpg" || fmt === "jpeg" ? { background: swatch.colors.find((c) => c.role === "background")?.hex ?? "#ffffff" } : {};
         const html = pageFor({ ...unit.pattern, ...bgForOpaque }, ctx);
         const pageFile = join(pagesDir, `${jobId}-${n}.html`);
@@ -295,7 +302,7 @@ export async function runKnit(store, { jobId, projectId, patternId, params = {},
               const mixFile = join(outRoot, day, `${base}.mix.wav`);
               // The video is whole frames, so the sound is padded to the last one, not to the exact length.
               await mixAudio({ durationMs: Math.ceil((frameTimes(unit.pattern.durationMs, fps).length * 1000) / fps), out: mixFile, clips: sounds.map((a) => ({
-                file: join(store.paths.yarnDir(projectId), yarnMap[a.yarnId].file), startMs: a.startMs, kind: a.kind, gain: a.gain, fadeInMs: a.fadeInMs, fadeOutMs: a.fadeOutMs, loop: a.loop, lengthMs: yarnMap[a.yarnId].durationMs,
+                file: join(store.paths.yarnDir(projectId), yarnMap[a.yarnId].file), startMs: a.startMs, kind: a.kind, gain: a.gain, fadeInMs: a.fadeInMs, fadeOutMs: a.fadeOutMs, loop: a.loop, fromMs: a.fromMs, lengthMs: yarnMap[a.yarnId].durationMs,
               })) });
               const finalFile = join(outRoot, day, `${base}.mp4`);
               // Measured on the finished file: the encoder can add peaks the mix did not have.

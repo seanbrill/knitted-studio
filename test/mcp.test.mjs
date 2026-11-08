@@ -128,7 +128,8 @@ test("the site lists every tool as the server describes it (run `npm run mcp:too
   const { readFile } = await import("node:fs/promises");
   const { CATALOG, text } = await import("../scripts/mcp-tools.mjs");
   const { TOOLS } = await import("@knitted/mcp/context");
-  assert.equal(await readFile(CATALOG, "utf8"), text(TOOLS));
+  // A Windows checkout may turn the file's line ends into CRLF.
+  assert.equal((await readFile(CATALOG, "utf8")).replace(/\r\n/g, "\n"), text(TOOLS));
 });
 
 test("the in-app model and an outside model get exactly the same tools", async () => {
@@ -680,4 +681,23 @@ test("posting: the model makes drafts until the person lets it schedule, and eve
   const listedPosts = await tools.list_posts({ projectId: project.id });
   assert.equal(listedPosts.posts.length, 2);
   assert.equal((await tools.cancel_post({ postId: sched.posts[0].id })).status, "cancelled");
+});
+
+test("change_scene: the old scene goes out, all gone by the moment, the new one comes in from it; a locked stitch is refused", async () => {
+  const p = store.createPattern(project.id, {
+    name: "Two scenes", size: { name: "Story", w: 1080, h: 1920 }, durationMs: 6000,
+    stitches: [
+      { id: "h1", kind: "text", slot: "line1", x: 0.1, y: 0.3, w: 0.8, h: 0.1, locked: false, content: "First scene" },
+      { id: "h2", kind: "text", slot: "line2", x: 0.1, y: 0.3, w: 0.8, h: 0.1, locked: false, content: "Second scene" },
+      { id: "lg", kind: "text", slot: "brand", x: 0.1, y: 0.9, w: 0.3, h: 0.05, locked: true, content: "knitted" },
+    ],
+  });
+  await assert.rejects(tools.change_scene({ patternId: p.id, atMs: 3000 }), /what leaves, what comes in/);
+  const r = await tools.change_scene({ patternId: p.id, atMs: 3000, leaving: ["line1"], entering: ["line2"], out: "slide-out-up" });
+  assert.equal(r.changed, true);
+  assert.deepEqual(r.clips.line1.map((c) => [c.preset, c.startMs, c.endMs]), [["slide-out-up", 2600, 3000]]);
+  assert.deepEqual(r.clips.line2.map((c) => [c.preset, c.startMs, c.endMs]), [["fade-in", 3000, 3500]]);
+  const locked = await tools.change_scene({ patternId: p.id, atMs: 4000, leaving: ["brand"] });
+  assert.equal(locked.refused.length, 1, "the brand's logo stays where the brand put it");
+  assert.ok((await tools.list_presets()).some((x) => x.id === "shrink-out" && x.kind === "out"));
 });

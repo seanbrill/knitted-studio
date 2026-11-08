@@ -121,6 +121,60 @@ test("at 60 frames a second the same video knits again, with twice the frames", 
   assert.equal(sixty.report.frames, thirty.report.frames * 2);
 });
 
+test("Change scene, at the playhead: what is on screen goes out, all gone by then, and what comes next comes in from then", async () => {
+  await page.keyboard.press("Escape");
+  const p = await pattern();
+  const head = p.stitches.find((s) => s.slot === "headline");
+  await j("POST", `/api/patterns/${patternId}/commands`, { command: { type: "batch", commands: [
+    { type: "addStitch", stitch: { id: "st_next", kind: "text", slot: "next", x: 0.1, y: 0.6, w: 0.8, h: 0.1, locked: false, content: "The next scene" } },
+    { type: "setMotion", stitchId: head.id, clips: [{ id: "h", preset: "fade-in", startMs: 0, endMs: 500 }] },
+    { type: "setMotion", stitchId: "st_next", clips: [{ id: "n", preset: "fade-in", startMs: 2600, endMs: 3100 }] },
+    { type: "setMeta", durationMs: 5000 },
+  ] }, actor: "human" });
+  await page.goto(`${studio.url}/projects/${projectId}/patterns/${patternId}`);
+  await page.getByRole("application", { name: "Pattern canvas" }).waitFor();
+  await page.getByRole("button", { name: "Timeline" }).click();
+  const bar = page.getByRole("slider", { name: "Scrub the timeline" });
+  await bar.focus();
+  for (let i = 0; i < 2; i++) await bar.press("Shift+ArrowRight");
+  await page.waitForFunction(() => document.querySelector('[aria-label="Playhead time"]')?.textContent === "0:02.0");
+  await page.getByRole("button", { name: "Change scene" }).click();
+  const dlg = page.getByRole("dialog", { name: "Change scene at 2.0s" });
+  await expectChecked(dlg.getByRole("group", { name: "Leaves" }).getByRole("checkbox", { name: /headline/ }), true);
+  await expectChecked(dlg.getByRole("group", { name: "Comes in" }).getByRole("checkbox", { name: /next/ }), true);
+  assert.equal(await dlg.getByRole("group", { name: "Leaves" }).getByRole("checkbox", { name: /eyebrow/ }).isChecked().catch(() => false), false, "what the brand locked stays");
+  await dlg.getByLabel("How it leaves").click();
+  await page.getByRole("option", { name: "Slide out up" }).click();
+  await page.waitForTimeout(300);
+  assert.deepEqual((await axeProblems(page)).filter((x) => !x.startsWith("scrollable-region")), []);
+  await dlg.getByRole("button", { name: "Change scene" }).click();
+  await serverHas(studio, `/api/patterns/${patternId}`, (q) => {
+    const h = q.motion.tracks[head.id], n = q.motion.tracks.st_next;
+    return h?.some((c) => c.preset === "slide-out-up" && c.endMs === 2000) && n?.[0]?.preset === "fade-in" && n[0].startMs === 2000;
+  });
+});
+async function expectChecked(box, want) {
+  await box.waitFor();
+  assert.equal(await box.isChecked(), want);
+}
+
+test("Animate on several stitches at once: the ways out are offered, and they go a little apart, in one undo", async () => {
+  const layers = page.getByRole("list", { name: "Layers" });
+  await layers.getByRole("button", { name: /^headline/ }).click();
+  await layers.getByRole("button", { name: /^next/ }).click({ modifiers: ["Shift"] });
+  await page.getByText("Animate", { exact: true }).click();
+  await page.getByText("Adds it to all 2 at the playhead").waitFor();
+  const before = await pattern();
+  await page.getByRole("group", { name: "Go out" }).getByRole("button", { name: "Shrink away" }).click();
+  const head = before.stitches.find((s) => s.slot === "headline");
+  await serverHas(studio, `/api/patterns/${patternId}`, (q) => q.motion.tracks[head.id].filter((c) => c.preset === "shrink-out").length === 1 && q.motion.tracks.st_next.some((c) => c.preset === "shrink-out"));
+  const after = await pattern();
+  const a = after.motion.tracks[head.id].find((c) => c.preset === "shrink-out"), b = after.motion.tracks.st_next.find((c) => c.preset === "shrink-out");
+  assert.equal(b.startMs - a.startMs, 80, "the one above goes first, 80 ms ahead");
+  await page.keyboard.press("Control+z");
+  await serverHas(studio, `/api/patterns/${patternId}`, (q) => !Object.values(q.motion.tracks).flat().some((c) => c.preset === "shrink-out"));
+});
+
 for (const theme of ["day", "night"]) {
   test(`no serious accessibility violations with the timeline open in ${theme}`, async () => {
     await page.keyboard.press("Escape");

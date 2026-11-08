@@ -120,6 +120,21 @@ test("the NAIVE graph really does cut the mix short, so the check above can fail
   assert.ok(Number(probe(f("naive.mp4"), "stream=nb_frames").split("\n")[0]) < 180, "and -shortest then drops frames of picture, silently");
 });
 
+test("music starts from its in-point: a track's chorus, not its quiet opening, and its fade counts from there", async () => {
+  // 3 s of silence, then 4 s of tone: from 3000, the tone is there from the first frame.
+  ff("-f", "lavfi", "-i", "aevalsrc='if(lt(t,3),0,0.3*sin(2*PI*220*t))':s=48000:d=7", "-ac", "2", f("intro.wav"));
+  const from = { file: f("intro.wav"), startMs: 0, kind: "music", fromMs: 3000, lengthMs: 7000 };
+  const g = buildMixGraph([from], 5000);
+  assert.match(g, /atrim=start=3\.000,asetpts=PTS-STARTPTS/);
+  assert.doesNotMatch(g, /afade=t=out/, "4 s are left from the in-point, so a 5 s video does not cut it off");
+  assert.match(buildMixGraph([{ ...from, loop: true }], 5000), /aloop=loop=-1:size=2147483647,atrim=start=3\.000/, "looped, the whole file loops and it starts at the in-point");
+  await mixAudio({ clips: [from], durationMs: 2000, out: f("from.wav") });
+  await mixAudio({ clips: [{ ...from, fromMs: undefined }], durationMs: 2000, out: f("from-start.wav") });
+  assert.ok(level(f("from.wav"), 0.2, 1) > -40, `the tone from the start: ${level(f("from.wav"), 0.2, 1)} dB`);
+  assert.equal(level(f("from-start.wav"), 0.2, 1), -Infinity, "without it, the quiet opening");
+  assert.deepEqual(voiceSpans([{ startMs: 1000, kind: "voice", lengthMs: 3000, fromMs: 1000 }], 9000), [[1000, 3000]], "a voice line cut from its middle speaks for what is left");
+});
+
 test("a loop makes short music last the whole video", async () => {
   ff("-f", "lavfi", "-i", "sine=frequency=200:duration=1", f("short.wav"));
   await mixAudio({ clips: [{ file: f("short.wav"), startMs: 0, kind: "music", loop: true }], durationMs: 5000, out: f("loop.wav") });

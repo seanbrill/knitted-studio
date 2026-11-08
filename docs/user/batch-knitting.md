@@ -2,21 +2,54 @@
 title: Batch knitting
 order: 8
 summary: Knit a dozen posts from one Pattern in one go.
-status: partial
-note: Your model can ask for several variants through the MCP server today. Batch controls in the studio are not built yet.
+status: shipped
 ---
 # Batch knitting
 
 Once a Pattern is set, producing many posts is the easy part. Knit as many as you like, in as many sizes as you need.
 
+## The Knit dialog
+
+Press **Knit** in the editor's top bar. The dialog has:
+
+- **Format**: PNG, JPEG or WebP for a still. A Pattern with motion knits as an **MP4 video**.
+- **Quality**: **1x**, or **2x sharper**.
+- **Smoothness**, for a video: **30 fps**, or **60 fps** for fast motion, which takes about twice as long.
+- **Sizes**: pick one or several, and the same Pattern is knitted at each.
+- **Reuse identical knits**: if nothing changed, a file is not drawn again.
+
+Under **Checks**, the dialog looks the Pattern over before you knit. A **Heads up** is worth reading. A **Fix this first**, like a slot whose Yarn was deleted, has to be fixed before you can knit. The button says how many files you will get, like **Knit 3 files**.
+
+## Many posts from a table
+
+Turn on **Knit many from a table**. Each row of the table is one post.
+
+1. Press **Start with this pattern's slots**. The first line becomes the column names: the Pattern's free slots.
+2. Add a line for each post. Paste from a spreadsheet, or type with a tab or a comma between the cells.
+3. For a text slot, write the text. For a picture or video slot, write a Yarn name, or `tag:product` to take turns through the files with that tag, one per row.
+4. Press the **Knit** button.
+
+```
+headline,photo
+Spring sale,Hero shot
+New arrivals,tag:product
+Last chance,tag:product
+```
+
+Every row is knitted at every size you picked, so three rows at two sizes make six files.
+
+A row fills only free slots. A column for a locked slot, or a Yarn name that matches no file, has to be fixed before you knit. A column that is not a slot is left out, with a heads up.
+
+## While it knits
+
+The dialog shows how far it has got, and **Cancel** stops it. What was already done is kept. Knits take turns, one at a time. The project's pages show the knit under way and how many are waiting, and the **Knits** tab lists them, each to cancel, or **Cancel all**.
+
+Files knitted together are grouped in the project's **Knits** tab, as a batch. **Download batch** gives you a zip of them.
+
 ## Through your model
 
-The `knit_pattern` tool takes a `variants` number. Ask for twelve and you get twelve files in the project's `knits` folder.
-
-## In the studio
-
-A batch screen where you list the headlines and photos, pick the sizes and knit them all is planned.
+Your model knits with `knit_pattern`. Its `rows` are the same table, one set of slot values per post, and `sizes` the same sizes. Ask for twelve and you get twelve files in the project's Knits. When you ask in the studio, **Files it may knit per request**, in Settings, Model, sets how many one request may make.
 
 ## Needs
 
-Knitting needs Playwright and ffmpeg installed. See [Troubleshooting](/docs/troubleshooting/) if it will not start.
+The desktop app has what it needs: it carries ffmpeg, and downloads the browser it draws with by itself the first time it starts. Running from a clone, install Playwright's Chromium and ffmpeg yourself ([Quick start](/docs/quick-start/) shows how). See [Troubleshooting](/docs/troubleshooting/) if knitting will not start.

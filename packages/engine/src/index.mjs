@@ -5,3 +5,4 @@ export * from "./renderer.mjs";
 export * from "./audio.mjs";
 export * from "./voiceover.mjs";
 export * from "./capture.mjs";
+export * from "./footage.mjs";

@@ -5,8 +5,10 @@ import { EASES, PRESETS, presetInfo, motionEnd, type Clip, type Ease, type Prese
 import { Button, IconButton, Select, icons } from "@knitted/ui";
 import { useEditor } from "@/lib/editor/store";
 import { NumberField } from "./controls";
+import { SceneDialog } from "./SceneDialog";
+import { useSoundPreview } from "./sound";
 
-const { Play, Pause, Trash2 } = icons;
+const { Play, Pause, Trash2, Volume2, VolumeX } = icons;
 const EASE_OPTIONS = (Object.keys(EASES) as Ease[]).map((e) => ({ value: e, label: e.replace(/-/g, " ") }));
 const PRESET_OPTIONS = PRESETS.map((p) => ({ value: p.id, label: p.label }));
 const rid = () => `cl_${Math.random().toString(36).slice(2, 8)}`;
@@ -36,8 +38,14 @@ export function Timeline() {
   const wrap = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(700);
   const [sel, setSel] = useState<{ stitchId: string; clipId: string } | null>(null);
+  const [scene, setScene] = useState(0);
+  const [sound, setSound] = useState(true);
+  useSoundPreview(sound);
+  const hasSound = (pattern.motion?.audio ?? []).length > 0;
   const drag = useRef<{ kind: "move" | "l" | "r" | "scrub"; stitchId?: string; clipId?: string; x0: number; orig?: Clip } | null>(null);
-  const total = Math.max(3000, pattern.durationMs, motionEnd(pattern.motion));
+  // Sounds count too: Fit to clips used to cut a voiceover off where the last animation ended.
+  const soundMs = (id: string) => st.yarn[id]?.durationMs ?? 0;
+  const total = Math.max(3000, pattern.durationMs, motionEnd(pattern.motion, soundMs));
   const LABEL = 110;
   const track = Math.max(200, width - LABEL - 16);
   const px = track / total;
@@ -110,10 +118,13 @@ export function Timeline() {
     <section aria-label="Timeline" ref={wrap} onPointerMove={onMove} onPointerUp={onUp} style={{ borderTop: "1px solid var(--line)", background: "var(--surface)", padding: "8px 8px 10px", maxHeight: 280, overflow: "auto", flexShrink: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
         <IconButton label={playing ? "Pause" : "Play"} shortcut="Space" hint={playing ? undefined : "Plays the pattern from the playhead, as it will be knitted."} onClick={() => { if (!playing && playhead >= (pattern.durationMs || total) - 20) st.setPlayhead(0); st.setPlaying(!playing); }}>{playing ? <Pause size={16} /> : <Play size={16} />}</IconButton>
+        {hasSound && <IconButton label="Hear the sound" hint="Plays the voice and music with the timeline. A preview: the knit also evens out their loudness." pressed={sound} onClick={() => setSound(!sound)}>{sound ? <Volume2 size={16} /> : <VolumeX size={16} />}</IconButton>}
         <span className="code" aria-label="Playhead time" style={{ minWidth: 56 }}>{fmt(playhead)}</span>
         <span className="body-sm" style={{ color: "var(--ink-muted)" }}>of</span>
         <div style={{ width: 120 }}><NumberField label="Len" value={pattern.durationMs} min={0} max={120000} step={100} suffix="ms" onCommit={(v) => st.dispatch({ type: "setMeta", durationMs: v }, { label: "Length", coalesce: true })} /></div>
-        <Button size="sm" tip="Makes the pattern as long as its animations, and a moment more." onClick={() => st.dispatch({ type: "setMeta", durationMs: Math.max(1000, motionEnd(pattern.motion) + 600) }, { label: "Fit length" })}>Fit to clips</Button>
+        <Button size="sm" tip="Makes the pattern as long as its animations and sounds, and a moment more." onClick={() => st.dispatch({ type: "setMeta", durationMs: Math.max(1000, motionEnd(pattern.motion, soundMs) + 600) }, { label: "Fit length" })}>Fit to clips</Button>
+        <Button size="sm" disabled={!pattern.stitches.length} tip="At the playhead: what is on screen goes out, and what comes next comes in." onClick={() => setScene((n) => n + 1)}>Change scene</Button>
+        {scene > 0 && <SceneDialog key={scene} open onOpenChange={(o) => { if (!o) setScene(0); }} />}
         <span className="body-sm" style={{ color: "var(--ink-muted)", flex: 1 }}>{pattern.durationMs === 0 ? "This pattern is a still. Add an animation to make it a video." : "What you see here is what gets knitted."}</span>
       </div>
 

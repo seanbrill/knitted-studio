@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { api, type JobItem } from "@knitted/core/client";
-import { Button, Field, Select, Slider, Switch, Textarea, icons, useToast } from "@knitted/ui";
+import type { AudioClip } from "@knitted/core";
+import { Button, Field, Input, Select, Slider, Switch, Textarea, icons, useToast } from "@knitted/ui";
 import { useEditor } from "@/lib/editor/store";
 import { useLive } from "@/lib/hooks";
 
-const { Trash2 } = icons;
+const { SlidersHorizontal, Trash2 } = icons;
 const fmt = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
 
 /** Voiceover: a script in, sound on the timeline out, with captions if you want them. */
@@ -83,20 +84,43 @@ export function VoicePanel({ projectId }: { projectId: string }) {
       <h3 className="eyebrow" style={{ margin: "var(--space-6) 0 var(--space-2)" }}>On the timeline</h3>
       {audio.length === 0 ? <p className="body-sm" style={{ color: "var(--ink-muted)" }}>No sound yet.</p> : (
         <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 6 }}>
-          {audio.map((a) => (
-            <li key={a.id} className="card" style={{ padding: "6px 8px", display: "flex", gap: 6, alignItems: "center" }}>
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <span className="label" style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.label ?? (a.kind === "music" ? "Music" : "Voice")}</span>
-                <span className="eyebrow">{a.kind} · from {fmt(a.startMs)}</span>
-              </span>
-              <button className="icon-btn" aria-label={`Remove ${a.label ?? a.kind}`} onClick={() => remove(a.id)}><Trash2 size={13} /></button>
-            </li>
-          ))}
+          {audio.map((a) => <SoundRow key={a.id} clip={a} onRemove={() => remove(a.id)} />)}
         </ul>
       )}
       {audio.some((a) => a.kind === "voice") && <a className="link body-sm" style={{ display: "inline-block", marginTop: 10 }} href={`/api/patterns/${st.pattern.id}/captions.srt`}>Download subtitles (.srt)</a>}
       <MusicPicker projectId={projectId} />
     </div>
+  );
+}
+
+/** One sound on the timeline: when it starts, where in its file, how loud, and for music whether it loops. */
+function SoundRow({ clip: a, onRemove }: { clip: AudioClip; onRemove: () => void }) {
+  const st = useEditor();
+  const [open, setOpen] = useState(false);
+  const name = a.label ?? (a.kind === "music" ? "Music" : "Voice");
+  const fileMs = st.yarn[a.yarnId]?.durationMs ?? 0;
+  const change = (patch: Partial<AudioClip>, label: string) => st.dispatch({ type: "setAudio", audio: (st.pattern.motion?.audio ?? []).map((x) => (x.id === a.id ? { ...x, ...patch } : x)) }, { label, coalesce: true });
+  return (
+    <li className="card" style={{ padding: "6px 8px", display: "grid", gap: 8 }}>
+      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span className="label" style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+          <span className="eyebrow">{a.kind} · at {fmt(a.startMs)}{a.fromMs ? ` · from ${fmt(a.fromMs)} in` : ""}</span>
+        </span>
+        <button className="icon-btn" aria-expanded={open} aria-label={`Change ${name}`} onClick={() => setOpen(!open)}><SlidersHorizontal size={13} /></button>
+        <button className="icon-btn" aria-label={`Remove ${name}`} onClick={onRemove}><Trash2 size={13} /></button>
+      </div>
+      {open && (
+        <div role="group" aria-label={`${name} settings`} style={{ display: "grid", gap: 8 }}>
+          <Field label="Starts at" hint="On the video's clock." htmlFor={`snd-at-${a.id}`}>
+            <Input id={`snd-at-${a.id}`} mono type="number" min={0} step={0.1} key={a.startMs} defaultValue={String(a.startMs / 1000)} onBlur={(e) => { const v = Math.round(Number(e.target.value) * 1000); if (Number.isFinite(v) && v >= 0 && v !== a.startMs) change({ startMs: v }, "Move sound"); }} />
+          </Field>
+          {fileMs > 1000 && <Slider label="Plays from" value={(a.fromMs ?? 0) / 1000} min={0} max={Math.floor(fileMs / 100) / 10} step={0.1} unit="s" onCommit={(v) => change({ fromMs: Math.round(v * 1000) || undefined }, "Sound in-point")} />}
+          <Slider label="Loudness" value={a.gain ?? 1} min={0} max={2} step={0.05} unit="x" onCommit={(v) => change({ gain: v }, "Sound loudness")} />
+          {a.kind === "music" && <label style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span className="body-sm">Loop to the end</span><Switch label="Loop to the end" checked={!!a.loop} onCheckedChange={(v) => change({ loop: v || undefined }, "Loop music")} /></label>}
+        </div>
+      )}
+    </li>
   );
 }
 

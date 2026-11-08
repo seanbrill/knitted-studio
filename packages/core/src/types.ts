@@ -351,13 +351,18 @@ export interface Part {
 export type Ease = "linear" | "ease-out" | "ease-in" | "ease-in-out" | "back-out" | "spring-soft";
 export type Preset =
   | "fade-in" | "fade-out" | "slide-up" | "slide-down" | "slide-left" | "slide-right"
-  | "pop" | "scale-in" | "stitch-in" | "type-on" | "wipe" | "ken-burns" | "pulse";
+  | "pop" | "scale-in" | "stitch-in" | "type-on" | "wipe" | "ken-burns" | "pulse"
+  | "slide-out-up" | "slide-out-down" | "slide-out-left" | "slide-out-right" | "shrink-out" | "wipe-out";
 
 /** One thing a stitch does, and when. Times are milliseconds from the start of the Pattern. */
 export interface Clip { id: string; startMs: number; endMs: number; preset: Preset; ease?: Ease; params?: Record<string, number>; }
 
 /** A sound on the timeline: a voiceover, or music underneath it. */
-export interface AudioClip { id: string; yarnId: string; startMs: number; kind: "voice" | "music"; gain?: number; fadeInMs?: number; fadeOutMs?: number; loop?: boolean; label?: string; }
+export interface AudioClip {
+  id: string; yarnId: string; startMs: number; kind: "voice" | "music"; gain?: number; fadeInMs?: number; fadeOutMs?: number; loop?: boolean; label?: string;
+  /** Where in the file it starts playing, in ms: a track's chorus rather than its quiet opening. 0 if left out. */
+  fromMs?: number;
+}
 
 export interface Motion {
   /** Keyed by stitch id. */
