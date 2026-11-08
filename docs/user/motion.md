@@ -48,12 +48,13 @@ A video Stitch plays from the start of its file when it comes in, so a clip in t
 
 ## Knitting a video
 
-**Knit** offers **MP4 video** for a Pattern with motion, at **30 fps**, or **60 fps** for fast motion. Its checks warn about motion that will not work well:
+**Knit** offers **MP4 video** for a Pattern with motion, at **30 fps**, or **60 fps** for fast motion. When all the footage in a video was shot at 24 or 25 frames a second, as most stock footage is, the video is made at that rate instead, so none of its frames repeat. Its checks warn about motion that will not work well:
 
 - text not on screen long enough to read, counting text that something comes in over as gone from then;
 - words still on screen when the next scene comes in over them;
 - a part that shows before the box it sits in, like a button's words before the button, a box left empty for seconds before its words, and a part left behind when its box goes;
-- too many things moving at once, flashing, long stretches where nothing moves, and an animation cut off by the end.
+- too many things moving at once, flashing, long stretches where nothing moves, and an animation cut off by the end;
+- footage at mixed frame rates, like 25 beside 30, where the 25 hitches on every pan.
 
 Footage is knitted from a copy made once at the size it is drawn, so 4K footage knits about as fast as footage made for the size. See [Batch knitting](/docs/batch-knitting/) for the rest of the Knit dialog.
 

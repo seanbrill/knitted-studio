@@ -14,7 +14,7 @@ Press **Knit** in the editor's top bar. The dialog has:
 
 - **Format**: PNG, JPEG or WebP for a still. A Pattern with motion knits as an **MP4 video**.
 - **Quality**: **1x**, or **2x sharper**.
-- **Smoothness**, for a video: **30 fps**, or **60 fps** for fast motion, which takes about twice as long.
+- **Smoothness**, for a video: **30 fps**, or **60 fps** for fast motion, which takes about twice as long. A video whose footage was all shot at 24 or 25 fps is made at that rate.
 - **Sizes**: pick one or several, and the same Pattern is knitted at each.
 - **Reuse identical knits**: if nothing changed, a file is not drawn again.
 

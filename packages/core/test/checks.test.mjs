@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { FALLBACK_SWATCH, STYLE_KEYS, preflight, safeZoneIssues } from "../src/index.ts";
+import { FALLBACK_SWATCH, STYLE_KEYS, cleanRate, preflight, safeZoneIssues, videoFps } from "../src/index.ts";
 import { socialStarterPack } from "../src/starters.ts";
 import { BUILTIN_PARTS } from "../src/builtin-parts.ts";
 
@@ -139,4 +139,31 @@ test("music set far under the voice is flagged, with what suits", () => {
   assert.match(quiet([voice, { id: "m", yarnId: "yn_m", kind: "music", startMs: 0, gain: 0.08 }])[0], /gain 0\.08, 22 dB under the voice level, so it will barely be heard even when nobody speaks.*0\.4 to 0\.6/);
   assert.deepEqual(quiet([voice, { id: "m", yarnId: "yn_m", kind: "music", startMs: 0, gain: 0.5 }]), []);
   assert.deepEqual(quiet([voice, { id: "m", yarnId: "yn_m", kind: "music", startMs: 0 }]), [], "no gain is full level");
+});
+
+test("a video is knitted at its footage's own rate when all of it shares 24 or 25, so no frame repeats", () => {
+  const clip = (id, fps) => [id, { id, name: `clip ${fps}`, kind: "video", deletedAt: null, meta: { fps } }];
+  const yarn = Object.fromEntries([clip("y25", 25), clip("y25b", 25), clip("y24", 23.98), clip("y30", 29.97), clip("y50", 50), clip("y12", 12)]);
+  const reel = (...ids) => ({ ...story(ids.map((y, i) => ({ id: `v${i}`, kind: "video", slot: i ? undefined : "footage", x: 0, y: 0, w: 1, h: 1, locked: false, yarnId: y }))), durationMs: 6000, motion: { tracks: {}, audio: [] } });
+  assert.deepEqual([25, 50, 23.98, 29.97, 59.94, 12, undefined].map(cleanRate), [25, 25, 24, 30, 30, null, null]);
+  assert.equal(videoFps(reel("y25", "y25b"), yarn), 25);
+  assert.equal(videoFps(reel("y25", "y50"), yarn), 25, "50 halves evenly to 25");
+  assert.equal(videoFps(reel("y24"), yarn), 24);
+  assert.equal(videoFps(reel("y30"), yarn), 30);
+  assert.equal(videoFps(reel(), yarn), 30, "no footage: the standard");
+  assert.equal(videoFps(reel("y25", "y30"), yarn), 30, "mixed: the standard");
+  assert.equal(videoFps(reel("y25"), yarn, 60), 60, "60 when asked for");
+  const hidden = reel("y25", "y30"); hidden.stitches[1].style = { hidden: true };
+  assert.equal(videoFps(hidden, yarn), 25, "a hidden clip is not in the video");
+
+  const rate = (p, fps) => preflight(p, FALLBACK_SWATCH, { yarn, fps }).filter((i) => i.code === "footage-rate");
+  assert.deepEqual(rate(reel("y25", "y25b")), [], "at its own rate, nothing to say");
+  const [mixed, ...more] = rate(reel("y25", "y30", "y25"));
+  assert.equal(more.length, 0, "told once a file");
+  assert.equal(mixed.slot, "footage");
+  assert.match(mixed.message, /"clip 25" was shot at 25 frames a second and this video is 30, so some of its frames are held longer than others/);
+  assert.match(rate(reel("y25"), 60)[0].message, /video is 60.*and 60 is not asked for/);
+  assert.deepEqual(rate(reel("y30"), 60), [], "30 divides into 60");
+  assert.deepEqual(rate(reel("y12", "y30"), undefined), [], "an odd rate has no clean one to suggest");
+  assert.deepEqual(rate({ ...reel("y25", "y30"), durationMs: 0 }), [], "a still has no frame rate");
 });

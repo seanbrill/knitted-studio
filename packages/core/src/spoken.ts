@@ -14,10 +14,18 @@ const CODE = [
   /\b[a-z]+\/[a-z][\w.-]*\/[\w.-]+/i,   // a/b/c paths
   /\b\w+\.(html?|css|m?js|ts|tsx|json|ya?ml|toml|sh|py|md|txt|zip|png|jpe?g|svg|mp4|wav|env|conf|lock)\b/i,
   /\b[a-z]+_[a-z0-9_]+\b/i,             // snake_case
-  /\b[a-z]+[A-Z][a-zA-Z]+\b/,           // camelCase
+  // camelCase: two lower-case letters or more, then a capital and more lower case. Not a
+  // name like macOS, iPhone or eBay, which a voice says as it is written ("macOS," was flagged).
+  /\b[a-z]{2,}[A-Z][a-z]+[a-zA-Z]*\b/,
 ];
 
 const words = (s: string) => s.toLowerCase().replace(/\*/g, "").match(/[\p{L}\p{N}][\p{L}\p{N}._\/:@~-]*/gu) ?? [];
+
+/**
+ * A comment beside a command, "# the desktop client, in your browser", or a line of what it
+ * printed, "✓ checked against what was uploaded": plain words, as a voice says them.
+ */
+const isComment = (line: string) => { const m = line.match(/^\s*(?:(?:#|\/\/)\s+|[✓✔✗✘•]\s*)(.*)$/); return !!m && !CODE.some((re) => re.test(m[1])); };
 
 /**
  * Why a line should not be said as written, or null. `shown` is text the frame shows as code:
@@ -27,7 +35,7 @@ export function spokenProblem(said: string, shown: string[] = []): string | null
   const text = said.trim();
   if (!text) return null;
   const w = words(text);
-  for (const s of shown) {
+  for (const s of shown.flatMap((block) => block.split("\n")).filter((line) => !isComment(line))) {
     const sw = words(s);
     if (sw.length < 2) continue;
     const joined = ` ${sw.join(" ")} `;

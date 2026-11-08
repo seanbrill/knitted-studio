@@ -1,5 +1,13 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
+  "next": {
+    "title": "Footage at its own frame rate, and fewer false alarms",
+    "items": [
+      "A video whose footage was all shot at 24 or 25 frames a second, as most stock footage is, is now made at that rate, so no frame of it shows twice. At 30, one frame in six did, and every pan hitched.",
+      "Footage at mixed rates, like 25 beside 30, is warned about, with which clip hitches.",
+      "The voiceover check no longer calls macOS or iPhone code, and lets the voice say the plain words of a comment or a result shown beside a command."
+    ]
+  },
   "entries": [
     {
       "version": "0.1.24",

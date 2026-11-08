@@ -26,9 +26,19 @@ test("code-shaped words are flagged wherever they come from", () => {
   for (const line of ["Run it with --force.", "Open ~/Sites/notch in the terminal.", "Edit config.yml and save.", "Set max_upload_size first.", "Call getUserFiles to list them."]) {
     assert.match(spokenProblem(line) ?? "", /which is code/, line);
   }
-  for (const line of ["Friday. Four fifty-nine. You deployed.", "Nine ninety-nine a month.", "Share it with one link, and stop it when you like.", "It works on desktop and phone."]) {
+  for (const line of ["Friday. Four fifty-nine. You deployed.", "Nine ninety-nine a month.", "Share it with one link, and stop it when you like.", "It works on desktop and phone.", "On macOS, Windows and Linux.", "Straight from your iPhone or iPad, or eBay."]) {
     assert.equal(spokenProblem(line), null, line);
   }
+});
+
+test("the plain words of a comment beside a command may be said; the command still may not", () => {
+  // A real reel: the voice said "Then open the desktop client in your browser." beside these.
+  const shown = ["$ ff ui", "# the desktop client, in your browser", "$ ff sync add ~/notes ff:/Notes\n# kept in step, both ways"];
+  assert.equal(spokenProblem("Then open the desktop client in your browser.", shown), null);
+  assert.equal(spokenProblem("Keep it in step, both ways.", shown), null);
+  assert.equal(spokenProblem("And every download is checked against what was uploaded.", ["$ ff get report.pdf", "✓ checked against what was uploaded"]), null, "what the command printed, said plainly");
+  assert.match(spokenProblem("Now sync add notes and go.", shown) ?? "", /reads out "sync add/);
+  assert.match(spokenProblem("It runs build.sh first, then stops.", ["# runs build.sh first"]) ?? "", /from the command typed on screen/, "a comment with code in it is code");
 });
 
 test("check_pattern warns about a voice that reads code, once a line", () => {

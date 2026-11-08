@@ -75,6 +75,7 @@ What makes text look smooth, not choppy:
 - Keep text fully on screen about a third of a second a word, and at least 1.2 s. Hold the last frame half a second before the end.
 - Nothing still for more than 2.5 s in a short video: bring something in, or start a slow zoom.
 - Fast motion knits smoother at 60 frames a second: knit_pattern params fps 60. It takes about twice as long to knit.
+- Footage at one rate: a video whose footage was all shot at 24 or 25 frames a second (most stock footage is 25) is knitted at that rate, so no frame of it repeats. Mixed with 30, the 25 hitches on every pan, and check_pattern says so: pick footage at one rate.
 
 Check it: preview_pattern with time at the middle of each entrance and just after it, and check_pattern, which reports text that is up too briefly, too much at once, flashing, dead air, clips past the end, words covered by the next scene, and parts that come in before their container, sit empty in it, or are left behind by it.`,
 
@@ -188,7 +189,7 @@ knit_pattern makes PNG, JPEG, WebP or MP4 files through the same job and checks 
 - params.sizes: one or more {name, w, h}. The same pattern knits at every size, re-laid out.
 - params.format: png for pictures with text (crisp), jpeg for photos (smaller), webp for the web, mp4 for a pattern with motion.
 - params.scale 2 for extra-crisp pictures and video, at four times the pixels to draw.
-- params.fps: 30, or 60 for fast motion (smoother, about twice the time).
+- params.fps: 30, or 60 for fast motion (smoother, about twice the time). A video whose footage all shares 24 or 25 is knitted at that rate unless 60 is asked for.
 - params.rows: an array of slot values, one per post, to make many in one batch: [{headline: "Spring sale"}, {headline: "New arrivals"}]. A row may only fill free slots.
 - wait: false returns a jobId at once: check it with get_job, cancel with cancel_job. The person sees its progress in the studio.
 - A knit with the same inputs as one already made is not made twice.

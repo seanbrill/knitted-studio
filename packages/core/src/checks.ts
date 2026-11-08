@@ -12,7 +12,33 @@ import { ratio } from "./contrast.ts";
 import { motionLint } from "./motion.ts";
 import { codeOnScreen, spokenProblem } from "./spoken.ts";
 
-export interface PreflightOpts { scale?: number; yarn: Record<string, Yarn | undefined>; }
+export interface PreflightOpts { scale?: number; yarn: Record<string, Yarn | undefined>; /** The frame rate asked for: 60, or left to the footage. */ fps?: number; }
+
+/**
+ * The rate footage shot at `fps` plays at without holding any frame longer than the rest:
+ * 29.97 is 30 near enough (one frame in 33 s), and 50 and 60 halve evenly. Null for an odd one.
+ */
+export function cleanRate(fps: number | undefined): 24 | 25 | 30 | null {
+  if (!fps) return null;
+  const near = (rates: number[]) => rates.some((r) => Math.abs(fps - r) < 0.05);
+  return near([23.976, 24, 47.952, 48]) ? 24 : near([25, 50]) ? 25 : near([29.97, 30, 59.94, 60]) ? 30 : null;
+}
+
+const footageIn = (p: Pattern, yarn: Record<string, Yarn | undefined>) =>
+  p.stitches.flatMap((s) => { const y = s.kind === "video" && s.yarnId && !s.style?.hidden ? yarn[s.yarnId] : undefined; return y && !y.deletedAt && y.kind === "video" ? [{ s, y }] : []; });
+
+/**
+ * The frame rate to knit a video at. Drawn at 30 a second, footage shot at 25 holds one frame in
+ * six for two, a hitch on every pan, and 13 of 24 footage reels in a real library had footage at
+ * 24 or 25. So when all of a video's footage shares 24 or 25, the video is knitted at that rate
+ * and no frame repeats; otherwise at 30, or at 60 when that is asked for.
+ */
+export function videoFps(p: Pattern, yarn: Record<string, Yarn | undefined>, asked?: number): number {
+  if (asked === 60) return 60;
+  const rates = new Set(footageIn(p, yarn).map(({ y }) => cleanRate(y.meta?.fps)));
+  const [only] = rates;
+  return rates.size === 1 && (only === 24 || only === 25) ? only : 30;
+}
 
 const hexOf = (v: unknown): string | null => (typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v) ? v.toLowerCase() : null);
 
@@ -117,6 +143,16 @@ export function preflight(p: Pattern, sw: Swatch, o: PreflightOpts): KnitIssue[]
     else if (a.kind === "music" && typeof a.gain === "number" && a.gain > 0 && a.gain < 0.25) issues.push({ level: "warning", code: "quiet-music", message: `The music${a.label ? ` "${a.label}"` : ""} is at gain ${a.gain}, ${Math.round(-20 * Math.log10(a.gain))} dB under the voice level, so it will barely be heard${voiced ? " even when nobody speaks" : ""}. Every track is brought to one loudness first, so 0.4 to 0.6 suits most videos${voiced ? ", and the knit lowers the music under the voice by itself" : ""}.` });
   }
   for (const m of motionLint(p)) issues.push({ level: "warning", code: m.code, stitchId: m.stitchId, message: m.message });
+  // Footage the video's rate does not divide into: some of its frames are held longer than others.
+  if (p.durationMs > 0) {
+    const fps = videoFps(p, o.yarn, o.fps), told = new Set<string>();
+    for (const { s, y } of footageIn(p, o.yarn)) {
+      const r = cleanRate(y.meta?.fps);
+      if (!r || fps % r === 0 || told.has(y.id)) continue;
+      told.add(y.id);
+      add({ level: "warning", code: "footage-rate", stitchId: s.id, slot: s.slot, message: `The ${s.slot ?? "footage"} "${y.name}" was shot at ${y.meta.fps} frames a second and this video is ${fps}, so some of its frames are held longer than others and its motion hitches. A video is knitted at its footage's own rate when all of it shares one (24, 25 or 30)${fps === 60 ? " and 60 is not asked for" : ""}, so use footage shot at one rate${fps === 60 ? ", at the standard smoothness" : ""}.` });
+    }
+  }
   issues.push(...safeZoneIssues(p, sw));
   return issues;
 }

@@ -1,6 +1,7 @@
 // Footage in a knit: it plays from when its stitch comes in, from its in-point, through a copy
-// made the size it is drawn (so 4K knits at the speed of 1080p), and frames are taken with
-// Chrome's fast PNG, which must give exactly the pixels Playwright's screenshot did.
+// made the size it is drawn (so 4K knits at the speed of 1080p), at its own frame rate when it
+// is shot at 25, and frames are taken with Chrome's fast PNG, which must give exactly the pixels
+// Playwright's screenshot did.
 
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
@@ -24,11 +25,10 @@ after(async () => { await renderer.close(); });
 ff("-f", "lavfi", "-i", "color=c=red:s=3840x2160:r=30:d=1", "-f", "lavfi", "-i", "color=c=lime:s=3840x2160:r=30:d=1", "-f", "lavfi", "-i", "color=c=blue:s=3840x2160:r=30:d=1",
   "-filter_complex", "[0][1][2]concat=n=3:v=1[v]", "-map", "[v]", "-c:v", "libx264", "-g", "250", "-pix_fmt", "yuv420p", f("rgb.mp4"));
 
-async function footageProject(name) {
-  const project = store.createProject({ name, starter: "blank" });
+async function footageProject(name, file = "rgb.mp4", project = store.createProject({ name, starter: "blank" })) {
   const tmp = uploadTempPath(store, project.id);
-  execFileSync("mkdir", ["-p", join(tmp, "..")]); execFileSync("cp", [f("rgb.mp4"), tmp]);
-  const y = (await importYarn(store, project.id, tmp, "rgb.mp4", { name: "rgb" })).yarn;
+  execFileSync("mkdir", ["-p", join(tmp, "..")]); execFileSync("cp", [f(file), tmp]);
+  const y = (await importYarn(store, project.id, tmp, file, { name: file })).yarn;
   return { project, y };
 }
 /** The average colour of one frame of a knitted video, at a time in seconds. */
@@ -86,6 +86,36 @@ test("4K footage in a Story is knitted from a copy the Story's size, made once",
   assert.ok(near(await colourAt(knitPath(store, r.knits[0]), 0.5), [255, 0, 0]));
   await knit();
   assert.equal(readdirSync(join(store.paths.cacheDir, "footage")).filter((n) => n.endsWith(".mp4")).length, copies.length, "the second knit uses the same copy");
+});
+
+test("footage shot at 25 a second knits at 25, so no frame of it shows twice; mixed with 30 it is 30, and said", async () => {
+  // A bar that moves every frame, as a camera pan does.
+  for (const r of [25, 30]) ff("-f", "lavfi", "-i", `color=c=black:s=320x240:r=${r}:d=3`, "-f", "lavfi", "-i", `color=c=white:s=20x240:r=${r}:d=3`, "-filter_complex", "[0][1]overlay=x='mod(n*12,300)':y=0", "-c:v", "libx264", "-pix_fmt", "yuv420p", f(`pan${r}.mp4`));
+  const { project, y } = await footageProject("Rates", "pan25.mp4");
+  assert.equal(y.meta.fps, 25);
+  const p = store.createPattern(project.id, { name: "Pan", size: { name: "T", w: 320, h: 240 }, stitches: [{ id: "v", kind: "video", x: 0, y: 0, w: 1, h: 1, locked: false, yarnId: y.id }] });
+  store.apply(p.id, { type: "setMeta", durationMs: 2000 }, "human");
+  const knit = async () => { const r = await runKnit(store, { jobId: store.createJob("knit", project.id, {}).id, projectId: project.id, patternId: p.id, params: { reuse: false }, renderer }); return { file: knitPath(store, r.knits[0]), unit: r.progress.units[0], knit: r.knits[0] }; };
+  // Frames that do not change from the one before, in the top half of the frame.
+  const repeats = (file) => {
+    const W = 64, H = 24, buf = execFileSync("ffmpeg", ["-v", "error", "-i", file, "-vf", `crop=iw:ih/2:0:0,scale=${W}:${H},format=gray`, "-f", "rawvideo", "-"], { maxBuffer: 1 << 26 });
+    let n = 0; for (let i = 1; i < buf.length / (W * H); i++) { let d = 0; for (let j = 0; j < W * H; j++) d += Math.abs(buf[i * W * H + j] - buf[(i - 1) * W * H + j]); if (d / (W * H) < 0.5) n++; }
+    return n;
+  };
+  const rate = (file) => execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=r_frame_rate,nb_frames", "-of", "csv=p=0", file]).toString().trim();
+  const own = await knit();
+  assert.equal(rate(own.file), "25/1,50");
+  assert.equal(own.knit.report.fps, 25);
+  assert.equal(repeats(own.file), 0, "every frame moves");
+  assert.deepEqual(own.unit.issues.filter((i) => i.code === "footage-rate"), []);
+
+  // Beside footage at 30 (in the bottom half), the video is 30, the 25 hitches, and the check says which.
+  const thirty = (await footageProject("", "pan30.mp4", project)).y;
+  store.apply(p.id, { type: "addStitch", stitch: { id: "w", kind: "video", x: 0.5, y: 0.5, w: 0.5, h: 0.5, locked: false, yarnId: thirty.id } }, "human");
+  const mixed = await knit();
+  assert.equal(rate(mixed.file), "30/1,60");
+  assert.ok(repeats(mixed.file) >= 8, `one frame in six of the 25 repeats: ${repeats(mixed.file)}`);
+  assert.match(mixed.unit.issues.find((i) => i.code === "footage-rate")?.message ?? "", /"pan25\.mp4" was shot at 25 frames a second and this video is 30/);
 });
 
 test("Chrome's fast PNG is exactly the pixels Playwright's screenshot gave, at 1x and 2x; where the page is clear, black", async () => {

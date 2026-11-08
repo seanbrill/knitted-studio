@@ -13,7 +13,7 @@ import { mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import sharp from "sharp";
-import { applyCommand, fontFor, hasErrors, overflowIssues, postflight, preflight, resolveStyle, safeZoneIssues, SIZES } from "@knitted/core";
+import { applyCommand, fontFor, hasErrors, overflowIssues, postflight, preflight, resolveStyle, safeZoneIssues, SIZES, videoFps } from "@knitted/core";
 import { activeSwatch, findKnitByHash, getPart, insertKnit, knitPath, listYarn } from "@knitted/core/node";
 import { fontFaceCss, fontPath, manifest as fontManifest } from "@knitted/fonts";
 import { familiesUsed, pageFor } from "@knitted/render";
@@ -176,7 +176,7 @@ export function previewKnit(store, { projectId, patternId, params = {} }) {
   const yarn = listYarn(store, projectId);
   const yarnMap = Object.fromEntries(yarn.map((y) => [y.id, y]));
   const scale = params.scale === 2 ? 2 : 1;
-  return unitsFor(pattern, params, yarn).map((u) => ({ label: u.label, size: u.size, issues: [...u.problems, ...preflight(u.pattern, swatch, { scale, yarn: yarnMap }), ...missingFontIssues(u.pattern, swatch, yarn)] }));
+  return unitsFor(pattern, params, yarn).map((u) => ({ label: u.label, size: u.size, issues: [...u.problems, ...preflight(u.pattern, swatch, { scale, yarn: yarnMap, fps: params.fps }), ...missingFontIssues(u.pattern, swatch, yarn)] }));
 }
 
 /**
@@ -222,8 +222,6 @@ export async function renderPreview(store, patternId, { timeMs = 0, scale = 1, r
 export async function runKnit(store, { jobId, projectId, patternId, params = {}, signal, renderer: injected }) {
   const format = FORMATS[params.format ?? "png"] ? (params.format === "jpg" ? "jpeg" : params.format ?? "png") : "png";
   const scale = params.scale === 2 ? 2 : 1;
-  // 60 frames a second for fast motion: smoother, and about twice the frames to draw.
-  const fps = params.fps === 60 ? 60 : FPS;
   const pattern = store.getPattern(patternId);
   const swatch = activeSwatch(store, projectId);
   const yarn = listYarn(store, projectId);
@@ -252,11 +250,14 @@ export async function runKnit(store, { jobId, projectId, patternId, params = {},
       const entry = { label: unit.label, status: "pending", issues: [...unit.problems] };
       progress.units.push(entry);
       try {
-        const issues = [...unit.problems, ...preflight(unit.pattern, swatch, { scale, yarn: yarnMap }), ...missingFontIssues(unit.pattern, swatch, yarn)];
+        const issues = [...unit.problems, ...preflight(unit.pattern, swatch, { scale, yarn: yarnMap, fps: params.fps }), ...missingFontIssues(unit.pattern, swatch, yarn)];
         entry.issues = issues;
         if (hasErrors(issues)) { entry.status = "failed"; continue; }
 
-        const hash = hashFor(store, unit, swatch, yarnMap, fmt, scale, motion ? fps : FPS);
+        // 30 frames a second, or the footage's own 24 or 25 so none of its frames repeat, or 60
+        // for fast motion when asked: smoother, and about twice the frames to draw.
+        const fps = motion ? videoFps(unit.pattern, yarnMap, params.fps) : FPS;
+        const hash = hashFor(store, unit, swatch, yarnMap, fmt, scale, fps);
         const prior = params.reuse === false ? null : findKnitByHash(store, projectId, hash);
         if (prior && (await stat(knitPath(store, prior)).then(() => true, () => false))) { entry.status = "reused"; entry.knitId = prior.id; results.push(prior); continue; }
 
@@ -335,7 +336,7 @@ export async function runKnit(store, { jobId, projectId, patternId, params = {},
         if (motion) {
           const v = await probeVideo(outFile);
           post = postflight({ kind: "video", width: v.width, height: v.height, expectW: unit.size.w * scale, expectH: unit.size.h * scale, pixFmt: v.pixFmt, frames: v.frames, expectFrames: frameTimes(unit.pattern.durationMs, fps).length, videoMs: v.videoMs, audioMs: v.audioMs });
-          report.frames = v.frames;
+          report.frames = v.frames; report.fps = fps;
         } else {
           const m = await sharp(outFile).metadata();
           post = postflight({ kind: "image", width: m.width, height: m.height, expectW: unit.size.w * scale, expectH: unit.size.h * scale, blank: await isBlank(outFile, unit.pattern, swatch) });
