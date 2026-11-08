@@ -1,16 +1,18 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
-  "next": {
-    "title": "Free stock photos, video, music and sound, with their credits",
-    "items": [
-      "Stock, in the side bar: search free photos, videos, music and sound effects and add them to a project's Yarn or to the Library. Free stock on a project's Yarn page, and Find free stock in the editor's Yarn panel, open it for that project.",
-      "Openverse works with no key: openly licensed photos and sound from across the web. Add a free Pixabay key in Settings, Stock, for its photos and video. A Pexels key you already have works too. A key is kept in your computer's secret store and only sent to its own site.",
-      "Only what a business may use freely is shown: CC0, the public domain, CC BY, and Pixabay's and Pexels' own licences.",
-      "A file you add keeps its credit and licence. Open it in Yarn to see whether it needs a credit, copy the credit line, and open its page.",
-      "Your model can search with search_stock and add the few you will use with add_stock."
-    ]
-  },
   "entries": [
+    {
+      "version": "0.1.21",
+      "date": "2026-11-07",
+      "title": "Free stock photos, video, music and sound, with their credits",
+      "items": [
+        "Stock, in the side bar: search free photos, videos, music and sound effects and add them to a project's Yarn or to the Library. Free stock on a project's Yarn page, and Find free stock in the editor's Yarn panel, open it for that project.",
+        "Openverse works with no key: openly licensed photos and sound from across the web. Add a free Pixabay key in Settings, Stock, for its photos and video. A Pexels key you already have works too. A key is kept in your computer's secret store and only sent to its own site.",
+        "Only what a business may use freely is shown: CC0, the public domain, CC BY, and Pixabay's and Pexels' own licences.",
+        "A file you add keeps its credit and licence. Open it in Yarn to see whether it needs a credit, copy the credit line, and open its page.",
+        "Your model can search with search_stock and add the few you will use with add_stock."
+      ]
+    },
     {
       "version": "0.1.20",
       "date": "2026-11-07",
