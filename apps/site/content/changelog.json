@@ -2,6 +2,19 @@
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
   "entries": [
     {
+      "version": "0.1.18",
+      "date": "2026-11-07",
+      "title": "How your posts did, what works, and posts that go out with the window closed",
+      "items": [
+        "Each post that went out shows its numbers in Posts: views, likes, comments, shares and saves, and how many of those who saw it did something. knitted asks an hour after it goes out, then after 6 hours, a day, 3 days, a week, 2 weeks and a month; Check now asks straight away.",
+        "Insights, in the side bar: each platform's views, every post against the usual for its own account about a week in, and what did better, in a sentence, such as which got more views, videos or pictures, mornings or evenings, short captions or long. Something is said only when each side has 3 posts or more.",
+        "Your model reads the same with post_insights, and list_posts now gives each post's numbers.",
+        "Instagram, Threads, TikTok and YouTube are asked with the sign-in you already gave. X charges for each look, so it is off until you turn on Ask X for numbers too, in Settings, Social. LinkedIn gives no numbers to apps like this one, and says so on the post.",
+        "Close the window while posts are waiting and knitted stays in the menu bar (the system tray on Windows and Linux) until the last one is out, then quits. Quitting with posts waiting asks first. Turn it off in Settings, Social.",
+        "The site's feature list said ten things were coming that have been here for a while: the Pattern editor, Fill mode, batch knitting, Yarn, Parts, Motion, voiceover, your model in the studio, Projects and the installers. It now says what is there, with posting and Insights added."
+      ]
+    },
+    {
       "version": "0.1.17",
       "date": "2026-11-07",
       "title": "Scenes that change, sound you can hear and move, footage that knits fast",
@@ -269,16 +282,5 @@
         "This site, the docs and the vocabulary: Pattern, Swatch, Yarn, Stitch, Knit and Part."
       ]
     }
-  ],
-  "next": {
-    "title": "How your posts did, what works, and posts that go out with the window closed",
-    "items": [
-      "Each post that went out shows its numbers in Posts: views, likes, comments, shares and saves, and how many of those who saw it did something. knitted asks an hour after it goes out, then after 6 hours, a day, 3 days, a week, 2 weeks and a month; Check now asks straight away.",
-      "Insights, in the side bar: each platform's views, every post against the usual for its own account about a week in, and what did better, in a sentence, such as which got more views, videos or pictures, mornings or evenings, short captions or long. Something is said only when each side has 3 posts or more.",
-      "Your model reads the same with post_insights, and list_posts now gives each post's numbers.",
-      "Instagram, Threads, TikTok and YouTube are asked with the sign-in you already gave. X charges for each look, so it is off until you turn on Ask X for numbers too, in Settings, Social. LinkedIn gives no numbers to apps like this one, and says so on the post.",
-      "Close the window while posts are waiting and knitted stays in the menu bar (the system tray on Windows and Linux) until the last one is out, then quits. Quitting with posts waiting asks first. Turn it off in Settings, Social.",
-      "The site's feature list said ten things were coming that have been here for a while: the Pattern editor, Fill mode, batch knitting, Yarn, Parts, Motion, voiceover, your model in the studio, Projects and the installers. It now says what is there, with posting and Insights added."
-    ]
-  }
+  ]
 }
