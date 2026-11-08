@@ -1,16 +1,18 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
-  "next": {
-    "title": "Change a Part in the editor, and a Library every project shares",
-    "items": [
-      "Edit, on a Part of your own, opens it in the editor: the canvas is the Part, and every change is saved to it as you go, one new version for the sitting. Every Pattern that uses it shows the change at once, and Accept the update takes its new shape there too. Done goes back to Parts.",
-      "In a Pattern, select a Part and choose Change the part to open it. A Part written in code opens as its markup and CSS. The starter Parts stay as they come: Edit a copy makes one of your own and opens it.",
-      "Lock a slot in a Part and it is locked in every Pattern that uses the Part straight away, before anyone accepts the update.",
-      "The Library, in the side bar: files every project shares, like a logo, a font or a photo you use for every brand. They are in every project's Yarn in the editor, under From the Library. Move to the Library, on a file in a project, puts one there, and every Pattern that uses it keeps it. Move into a project takes one back when no other project uses it.",
-      "Your model changes a Part with edit_part, adds files to the Library with library: true, and moves one in or out with share_yarn. list_yarn marks the Library's files."
-    ]
-  },
   "entries": [
+    {
+      "version": "0.1.19",
+      "date": "2026-11-07",
+      "title": "Change a Part in the editor, and a Library every project shares",
+      "items": [
+        "Edit, on a Part of your own, opens it in the editor: the canvas is the Part, and every change is saved to it as you go, one new version for the sitting. Every Pattern that uses it shows the change at once, and Accept the update takes its new shape there too. Done goes back to Parts.",
+        "In a Pattern, select a Part and choose Change the part to open it. A Part written in code opens as its markup and CSS. The starter Parts stay as they come: Edit a copy makes one of your own and opens it.",
+        "Lock a slot in a Part and it is locked in every Pattern that uses the Part straight away, before anyone accepts the update.",
+        "The Library, in the side bar: files every project shares, like a logo, a font or a photo you use for every brand. They are in every project's Yarn in the editor, under From the Library. Move to the Library, on a file in a project, puts one there, and every Pattern that uses it keeps it. Move into a project takes one back when no other project uses it.",
+        "Your model changes a Part with edit_part, adds files to the Library with library: true, and moves one in or out with share_yarn. list_yarn marks the Library's files."
+      ]
+    },
     {
       "version": "0.1.18",
       "date": "2026-11-07",
