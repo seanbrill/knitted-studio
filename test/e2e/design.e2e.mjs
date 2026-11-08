@@ -197,6 +197,28 @@ test("the sheet downloads as a picture and as code", async () => {
   assert.ok(names.some((n) => /^website\/fonts\/.+\.woff2$/.test(n)), "with the brand's fonts");
 });
 
+test("everything downloads together: the pictures, the code, its fonts and images, and a style guide of what it is drawn with", async () => {
+  await page.goto(`${studio.url}/projects/${projectId}/designs/${designId}`);
+  await page.getByRole("button", { name: "Download" }).click();
+  const [download] = await Promise.all([page.waitForEvent("download", { timeout: 120000 }), page.getByRole("menuitem", { name: /^Everything/ }).click()]);
+  assert.equal(download.suggestedFilename(), "website.zip");
+  const file = join(mkdtempSync(join(tmpdir(), "knitted-design-all-")), "w.zip");
+  await download.saveAs(file);
+  const names = execFileSync("unzip", ["-Z1", file], { encoding: "utf8" }).trim().split("\n");
+  for (const n of ["website/sheet.png", "website/style-guide.html", "website/style-guide.png", "website/tokens.css", "website/tokens.json", "website/index.html", "website/README.md", "website/03-pages/01-home.html"]) assert.ok(names.includes(n), `${n} in ${names.join(", ")}`);
+  assert.ok(names.some((n) => /^website\/sections\/\d\d-.+\.png$/.test(n)), "each section as a picture");
+  assert.ok(names.some((n) => /^website\/fonts\/.+\.woff2$/.test(n)), "with the brand's fonts");
+  assert.ok(!names.some((n) => n.includes(".render.")), "and not the page it was drawn from");
+  const guide = execFileSync("unzip", ["-p", file, "website/style-guide.html"], { encoding: "utf8" });
+  for (const words of ["Colours", "var(--color-primary)", "Fonts", "var(--font-display)", "Type sizes", "Corners", "var(--radius)", "Spacing"]) assert.ok(guide.includes(words), `the style guide shows ${words}`);
+  assert.match(guide, /src:url\("fonts\//, "its fonts from the folder beside it");
+  const tokens = JSON.parse(execFileSync("unzip", ["-p", file, "website/tokens.json"], { encoding: "utf8" }));
+  assert.match(tokens.colors["color-primary"], /^#[0-9a-f]{6}$/);
+  assert.ok(tokens.fonts["font-display"]);
+  const sheet = await sharp(execFileSync("unzip", ["-p", file, "website/sheet.png"], { maxBuffer: 1 << 28 })).metadata();
+  assert.ok(sheet.width > 1440, `the whole sheet, ${sheet.width} wide`);
+});
+
 test("a sheet is deleted from the list, and Undo brings it back", async () => {
   await page.goto(`${studio.url}/projects/${projectId}/designs`);
   await page.getByText(/4 sections, 10 frames/).waitFor();

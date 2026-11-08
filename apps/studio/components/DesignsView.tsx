@@ -63,6 +63,7 @@ export function DesignsView({ projectId }: { projectId: string }) {
                   <Menu trigger={<IconButton label={`Actions for ${d.name}`}><MoreHorizontal size={16} /></IconButton>} items={[
                     { label: "Make a copy", icon: <Copy size={14} />, onSelect: () => void act(() => api.designs.duplicate(d.id), `Copied ${d.name}`) },
                     { label: "Download the code", icon: <Download size={14} />, onSelect: () => { window.location.href = api.designs.codeUrl(d.id); } },
+                    { label: "Download everything, with a style guide", icon: <Download size={14} />, onSelect: () => { window.location.href = api.designs.bundleUrl(d.id); } },
                     { label: "Delete", icon: <Trash2 size={14} />, danger: true, onSelect: () => void act(() => api.designs.remove(d.id), `Deleted ${d.name}`, () => api.designs.restore(d.id)) },
                   ]} />
                 </span>

@@ -7,3 +7,4 @@ export * from "./voiceover.mjs";
 export * from "./capture.mjs";
 export * from "./footage.mjs";
 export * from "./design.mjs";
+export * from "./design-bundle.mjs";

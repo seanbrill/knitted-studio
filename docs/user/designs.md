@@ -37,10 +37,19 @@ Select a frame to open it beside the board. You can change its name, width, heig
 
 ## Taking it away
 
-**Download** has two choices:
+**Download** has three choices:
 
 - **The sheet, as a picture**: a PNG of the whole board, with its labels. Each section's menu downloads just that section, and **Picture** on a frame downloads that frame at twice the size.
 - **The code**: a ZIP with a page of HTML for each frame, filed by section. It also holds `tokens.css` with your brand, your fonts and the pictures the design uses. Open its `index.html` to see every page. A developer, or a model building the real site, can start from it.
+- **Everything**: a ZIP with the sheet as a picture, each section as a picture, all of the code, the fonts and the pictures the design uses, and a style guide. A big sheet takes a moment to put together. The style guide comes as `style-guide.html` and as a picture of it, and shows what the design is drawn with:
+  - the brand's colours, fonts and corners, each with the CSS variable the pages use, such as `var(--color-primary)`, and how often and where it is used
+  - any colour written out in the code instead of through a variable, saying when it is one of the brand's, so you can see what is off-brand
+  - every type size and weight, largest first, each drawn in the display font
+  - the other corners, the spacing (padding, margins and gaps) and the shadows in the code
+
+  `tokens.json` has the brand's colours, fonts, corners, type sizes and spacing as data, for a design tool or a build.
+
+The list of design sheets has **Download the code** and **Download everything** in each sheet's menu too.
 
 ## Your model
 

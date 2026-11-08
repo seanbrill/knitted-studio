@@ -185,7 +185,7 @@ export async function forModel(png, { max = 2000 } = {}) {
  * cleared of older ones each time. Returns the files, for a zip.
  * @param {any} store
  * @param {string} designId
- * @returns {Promise<{ name: string, entries: { name: string, path: string }[] }>}
+ * @returns {Promise<{ name: string, entries: { name: string, path: string }[], dir: string, root: string, used: Map<string, string>, logo: string | undefined }>}
  */
 export async function designCode(store, designId) {
   const design = getDesign(store, designId);
@@ -247,5 +247,8 @@ export async function designCode(store, designId) {
   }
   await put("index.html", `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(design.name)}</title><style>body{font:16px/1.5 system-ui,sans-serif;max-width:720px;margin:48px auto;padding:0 24px}small,span{color:#666}li{margin:6px 0}</style></head><body><h1>${esc(design.name)}</h1><p>Every frame of the design, as a page. They use tokens.css, the brand's colours, fonts and corners, so a change there changes them all.</p>${contents.join("")}</body></html>`);
   await put("README.md", `# ${design.name}\n\nA design from knitted: each frame is a page of HTML and CSS, in a folder for its section. Open index.html to see them all.\n\n- tokens.css holds the brand: \`${"--color-primary"}\` and the other colours, \`--font-display\`, \`--font-body\`, \`--font-mono\` and \`--radius\`. Build with these, not with the values.\n- fonts/ has the brand's fonts, and images/ the pictures the design uses.\n- A design shows one state of each screen. A menu open and a menu closed are two frames.\n`);
-  return { name: `${root}.zip`, entries };
+  return { name: `${root}.zip`, entries, dir, root, used, logo };
 }
+
+// For the download of everything (design-bundle.mjs): the tiled capture and where the files are.
+export { capture as captureTiles, filesFor as designFiles };

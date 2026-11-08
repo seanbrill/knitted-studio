@@ -23,4 +23,5 @@ export * from "./social-insights.ts";
 export * from "./stock-pure.ts";
 export * from "./gen-pure.ts";
 export * from "./design-pure.ts";
+export * from "./design-styles.ts";
 export type { SocialAccount, SocialPost, PostMetrics, PostChange } from "./social.ts";

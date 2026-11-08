@@ -134,6 +134,7 @@ export const api = {
     /** The sheet, a section or a frame as a PNG to download. */
     pictureUrl: (id: string, o: { section?: string; frame?: string; scale?: 1 | 2 } = {}) => `/api/designs/${id}/picture?${new URLSearchParams(Object.entries(o).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)]))}`,
     codeUrl: (id: string) => `/api/designs/${id}/code`,
+    bundleUrl: (id: string) => `/api/designs/${id}/bundle`,
   },
   voice: {
     config: () => call<VoiceConfig>("GET", "/api/voice/config"),

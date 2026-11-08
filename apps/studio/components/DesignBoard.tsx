@@ -314,6 +314,7 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
           <Menu trigger={<Button size="sm"><Download size={14} aria-hidden /> Download</Button>} items={[
             { label: "The sheet, as a picture", onSelect: () => { window.location.href = api.designs.pictureUrl(design.id); } },
             { label: "The code: a page for each frame", onSelect: () => { window.location.href = api.designs.codeUrl(design.id); } },
+            { label: "Everything: pictures, code, fonts, images and a style guide", onSelect: () => { toast("Putting it together. A big sheet takes a moment to draw."); window.location.href = api.designs.bundleUrl(design.id); } },
           ]} />
         </div>
       </header>
