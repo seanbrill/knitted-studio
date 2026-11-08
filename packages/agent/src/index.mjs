@@ -18,14 +18,22 @@ import { runTool, toolContext, TOOLS } from "@knitted/mcp/context";
 import { READ_ONLY } from "@knitted/mcp/tools";
 import { readMessage, StreamError } from "./stream.mjs";
 import { costOf } from "./prices.mjs";
+import { AUTO, nameOf, pickModel, stepUp } from "./auto.mjs";
+
+export { AUTO, concrete, nameOf } from "./auto.mjs";
 
 export const MODELS = [
-  { id: "claude-sonnet-5-5", label: "Claude Sonnet 5.5 (fast, a good default)" },
+  { id: "claude-sonnet-5-5", label: "Claude Sonnet 5.5 (fast, good all round)" },
   { id: "claude-opus-5-5", label: "Claude Opus 5.5 (best for layout)" },
   { id: "claude-haiku-5-5", label: "Claude Haiku 5.5 (cheapest, quick edits)" },
   { id: "claude-fable-5-1", label: "Claude Fable 5.1 (most capable)" },
 ];
+/** The model for a task of one request, and for a run when none is said. */
 export const DEFAULT_MODEL = "claude-sonnet-5-5";
+/** What a new setup talks to: Auto, the model for each task (auto.mjs). */
+export const DEFAULT_CHOICE = AUTO;
+/** What the person can pick when they talk to it: Auto, or one model for everything. */
+export const CHOICES = [{ id: AUTO, label: "Auto (picks the model for each task, to cost less)" }, ...MODELS];
 export const API_VERSION = "2023-06-01";
 // These models always think, and the thinking counts toward this, so it leaves room for both.
 const MAX_TOKENS = 16000;
@@ -115,6 +123,9 @@ function request({ model, system, messages }, baseUrl, extras) {
   }
   return { json: JSON.stringify(body), betas };
 }
+
+// Refusals that say nothing of how well the model is doing: a pause, or a brand's lock.
+const NOT_ITS_FAULT = /paused you|\blocked\b/i;
 
 const TOO_LONG = "This conversation has grown too long to send to the model. Start a new chat: everything your model made is saved.";
 
@@ -214,7 +225,7 @@ function revisionsSince(store, patternId, rev) {
  * conversation so far, which this adds to in place, so a run that is stopped keeps what it
  * said. Returns what happened; throws AgentError with a one-line fix when it cannot run.
  */
-export async function runAgent({ store, projectId = null, patternId, prompt, mode = "edit", apiKey, model = DEFAULT_MODEL, baseUrl = "https://api.anthropic.com", maxTurns = 25, maxKnits = 24, signal, onEvent = () => {}, onLive = () => {}, fetchImpl = fetch, history = [], system, note, chatId = null }) {
+export async function runAgent({ store, projectId = null, patternId, prompt, mode = "edit", apiKey, model = DEFAULT_MODEL, baseUrl = "https://api.anthropic.com", maxTurns = 25, maxKnits = 24, signal, onEvent = () => {}, onLive = () => {}, fetchImpl = fetch, history = [], system, note, chatId = null, last = null, choose }) {
   if (!apiKey) throw new AgentError("Add your Anthropic key in Settings first, then ask again.", "config");
   if (!String(prompt ?? "").trim()) throw new AgentError("Say what you would like done.", "config");
   // Over a limit already: nothing is sent, and the message stays unsent.
@@ -245,6 +256,22 @@ export async function runAgent({ store, projectId = null, patternId, prompt, mod
     : projectId ? `${asked}\n\n(Project ${projectId}. No pattern is open.)`
     : `${asked}\n\n(No project is open. The projects are: ${store.listProjects().map((p) => `${p.name} (${p.id})`).join(", ") || "none yet"}.)` });
 
+  // The model: the one the person picked, or in Auto the least this message needs. Auto may step
+  // up part way (auto.mjs); a pick the person makes while it runs is taken at the next step.
+  let auto = model === AUTO;
+  let chosen = model;
+  const opening = auto ? pickModel({ prompt, last }) : { model, why: undefined };
+  model = opening.model;
+  const models = [model];
+  onEvent({ type: "model", model, name: nameOf(model), ...(opening.why ? { why: opening.why } : {}) });
+  let since = { failed: 0, steps: 0 };
+  const switchTo = (to, why) => {
+    model = to; since = { failed: 0, steps: 0 };
+    if (!models.includes(to)) models.push(to);
+    onEvent({ type: "model", model: to, name: nameOf(to), why, switched: true });
+  };
+  let context = 0;
+
   const usage = { input: 0, output: 0, cost: 0 };
   const trace = { toolCalls: 0, refusals: [], turns: 0, stopped: null };
   let finalText = "", declined = null;
@@ -262,7 +289,19 @@ export async function runAgent({ store, projectId = null, patternId, prompt, mod
       if (!check.ok) { trace.stopped = "limit"; onEvent({ type: "stopped", why: check.why }); break; }
     }
     trace.turns = turn;
+    if (turn > 1) {
+      let now; try { now = choose?.(); } catch { /* keep to what it was */ }
+      if (now && now !== chosen) {
+        chosen = now; auto = now === AUTO;
+        if (!auto && now !== model) switchTo(now, "you picked it");
+      } else if (auto) {
+        const up = stepUp(model, since);
+        if (up) switchTo(up.model, up.why);
+      }
+    }
     const data = await api(fetchImpl, baseUrl, apiKey, { model, system, messages }, signal, writing);
+    since.steps++;
+    context = (data.usage?.input_tokens ?? 0) + (data.usage?.cache_creation_input_tokens ?? 0) + (data.usage?.cache_read_input_tokens ?? 0);
     usage.input += (data.usage?.input_tokens ?? 0) + (data.usage?.cache_creation_input_tokens ?? 0) + (data.usage?.cache_read_input_tokens ?? 0); usage.output += data.usage?.output_tokens ?? 0;
     usage.cost += spend(store, { kind: "chat", model: data.model ?? model, projectId, chatId, usage: data.usage });
     if (data.stop_reason === "refusal") {
@@ -311,6 +350,8 @@ export async function runAgent({ store, projectId = null, patternId, prompt, mod
         onEvent({ type: "tool_result", name: b.name, summary: refused.length ? `${refused.length} refused` : "ok" });
         results.push({ type: "tool_result", tool_use_id: b.id, content: await toolContent(out) });
       } catch (e) {
+        // A step that went wrong, not one the person or the brand held back.
+        if (!NOT_ITS_FAULT.test(String(e?.message ?? ""))) since.failed++;
         onEvent({ type: "tool_result", name: b.name, summary: `failed: ${e.message}` });
         results.push({ type: "tool_result", tool_use_id: b.id, is_error: true, content: String(e?.message ?? e) });
       }
@@ -326,7 +367,7 @@ export async function runAgent({ store, projectId = null, patternId, prompt, mod
     try { const p = store.getPattern(id); const count = revisionsSince(store, id, rev); return count || rev === null ? [{ patternId: id, projectId: p.projectId, name: p.name, baselineRevisionId: rev, count, made: rev === null }] : []; }
     catch { return []; }
   });
-  return { text: finalText, turns: trace.turns, toolCalls: trace.toolCalls, refusals: trace.refusals, stopped: trace.stopped, declined, usage: priceless(usage), patternId: workId, originalPatternId: patternId, suggestion: suggestion?.id ?? null, baselineRevisionId: baseline, changedCount: workId ? revisionsSince(store, workId, baseline) : 0, changed, knitIn: [...knitIn] };
+  return { text: finalText, model, models, context, turns: trace.turns, toolCalls: trace.toolCalls, refusals: trace.refusals, stopped: trace.stopped, declined, usage: priceless(usage), patternId: workId, originalPatternId: patternId, suggestion: suggestion?.id ?? null, baselineRevisionId: baseline, changedCount: workId ? revisionsSince(store, workId, baseline) : 0, changed, knitIn: [...knitIn] };
 }
 
 /**
@@ -351,6 +392,12 @@ export function startAgentJob(store, args) {
   const note = last?.status === "cancelled" ? "(The person stopped you before you finished the last request. Leave it unless they ask for it again.)"
     : last?.status === "interrupted" ? `(The app closed while you were answering their last message, and your answer was lost. It was: "${last.input?.prompt ?? ""}". Some of it may be done already.)`
     : undefined;
+  // For Auto: the model the chat was last on, how much its last request held, and when it ended.
+  const was = last?.result && typeof last.result.model === "string" ? { model: last.result.model, context: Number(last.result.context) || 0, at: Date.parse(last.finishedAt ?? last.updatedAt) || 0 } : null;
+  // A pick the person makes while it runs (in Settings, or beside any message box) is taken at its next step.
+  const picked = () => { try { return store.getSetting("model", {}).model; } catch { return undefined; } };
+  const atStart = picked();
+  const choose = () => { const v = picked(); return v && v !== atStart && CHOICES.some((c) => c.id === v) ? v : undefined; };
   const created = store.createJob("agent", projectId, { prompt: args.prompt, patternId: args.patternId, mode: args.mode ?? "edit", ...(chat ? { chatId: chat.id } : {}) });
   if (chat) addChatRun(store, chat.id, created.id);
   const ctl = new AbortController(); live.set(created.id, ctl);
@@ -366,7 +413,7 @@ export function startAgentJob(store, args) {
     let end;
     try {
       const apiKey = args.apiKey ?? (await getSecret("anthropic", store.paths.root));
-      end = { status: "done", result: await runAgent({ ...args, projectId, apiKey, signal: ctl.signal, onEvent: record, onLive: words.say, store, history, system: chat?.system, note, chatId: chat?.id ?? null }) };
+      end = { status: "done", result: await runAgent({ ...args, projectId, apiKey, signal: ctl.signal, onEvent: record, onLive: words.say, store, history, system: chat?.system, note, chatId: chat?.id ?? null, last: was, choose }) };
     } catch (e) {
       // Failed before anything came back (no key, no connection): the chat goes on as if it had not been sent.
       const m = history.at(-1);

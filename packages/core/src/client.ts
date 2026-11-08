@@ -175,7 +175,7 @@ export const api = {
     /** The path of the MCP address for Claude Code and other MCP clients, key included. POST makes a new one. */
     mcp: () => call<{ path: string }>("GET", "/api/agent/mcp"),
     newMcpAddress: () => call<{ path: string }>("POST", "/api/agent/mcp", {}),
-    start: (b: { projectId: string; patternId?: string; prompt: string; mode?: "edit" | "suggest" }) => call<AgentJob>("POST", "/api/agent", b),
+    start: (b: { projectId: string; patternId?: string; prompt: string; mode?: "edit" | "suggest"; model?: string }) => call<AgentJob>("POST", "/api/agent", b),
     job: (id: string) => call<AgentJob>("GET", `/api/jobs/${id}`),
     cancel: (id: string) => call<AgentJob>("DELETE", `/api/jobs/${id}`),
     /** What models have been doing lately; subscribeAgent keeps up with it. */
@@ -188,9 +188,9 @@ export const api = {
     list: (q: { pattern?: string; project?: string } = {}) => call<ChatItem[]>("GET", `/api/chats?${new URLSearchParams(Object.entries(q).filter(([, v]) => v) as [string, string][])}`),
     get: (id: string) => call<ChatDetail>("GET", `/api/chats/${id}`),
     /** A new chat and its first message. `projectId` null: the whole studio. */
-    start: (b: { projectId?: string | null; patternId?: string; prompt: string; mode?: "edit" | "suggest" }) => call<{ chat: ChatItem; job: AgentJob }>("POST", "/api/chats", b),
+    start: (b: { projectId?: string | null; patternId?: string; prompt: string; mode?: "edit" | "suggest"; model?: string }) => call<{ chat: ChatItem; job: AgentJob }>("POST", "/api/chats", b),
     /** The next message. `patternId`: the pattern open in the editor, which the message is about. */
-    send: (id: string, b: { prompt: string; mode?: "edit" | "suggest"; patternId?: string }) => call<AgentJob>("POST", `/api/chats/${id}/messages`, b),
+    send: (id: string, b: { prompt: string; mode?: "edit" | "suggest"; patternId?: string; model?: string }) => call<AgentJob>("POST", `/api/chats/${id}/messages`, b),
     remove: (id: string) => call<{ ok: true }>("DELETE", `/api/chats/${id}`),
   },
   /** Photos and video made by a provider, on the person's own key. */
@@ -405,7 +405,7 @@ export interface ModelConfig {
   key: { present: boolean; source: "environment" | "keychain" | "none"; backend: string | null; canStore: boolean };
 }
 /** `note`: what the model says between its tool calls, about what it found and will do next. */
-export type AgentEvent = { type: "text"; text: string } | { type: "note"; text: string } | { type: "tool_call"; name: string; input: unknown } | { type: "tool_result"; name: string; summary: string } | { type: "refusal"; slot: string; why: string } | { type: "stopped"; why: string };
+export type AgentEvent = { type: "text"; text: string } | { type: "note"; text: string } | { type: "tool_call"; name: string; input: unknown } | { type: "tool_result"; name: string; summary: string } | { type: "refusal"; slot: string; why: string } | { type: "stopped"; why: string } | { type: "model"; model: string; name: string; why?: string; switched?: boolean };
 /** A pattern a run changed (or made, `made`), with its revision from before the run: what Undo all puts back. */
 export interface ChangedPattern { patternId: string; projectId: string; name: string; baselineRevisionId: string | null; count: number; made: boolean; }
 export interface AgentJob {
@@ -417,6 +417,8 @@ export interface AgentJob {
     patternId: string | null; originalPatternId: string | null; suggestion: string | null; baselineRevisionId: string | null; changedCount: number;
     /** When the model declined to answer: the reason Anthropic gave, if one. Missing from runs made before chats. */
     declined?: { category: string | null } | null; changed?: ChangedPattern[]; knitIn?: string[];
+    /** The model it ended on, each it was on in turn, and how many tokens its last request held. Missing from runs made before Auto. */
+    model?: string; models?: string[]; context?: number;
   } | null;
 }
 export interface ChatItem {

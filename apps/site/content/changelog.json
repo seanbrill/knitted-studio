@@ -1,5 +1,14 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
+  "next": {
+    "title": "Pick the model as you talk to it, or let Auto pick",
+    "items": [
+      "Beside every message box and in every Ask your model window, a Model menu says which model answers. Pick another at any time; a task that is running takes it from its next step. It is the same choice as Settings, Model.",
+      "Auto picks the model for each task, so it costs no more than it needs: Claude Haiku 5.5 for a quick change, Claude Opus 5.5 for layout, design sheets, drawing and motion, and Claude Sonnet 5.5 for the rest.",
+      "Part way through, Auto moves up a model when steps keep failing or a task turns out bigger, keeping what the model worked out so far. It never moves down part way, and on a long chat it was just in, it stays where reading the chat again would cost more.",
+      "Each answer says which model gave it, and in Auto, why, and when it moved up. Auto is what a new setup starts on."
+    ]
+  },
   "entries": [
     {
       "version": "0.1.28",

@@ -16,6 +16,8 @@ import { Button, ConfirmDialog, IconButton, Markdown, Textarea, icons, useToast 
 import { showingChat, useAgent } from "@/lib/agent";
 import { setCurrentChat, useCurrentChat } from "@/lib/current-chat";
 import { timeAgo, useLive } from "@/lib/hooks";
+import { currentChoice, modelName } from "@/lib/model-choice";
+import { ModelPicker } from "./ModelPicker";
 
 const { AlertTriangle, Check, Sparkles, Trash2, X } = icons;
 
@@ -38,7 +40,7 @@ const watched = new Set<string>();
 // A chat just started, as its start answered: shown at once, while the chat itself loads.
 const seeded = new Map<string, ChatDetail>();
 
-type Step = { kind: "say" | "tool" | "refused"; text: string; state?: "running" | "done" | "failed" };
+type Step = { kind: "say" | "tool" | "refused" | "model"; text: string; state?: "running" | "done" | "failed" };
 /** What a run did, a line a step: what the model said along the way, each tool and how it went, what a lock refused. */
 function stepsOf(events: AgentEvent[], answer?: string): Step[] {
   const out: Step[] = [];
@@ -50,6 +52,8 @@ function stepsOf(events: AgentEvent[], answer?: string): Step[] {
       if (t) { t.state = e.summary.startsWith("failed") ? "failed" : "done"; if (t.state === "failed") t.text += `: ${e.summary.replace(/^failed: /, "")}`; }
     }
     else if (e.type === "refusal") out.push({ kind: "refused", text: `Could not change ${e.slot}: ${e.why}` });
+    // Which model, when Auto picked it or it changed part way.
+    else if (e.type === "model" && (e.why || e.switched)) out.push({ kind: "model", text: e.switched ? `Switched to ${e.name}: ${e.why ?? "you picked it"}` : `${e.name}, ${e.why}` });
   }
   return out;
 }
@@ -168,12 +172,12 @@ export function Chat({ chatId, onStarted, projectId = null, patternId, compact =
     const mode = patternId && suggest ? "suggest" : "edit";
     try {
       if (chatId) {
-        const job = await api.chats.send(chatId, { prompt, mode, patternId });
+        const job = await api.chats.send(chatId, { prompt, mode, patternId, model: currentChoice() });
         watched.add(job.id);
         setData((d) => (d && d.id === chatId && !d.turns.some((t) => t.id === job.id) ? { ...d, turns: [...d.turns, job] } : d));
         setCurrentChat(chatId);
       } else {
-        const r = await api.chats.start({ projectId, patternId, prompt, mode });
+        const r = await api.chats.start({ projectId, patternId, prompt, mode, model: currentChoice() });
         watched.add(r.job.id);
         seeded.set(r.chat.id, { ...r.chat, turns: [r.job] });
         onStarted(r.chat);
@@ -253,7 +257,8 @@ export function Chat({ chatId, onStarted, projectId = null, patternId, compact =
             {patternId
               ? <label className="body-sm" style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={suggest} onChange={(e) => setSuggest(e.target.checked)} /> Suggest only (works on a copy)</label>
               : <span className="body-sm" style={{ color: "var(--ink-muted)" }}>{running ? "Enter adds it to the queue: it goes when this answer is done." : "Enter sends. Shift+Enter starts a new line."}</span>}
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <ModelPicker />
               {running && last && <Button onClick={() => void api.agent.cancel(last.id).catch((e) => setError((e as Error).message))}><X size={14} aria-hidden /> Stop</Button>}
               <Button variant="primary" type="submit" disabled={!text.trim() || (sending && !chatId)}><Sparkles size={14} aria-hidden /> {running || sending ? "Queue it" : "Send"}</Button>
             </div>
@@ -289,6 +294,8 @@ function Turn({ job, latest, compact, projectId, patternId, onChanged }: { job: 
   const changed = (r?.changed ?? []).filter((c) => c.patternId !== r?.suggestion);
   const undoable = changed.filter((c) => c.baselineRevisionId && c.count > 0);
   const now = [...steps].reverse().find((s) => s.state === "running");
+  // The models it was on: from the answer once in, from what it did while it runs.
+  const used = r?.models ?? [...new Set(events.flatMap((e) => (e.type === "model" ? [e.model] : [])))];
 
   const undo = async () => {
     try {
@@ -304,7 +311,7 @@ function Turn({ job, latest, compact, projectId, patternId, onChanged }: { job: 
         <p className="chat-you-text"><span className="sr-only">You: </span>{job.input?.prompt}</p>
       </div>
       <div className="chat-model" aria-busy={running}>
-        <p className="eyebrow chat-model-name"><Sparkles size={12} aria-hidden /> Your model</p>
+        <p className="eyebrow chat-model-name"><Sparkles size={12} aria-hidden /> Your model{used.length > 0 && <span className="chat-model-which">{used.map(modelName).join(", then ")}</span>}</p>
         {r?.text && <Markdown text={r.text} className="chat-answer" />}
         {running && <LiveWords jobId={job.id} />}
         {running && (

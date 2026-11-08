@@ -9,6 +9,8 @@ import { useEffect, useState } from "react";
 import { api, type KnitRecord } from "@knitted/core/client";
 import type { Part, Pattern, Yarn } from "@knitted/core";
 import { Button, Dialog, Field, Textarea, icons, useToast } from "@knitted/ui";
+import { currentChoice } from "@/lib/model-choice";
+import { ModelPicker } from "./ModelPicker";
 
 const { Sparkles } = icons;
 
@@ -121,14 +123,14 @@ export function AskModelDialog({ about, onOpenChange }: { about: About | null; o
     if (!want) { setErr(make ? make.empty : "Say what should change."); return; }
     setBusy(true);
     try {
-      const { chat } = await api.chats.start({ projectId: about.projectId, patternId: about.patternId, prompt: `${about.context}\n\nWhat I want: ${want}` });
+      const { chat } = await api.chats.start({ projectId: about.projectId, patternId: about.patternId, prompt: `${about.context}\n\nWhat I want: ${want}`, model: currentChoice() });
       onOpenChange(false);
       toast(`Your model is on it: ${about.name}`, { label: "Open the chat", onClick: () => router.push(`/ask?chat=${chat.id}`) }, 10_000);
     } catch (e) { setErr((e as Error).message); setBusy(false); }
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange} title={make ? make.title : `Ask your model to change ${about?.what ?? "it"}`} description={about ? `${make ? make.description : about.name}. Say what you want; your model does it in a chat of its own, and you can keep working.` : undefined}
-      actions={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" disabled={busy} onClick={send}><Sparkles size={14} aria-hidden /> {busy ? "Starting..." : "Ask"}</Button></>}>
+      actions={<><ModelPicker /><span style={{ flex: 1 }} /><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" disabled={busy} onClick={send}><Sparkles size={14} aria-hidden /> {busy ? "Starting..." : "Ask"}</Button></>}>
       <form onSubmit={(e) => { e.preventDefault(); void send(); }} style={{ display: "grid", gap: "var(--space-3)" }}>
         <Field label={make ? make.field : "What should change?"} htmlFor="ask-change" error={err}>
           <Textarea id="ask-change" autoFocus rows={4} value={text} onChange={(e) => setText(e.target.value)}

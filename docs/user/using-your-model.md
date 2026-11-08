@@ -25,6 +25,17 @@ To change one thing, choose **Ask your model...** in a Pattern's menu, or **Ask 
 
 Each message is paid for on your key, and the whole conversation goes with it. A long chat costs more a message than a new one, so start a new chat when you change the subject. **Settings, Spending** shows what the answers have cost this month, by model, and sets a **Monthly limit, in dollars** and a **Limit for one answer, in dollars**. At the monthly limit, your model waits until next month. In **Settings, Model**, **Steps per request** and **Files it may knit per request** set how far one request may go.
 
+## Choose the model
+
+Beside every message box, and in every **Ask your model** window, the **Model** menu says which model answers. It is the same choice as in **Settings, Model**, so picking it in one place changes it everywhere. Pick it while your model is working, and it takes your pick from its next step.
+
+- **Auto** picks a model for each task, so a task costs no more than it needs. A quick change, like shorter words or a rename, starts on Claude Haiku 5.5, the cheapest. Layout, design sheets, drawing and motion start on Claude Opus 5.5. Everything else starts on Claude Sonnet 5.5.
+- Part way through a task, Auto moves up a model if steps keep failing or the task turns out bigger than expected. It never moves down part way, since the model above can read what the one before it worked out, and the one below could not.
+- On your next message it can move down again. The exception is a long chat answered in the last few minutes: that chat is still in the model's cache, and having another model read it all again would cost more than it saves.
+- Or pick one model, and it answers everything: Claude Sonnet 5.5, Claude Opus 5.5, Claude Haiku 5.5 or Claude Fable 5.1, the most capable. Auto never picks Fable.
+
+Each answer says which model gave it. In Auto, **What it did** says why it picked that model, and when and why it moved up. Captions for posts and a business's profile, which are written in one go, use Claude Sonnet 5.5 in Auto.
+
 ## Connect it
 
 **From the desktop app.** Open Settings, Model, and copy the command under **Connect Claude Code**. Run it in a terminal, then start Claude Code: it adds knitted to Claude Code for every folder you work in. Or paste the command into Claude Code and ask it to connect. Other apps that speak MCP over HTTP take the address underneath it. It works while knitted is open. The address holds a key, so keep it to yourself; **Make a new address** shuts the old one.

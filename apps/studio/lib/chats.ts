@@ -1,13 +1,15 @@
 // What the chat routes share with the editor's one-off requests: how the person set the
 // model up, whether there is a key, and a chat as the studio shows it.
 
+import { CHOICES, DEFAULT_CHOICE } from "@knitted/agent";
 import { secretStatus, type ChatSummary, type Job, type Store } from "@knitted/core/node";
 import { fail } from "./server";
 
-/** The model and limits chosen in Settings, Model, for the next run. */
-export function modelRun(s: Store) {
+/** The model and limits chosen in Settings, Model, for the next run: the model picked beside the message, if one was. */
+export function modelRun(s: Store, asked?: string) {
   const cfg = s.getSetting("model", { model: undefined as string | undefined, maxTurns: 25, maxKnits: 24 });
-  return { model: cfg.model, maxTurns: cfg.maxTurns, maxKnits: cfg.maxKnits, baseUrl: process.env.KNITTED_ANTHROPIC_URL || undefined };
+  const model = [asked, cfg.model].find((m) => m && CHOICES.some((c) => c.id === m)) ?? cfg.model ?? DEFAULT_CHOICE;
+  return { model, maxTurns: cfg.maxTurns, maxKnits: cfg.maxKnits, baseUrl: process.env.KNITTED_ANTHROPIC_URL || undefined };
 }
 
 /** The answer to send when there is no key yet, or null when there is one. */

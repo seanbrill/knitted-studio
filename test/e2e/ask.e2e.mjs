@@ -357,6 +357,43 @@ test("with the chat on screen, a run that ends there is not announced again", as
   assert.equal(await page.locator(".toast").filter({ hasText: "is done" }).count(), 0);
 });
 
+test("the model is picked beside the message: one for everything, or Auto, which says which it picked and why", async () => {
+  const picker = page.getByRole("combobox", { name: "Model" });
+  assert.match(await picker.innerText(), /Auto/);
+  await picker.click();
+  await page.getByRole("option", { name: /^Claude Opus 5\.5/ }).click();
+  assert.match(await picker.innerText(), /Opus 5\.5/);
+  const convo = page.getByRole("list", { name: "Conversation" });
+  await page.getByLabel("Message your model").fill("tighten the headline with opus");
+  await page.getByRole("button", { name: "Send" }).click();
+  const picked = convo.locator(".chat-turn").filter({ hasText: "tighten the headline with opus" });
+  await picked.getByText("Headline written.").waitFor({ timeout: 30000 });
+  assert.equal(carrying("tighten the headline with opus").model, "claude-opus-5-5");
+  assert.equal(await picked.locator(".chat-model-which").innerText(), "Opus 5.5");
+  assert.equal((await j("GET", "/api/agent/model")).body.model, "claude-opus-5-5", "the same choice as Settings");
+
+  // Back to Auto: a quick change goes to the cheapest model, and the answer says which and why.
+  await picker.click();
+  await page.getByRole("option", { name: /^Auto/ }).click();
+  await page.getByLabel("Message your model").fill("rename it to Spring");
+  await page.getByRole("button", { name: "Send" }).click();
+  const quick = convo.locator(".chat-turn").filter({ hasText: "rename it to Spring" });
+  await quick.getByText("Headline written.").waitFor({ timeout: 30000 });
+  assert.equal(carrying("rename it to Spring").model, "claude-haiku-5-5");
+  assert.equal(await quick.locator(".chat-model-which").innerText(), "Haiku 5.5");
+  await quick.getByText(/^What it did/).click();
+  await quick.getByText("Claude Haiku 5.5, picked for a quick change").waitFor();
+
+  // In an Ask dialog too.
+  const p = await pattern();
+  await page.goto(`${studio.url}/projects/${projectId}`);
+  await page.getByRole("button", { name: `Actions for ${p.name}` }).first().click();
+  await page.getByRole("menuitem", { name: "Ask your model..." }).click();
+  const dialog = page.getByRole("dialog", { name: "Ask your model to change this pattern" });
+  assert.match(await dialog.getByRole("combobox", { name: "Model" }).innerText(), /Auto/);
+  await page.keyboard.press("Escape");
+});
+
 test("Spending shows what the answers cost, and a monthly limit stops the next one with a way to raise it", async () => {
   const u = (await j("GET", "/api/agent/usage")).body;
   assert.ok(u.month > 0 && u.models.length > 0, "the answers so far were priced and kept");

@@ -8,6 +8,7 @@ import { readFile } from "node:fs/promises";
 import { getBrief, getKnit, knitPath, listYarn, setKnitPost, ValidationError } from "@knitted/core/node";
 import { untrusted } from "@knitted/mcp/tools";
 import { AgentError, API_VERSION, DEFAULT_MODEL, failure, mayAsk, spend } from "./index.mjs";
+import { concrete } from "./auto.mjs";
 
 export const POST_SYSTEM = `You write what goes with a social post for knitted.studio, an app where a business makes its posts: the caption, the hashtags, and which track from the business's own music to put under it.
 
@@ -86,6 +87,8 @@ async function picture(store, knit) {
  * @param {{ ask?: string, apiKey?: string | null, model?: string, baseUrl?: string, signal?: AbortSignal, fetchImpl?: typeof fetch }} [o]
  */
 export async function writePost(store, knitId, { ask, apiKey, model = DEFAULT_MODEL, baseUrl = "https://api.anthropic.com", signal, fetchImpl = fetch } = {}) {
+  // Words to post are worth the all-round model, in Auto too.
+  model = concrete(model, DEFAULT_MODEL);
   if (!apiKey) throw new AgentError("Add your Anthropic key in Settings first, then write the caption again.", "config");
   if (ask && ask.length > 2000) throw new ValidationError("Say what to change in 2000 characters or fewer.");
   const knit = getKnit(store, knitId);

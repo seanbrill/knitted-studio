@@ -17,6 +17,7 @@ import { createSwatchFromProposal, getBrief, getSecret, getYarn, listYarn, pdfTe
 import { captureSite, renderingFetcher } from "@knitted/engine";
 import { untrusted } from "@knitted/mcp/tools";
 import { AgentError, API_VERSION, DEFAULT_MODEL, mayAsk, spend } from "./index.mjs";
+import { concrete } from "./auto.mjs";
 import { readMessage, StreamError } from "./stream.mjs";
 
 const MAX_TOKENS = 16000;
@@ -131,6 +132,8 @@ async function failure(res) {
  * it so far. Returns the markdown and whether it was cut off at the end.
  */
 export async function writeProfile({ prompt, apiKey, model = DEFAULT_MODEL, baseUrl = "https://api.anthropic.com", signal, onText = () => {}, fetchImpl = fetch }) {
+  // A profile is one long careful read of a site: the all-round model, in Auto too.
+  model = concrete(model, DEFAULT_MODEL);
   if (!apiKey) throw new AgentError("Add your Anthropic key in Settings first, then build the profile again.", "config");
   const body = JSON.stringify({ model, max_tokens: MAX_TOKENS, stream: true, system: PROFILE_SYSTEM, messages: [{ role: "user", content: prompt }] });
   let res;
@@ -253,7 +256,7 @@ export function startSync(store, o) {
             const said = [...(site?.notes ?? []), ...(out.cutOff ? ["It ran past the longest a reply may be, so the end of it may be missing."] : [])];
             setProfile(store, projectId, out.profile, {
               actor: "model", built: true,
-              source: { kind: site ? "site" : "written", ...(site ? { url: site.url, pages: site.pages.map((p) => ({ url: p.url, title: p.title })) } : {}), model: model ?? DEFAULT_MODEL, ...(said.length ? { notes: said } : {}), ...(ref.used.length ? { reference: ref.used } : {}) },
+              source: { kind: site ? "site" : "written", ...(site ? { url: site.url, pages: site.pages.map((p) => ({ url: p.url, title: p.title })) } : {}), model: concrete(model, DEFAULT_MODEL), ...(said.length ? { notes: said } : {}), ...(ref.used.length ? { reference: ref.used } : {}) },
             });
             step("profile", "done", out.cutOff ? "Written, but it ran long and the end may be missing." : "Written.");
           }

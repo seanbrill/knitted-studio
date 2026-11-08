@@ -280,6 +280,10 @@
 .design-frame-box > .model-on .model-tag-dot { width: calc(6px / var(--z)); height: calc(6px / var(--z)); }
 /* A tab of a project where a model works now. */
 .tab[data-model] { box-shadow: inset 0 0 0 2px var(--red); }
+/* Which model answers, beside a message box (ModelPicker.tsx), and which one did, on an answer. */
+.model-picker .select-trigger { min-height: 32px; padding-block: 4px; font-size: var(--text-sm, 13px); }
+.chat-model-which { margin-left: 8px; font-weight: 500; color: var(--ink-muted); text-transform: none; letter-spacing: 0; }
+.chat-steps li[data-kind="model"] { color: var(--ink-muted); }
 .tab-model { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-left: 6px; vertical-align: middle; }
 .tab-model:not(.working) { background: var(--red); }
 
