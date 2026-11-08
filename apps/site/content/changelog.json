@@ -1,5 +1,11 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
+  "next": {
+    "title": "Changing Parts in the editor, and the Library, now in the app",
+    "items": [
+      "0.1.19 never reached anyone: the app failed to build its Library page. This version has everything listed under 0.1.19, below, and the Library page opens."
+    ]
+  },
   "entries": [
     {
       "version": "0.1.19",
