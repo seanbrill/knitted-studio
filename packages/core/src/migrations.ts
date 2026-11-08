@@ -400,4 +400,10 @@ export const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    version: 18,
+    name: "knit favourites",
+    // A knit the person marked as one they like: when, or null.
+    sql: `alter table knits add column favorite_at text;`,
+  },
 ];

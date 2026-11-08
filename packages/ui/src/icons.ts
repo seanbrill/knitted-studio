@@ -18,6 +18,8 @@ export { SlidersHorizontal } from "lucide-react";
 export { ChartNoAxesColumn } from "lucide-react";
 // The Library: what every project shares. Stock: free photos, video and sound to add to it.
 export { Library, Images } from "lucide-react";
+// Favourite knits, and the hand that drags the view about.
+export { Star, Hand } from "lucide-react";
 // The timeline: hear the sound while it plays, or not.
 export { Volume2, VolumeX } from "lucide-react";
 // Design sheets: sections moved up and down the board.

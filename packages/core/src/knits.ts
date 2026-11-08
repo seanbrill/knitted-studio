@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { newId } from "./ids.ts";
 import { NotFoundError, type Store } from "./store.ts";
 import { folderNamed } from "./folders.ts";
+import { SIZES } from "./types.ts";
 
 export interface KnitIssue { level: "error" | "warning"; code: string; message: string; stitchId?: string; slot?: string; }
 /** What goes with a knit when it is posted. `audioId` is a track in the project's Yarn. */
@@ -25,6 +26,8 @@ export interface KnitRecord {
   post: KnitPost;
   /** When the person first opened or downloaded it. Null: nobody has looked at it yet. */
   seenAt: string | null;
+  /** Marked as one the person likes, to find again with the Favourites filter. */
+  favorite: boolean;
   createdAt: string;
   /** Set by a listing: its pattern was saved after it was made, so it may be out of date. */
   patternChangedSince?: boolean;
@@ -35,12 +38,12 @@ const toKnit = (r: Row): KnitRecord => ({
   id: r.id as string, projectId: r.project_id as string, patternId: (r.pattern_id as string) ?? null, patternName: r.pattern_name as string,
   jobId: (r.job_id as string) ?? null, batchId: (r.batch_id as string) ?? null, label: r.label as string, file: r.file as string,
   kind: r.kind as "image" | "video", format: r.format as string, width: Number(r.width), height: Number(r.height), bytes: Number(r.bytes),
-  durationMs: r.duration_ms == null ? null : Number(r.duration_ms), hash: r.hash as string, report: JSON.parse(r.report as string), folder: (r.folder as string) ?? "", tags: JSON.parse((r.tags as string) ?? "[]"), post: JSON.parse((r.post as string) ?? "{}"), seenAt: (r.seen_at as string) ?? null, createdAt: r.created_at as string,
+  durationMs: r.duration_ms == null ? null : Number(r.duration_ms), hash: r.hash as string, report: JSON.parse(r.report as string), folder: (r.folder as string) ?? "", tags: JSON.parse((r.tags as string) ?? "[]"), post: JSON.parse((r.post as string) ?? "{}"), seenAt: (r.seen_at as string) ?? null, favorite: r.favorite_at != null, createdAt: r.created_at as string,
 });
 
 export const knitPath = (store: Store, k: Pick<KnitRecord, "projectId" | "file">) => join(store.paths.outDir(k.projectId), k.file);
 
-export function insertKnit(store: Store, k: Omit<KnitRecord, "id" | "createdAt" | "folder" | "tags" | "post" | "seenAt">): KnitRecord {
+export function insertKnit(store: Store, k: Omit<KnitRecord, "id" | "createdAt" | "folder" | "tags" | "post" | "seenAt" | "favorite">): KnitRecord {
   const id = newId("kn"), t = new Date().toISOString();
   store.write(() => {
     store.db.prepare("insert into knits (id, project_id, pattern_id, pattern_name, job_id, batch_id, label, file, kind, format, width, height, bytes, duration_ms, hash, report, created_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
@@ -54,12 +57,28 @@ export function getKnit(store: Store, id: string): KnitRecord {
   if (!r) throw new NotFoundError("That knit is not here any more.");
   return toKnit(r);
 }
-/** `folder`: only what is in that folder, or in the folders inside it. */
-type KnitFilter = { patternId?: string; batchId?: string; folder?: string };
+/** `folder`: only what is in that folder, or in the folders inside it. `favorite`: only the person's favourites. */
+type KnitFilter = {
+  patternId?: string; batchId?: string; folder?: string; favorite?: boolean;
+  /** Pictures or videos. */
+  kind?: "image" | "video";
+  /** A named size, as SIZES has them, at any scale; or "Other" for every other shape. */
+  size?: string;
+};
+// The same test as sizeNamed: within a hundredth of the shape.
+const shapeSql = "abs(width * ? - height * ?) <= 0.01 * height * ?";
 function knitWhere(store: Store, projectId: string, f: KnitFilter) {
   const where = ["project_id = ?"]; const args: (string | number)[] = [projectId];
   if (f.patternId) { where.push("pattern_id = ?"); args.push(f.patternId); }
   if (f.batchId) { where.push("batch_id = ?"); args.push(f.batchId); }
+  if (f.favorite) where.push("favorite_at is not null");
+  if (f.kind) { where.push("kind = ?"); args.push(f.kind); }
+  if (f.size === "Other") { where.push(`not (${SIZES.map(() => shapeSql).join(" or ")})`); for (const s of SIZES) args.push(s.h, s.w, s.w); }
+  else if (f.size) {
+    const s = SIZES.find((x) => x.name.toLowerCase() === f.size!.toLowerCase());
+    if (!s) throw new Error(`No size is called ${f.size}. Use one of: ${[...SIZES.map((x) => x.name), "Other"].join(", ")}.`);
+    where.push(shapeSql); args.push(s.h, s.w, s.w);
+  }
   const folder = folderNamed(store, projectId, "knits", f.folder);
   // substr and length both count characters, as the folder's own names do.
   if (folder) { where.push("(folder = ? or substr(folder, 1, length(?)) = ?)"); args.push(folder, `${folder}/`, `${folder}/`); }
@@ -113,6 +132,15 @@ export function setKnitPost(store: Store, id: string, change: KnitPost): KnitRec
   store.write(() => store.db.prepare("update knits set post = ? where id = ?").run(JSON.stringify(post), id));
   return getKnit(store, id);
 }
+/** Mark knits as favourites, or not. A favourite marked again keeps when it was first marked. Returns how many changed. */
+export function setKnitFavorite(store: Store, ids: string[], favorite: boolean): number {
+  for (const id of ids) getKnit(store, id);
+  const t = new Date().toISOString();
+  return store.write(() => ids.reduce((n, id) => n + Number((favorite
+    ? store.db.prepare("update knits set favorite_at = ? where id = ? and favorite_at is null").run(t, id)
+    : store.db.prepare("update knits set favorite_at = null where id = ? and favorite_at is not null").run(id)).changes), 0));
+}
+
 /** The person has looked at these knits. One seen before keeps the time it was first seen. */
 export function markKnitsSeen(store: Store, ids: string[]): number {
   if (!ids.length) return 0;

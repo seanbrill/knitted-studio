@@ -5,6 +5,7 @@ import { yarnFileUrl, yarnThumbUrl } from "@knitted/core/client";
 import { bounds, center, intersects, resizeBox, rotatePt, snapMove, toFrac, toPx, union, angleTo, type Box, type Command, type Guide, type Handle, type Stitch } from "@knitted/core";
 import { bodyHtml, pageFor } from "@knitted/render/pure";
 import { liveStitches, useEditor, ZOOM_MAX, ZOOM_MIN } from "@/lib/editor/store";
+import { useSpaceHeld, wheelZoom } from "@/lib/zoom";
 import { resolveStyle, compileMotion } from "@knitted/core";
 import type { Rect } from "@/lib/editor/live";
 import { ModelLayer } from "./ModelLayer";
@@ -18,10 +19,8 @@ const SNAP_PX = 6;
 // fits, it sits in the middle; where it does not, its edge comes this far in at most.
 const PAD = 48;
 // A scroll moves the canvas a little less than the system would move a page: the frame is
-// placed by eye. A pinch zooms this much a pixel, and one step of a wheel at most this much.
+// placed by eye. How far a pinch zooms is wheelZoom's, the same on a design sheet.
 const PAN_RATE = 0.85;
-const ZOOM_RATE = 0.006;
-const ZOOM_EVENT = 1.08;
 
 type Gesture =
   | { kind: "move"; start: { x: number; y: number }; orig: Record<string, Box>; moved: boolean }
@@ -57,6 +56,8 @@ export function Canvas({ projectId, chatOpen, onOpenChat }: { projectId: string;
 
   // ── where the frame is: its top-left corner in the canvas, null for the middle ──
   const [pan, setPan] = useState<Point | null>(null);
+  // A place on the frame, in its own pixels, to bring to the middle once a zoom to it is drawn.
+  const [focus, setFocus] = useState<Point | null>(null);
   const place = useCallback((p: Point | null, s: number): Point => {
     const axis = (v: number | undefined, a: number, room: number) => (v === undefined || a + 2 * PAD <= room ? (room - a) / 2 : Math.min(PAD, Math.max(room - PAD - a, v)));
     return { x: axis(p?.x, W * s, box.w), y: axis(p?.y, H * s, box.h) };
@@ -66,7 +67,8 @@ export function Canvas({ projectId, chatOpen, onOpenChat }: { projectId: string;
   const [drawnAt, setDrawnAt] = useState(scale);
   if (drawnAt !== scale) {
     setDrawnAt(scale); setAnchor(null);
-    if (st.zoom === "fit") setPan(null);
+    if (focus) { setFocus(null); setPan(place({ x: box.w / 2 - focus.x * scale, y: box.h / 2 - focus.y * scale }, scale)); }
+    else if (st.zoom === "fit") setPan(null);
     else {
       const was = place(pan, drawnAt), a = anchor ?? { x: box.w / 2, y: box.h / 2 }, k = scale / drawnAt;
       setPan(place({ x: a.x - (a.x - was.x) * k, y: a.y - (a.y - was.y) * k }, scale));
@@ -100,7 +102,7 @@ export function Canvas({ projectId, chatOpen, onOpenChat }: { projectId: string;
       if (e.ctrlKey || e.metaKey) {
         const z = useEditor.getState();
         const now = z.zoom === "fit" ? z.fitScale : z.zoom;
-        const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, now * Math.min(ZOOM_EVENT, Math.max(1 / ZOOM_EVENT, Math.exp(-dy * ZOOM_RATE)))));
+        const next = wheelZoom(now, dy, ZOOM_MIN, ZOOM_MAX);
         if (next === now) return;
         const r = el.getBoundingClientRect();
         setAnchor({ x: e.clientX - r.left, y: e.clientY - r.top });
@@ -115,14 +117,23 @@ export function Canvas({ projectId, chatOpen, onOpenChat }: { projectId: string;
     return () => el.removeEventListener("wheel", onWheel);
   }, [panBy]);
 
-  // Dragging the space around the frame, or dragging anywhere with the middle button, moves the canvas.
-  const drag = useRef<{ id: number; x: number; y: number; from: Point; moved: boolean } | null>(null);
+  // Dragging the space around the frame, dragging anywhere with the middle button, or anywhere
+  // at all with Space held or the hand on, moves the canvas.
+  const space = useSpaceHeld();
+  const handy = st.hand || space;
+  const drag = useRef<{ id: number; x: number; y: number; from: Point; moved: boolean; hand: boolean } | null>(null);
   const [dragging, setDragging] = useState(false);
   const panDown = (e: React.PointerEvent) => {
-    if (!(e.button === 1 || (e.button === 0 && e.target === e.currentTarget))) return;
+    if (!(e.button === 1 || (e.button === 0 && (handy || e.target === e.currentTarget)))) return;
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
-    drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY, from: at, moved: false };
+    drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY, from: at, moved: false, hand: handy };
+  };
+  // With the hand, a press on the frame is the canvas's, not a stitch's: taken before the frame sees it.
+  const handDown = (e: React.PointerEvent) => {
+    if (!handy || e.button !== 0 || editing) return;
+    e.stopPropagation();
+    panDown(e);
   };
   const panMove = (e: React.PointerEvent) => {
     const d = drag.current; if (!d || d.id !== e.pointerId) return;
@@ -135,8 +146,20 @@ export function Canvas({ projectId, chatOpen, onOpenChat }: { projectId: string;
     const d = drag.current; if (!d || d.id !== e.pointerId) return;
     drag.current = null; setDragging(false);
     // A click on the space around the frame, not a drag, lets go of what is selected.
-    if (!d.moved && e.button === 0 && !editing) st.select([]);
+    if (!d.moved && e.button === 0 && !editing && !d.hand) st.select([]);
   };
+
+  // Zoom to selection: what is selected, as big as the canvas holds it, in the middle.
+  const zoomAsk = st.zoomAsk;
+  useEffect(() => {
+    if (!zoomAsk) return;
+    const u = union(liveStitches(useEditor.getState()).filter((s) => zoomAsk.ids.includes(s.id)).map(stitchBox));
+    if (!u) return;
+    const want = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.min((box.w - 2 * PAD) / Math.max(u.w, 1), (box.h - 2 * PAD) / Math.max(u.h, 1))));
+    const c = { x: u.x + u.w / 2, y: u.y + u.h / 2 };
+    if (Math.abs(want - shown.current.scale) < 1e-6) setPan(shown.current.place({ x: box.w / 2 - c.x * want, y: box.h / 2 - c.y * want }, want));
+    else { setFocus(c); useEditor.getState().setZoom(want); }
+  }, [zoomAsk?.n]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── the page in the iframe: the SAME renderer the engine uses ──────────────
   const ctx = useMemo(() => ({
@@ -306,8 +329,9 @@ export function Canvas({ projectId, chatOpen, onOpenChat }: { projectId: string;
   const barY = room.h > box.h + 0.5 ? { top: ((PAD - at.y) / room.h) * box.h, height: (box.h / room.h) * box.h } : null;
 
   return (
-    <div ref={view} data-testid="canvas-view" className="canvas-view" data-dragging={dragging || undefined}
-      onPointerDown={panDown} onPointerMove={panMove} onPointerUp={panUp} onPointerCancel={panUp} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
+    <div ref={view} data-testid="canvas-view" className="canvas-view" data-dragging={dragging || undefined} data-hand={handy || undefined}
+      onPointerDownCapture={handDown} onPointerDown={panDown} onPointerMove={panMove} onPointerUp={panUp} onPointerCancel={panUp} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
+      onDoubleClick={(e) => { if (e.target === e.currentTarget && !handy) { st.setZoom("fit"); setPan(null); } }}
       style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: "hidden", background: "var(--surface-sunken)", position: "relative", touchAction: "none", overscrollBehavior: "none" }}>
       <div data-testid="canvas-frame" style={{ position: "absolute", left: 0, top: 0, width: W * scale, height: H * scale, transform: `translate(${at.x}px, ${at.y}px)`, boxShadow: "var(--shadow-lift)", borderRadius: 2 }}>
         <iframe ref={frameEl} title="Pattern canvas" srcDoc={srcDoc} onLoad={() => setReady(true)} tabIndex={-1}
@@ -316,7 +340,7 @@ export function Canvas({ projectId, chatOpen, onOpenChat }: { projectId: string;
           onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
           onDoubleClick={(e) => { const h = hitTest(toFrame(e)); if (h?.kind === "text") { setEditing(h.id); st.select([h.id]); } }}
           onDragOver={(e) => { if (e.dataTransfer.types.includes("application/x-knitted-yarn")) e.preventDefault(); }} onDrop={onDrop}
-          style={{ position: "absolute", inset: 0, touchAction: "none", cursor: gesture?.kind === "move" ? "grabbing" : hover ? "move" : "default" }}>
+          style={{ position: "absolute", inset: 0, touchAction: "none", cursor: handy ? "inherit" : gesture?.kind === "move" ? "grabbing" : hover ? "move" : "default" }}>
           {hover && !gesture && stitches.filter((s) => s.id === hover).map((s) => outline(s, "hover"))}
           {stitches.filter((s) => s.locked && !selection.includes(s.id) && !(resolveStyle(swatch, s.style).hidden)).map((s) => {
             const b = stitchBox(s);

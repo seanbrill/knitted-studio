@@ -21,7 +21,9 @@ Or choose **Design with your model** and say what you want, like *our whole site
 
 - Each section has a name, and can have a note beside it. Use **Add a section** for one of your own, such as *Shop* or *Checkout*. A section's menu renames it, moves it up or down, downloads it as a picture, or deletes it.
 - A frame is a page, a screen or a piece of one, at a width: **Desktop** 1440, **Tablet** 834, **Mobile** 390, or one of your own. A frame is as tall as what is in it, unless you give it a fixed height, such as one phone screen.
-- **Fit** shows the widest section across the window. Zoom in to read the detail. The labels stay the same size at any zoom.
+- **Fit** shows the widest section across the window. Zoom in as far as 400% to read the detail. Pinch, or hold Ctrl and scroll, to zoom about the pointer, or use the zoom menu. The labels stay the same size at any zoom.
+- Double-click a frame to zoom to it, whole and in the middle. Double-click the space between frames to fit again.
+- Scroll to move about the board, or drag the space between frames. Hold Space, or turn on the **Hand** (press H), to drag over the frames too. The keys are the editor's: Shift+1 fits, Shift+2 zooms to the selected frame, and Shift+0 is 100%.
 - **Undo** takes back the last change to the sheet, whether you made it or your model did. Press it again to go further back.
 
 ## Changing a frame

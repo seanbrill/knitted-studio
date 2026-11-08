@@ -219,6 +219,7 @@ A knit is posted with a caption, hashtags and maybe a track. Write them in the b
 - Hashtags: ones people really search, mixing broad and specific (place, product, community). No banned or spammy tags, no tag stuffing.
 - Audio: a track from the project's Yarn (kind audio) that suits the knit's pace, and a sentence on why.
 - set_knit_post saves them on the knit; tag_knit gives it words to find it by.
+- The person stars the knits they like best: list_knits with favorite true lists them. Start from those when asked for more like what they liked.
 
 Each platform reads differently:
 - Instagram: hook under 125 characters; up to 2,200; 3 to 8 hashtags at the end.

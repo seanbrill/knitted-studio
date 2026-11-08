@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useEditor } from "@/lib/editor/store";
+import { typingIn, zoomKey } from "@/lib/zoom";
 import type { Command, Stitch } from "@knitted/core";
 
 let clipboard: Stitch[] = [];
@@ -29,9 +30,16 @@ export function useEditorKeys({ onShortcuts, onFit, onPanels }: { onShortcuts: (
       if (mod && key === "d" && sel.length) { e.preventDefault(); st.dispatch(duplicateStitches(sel), { label: "Duplicate" }); return; }
       if (mod && key === "c" && sel.length) { clipboard = sel.map((s) => ({ ...s })); return; }
       if (mod && key === "v" && clipboard.length) { e.preventDefault(); st.dispatch(duplicateStitches(clipboard, 0.03), { label: "Paste" }); return; }
-      if (mod && key === "0") { e.preventDefault(); onFit(); return; }
-      if (mod && (key === "=" || key === "+")) { e.preventDefault(); st.zoomStep(1); return; }
-      if (mod && key === "-") { e.preventDefault(); st.zoomStep(-1); return; }
+      const zk = typingIn(el) ? null : zoomKey(e);
+      if (zk) {
+        e.preventDefault();
+        if (zk === "in" || zk === "out") st.zoomStep(zk === "in" ? 1 : -1);
+        else if (zk === "fit") onFit();
+        else if (zk === "actual") st.setZoom(1);
+        else if (zk === "selection") st.zoomToSelection();
+        else st.setHand(!st.hand);
+        return;
+      }
       if (mod && key === "/") { e.preventDefault(); onShortcuts(); return; }
       if (mod && key === "\\" && onPanels) { e.preventDefault(); onPanels(); return; }
       if (mod && (key === "]" || key === "[") && sel.length === 1) {
@@ -61,7 +69,8 @@ export function useEditorKeys({ onShortcuts, onFit, onPanels }: { onShortcuts: (
 export const SHORTCUTS: [string, string][] = [
   ["Undo / redo", "Ctrl or Cmd + Z / Shift + Z"], ["Select all", "Ctrl or Cmd + A"], ["Duplicate", "Ctrl or Cmd + D"], ["Copy / paste", "Ctrl or Cmd + C / V"],
   ["Delete", "Delete or Backspace"], ["Nudge 1px / 10px", "Arrow keys / Shift + arrows"], ["Bring forward / back", "Ctrl or Cmd + ] / ["], ["To front / back", "Ctrl or Cmd + Shift + ] / ["],
-  ["Edit text", "Double-click"], ["Add to selection", "Shift + click"], ["Keep proportions", "Shift while resizing"], ["Resize from centre", "Alt while resizing"], ["Zoom", "Ctrl or Cmd + plus / minus, 0 to fit"],
-  ["Zoom where the pointer is", "Pinch, or Ctrl or Cmd + scroll"], ["Move around the canvas", "Scroll, or drag the space around it"],
+  ["Edit text", "Double-click"], ["Add to selection", "Shift + click"], ["Keep proportions", "Shift while resizing"], ["Resize from centre", "Alt while resizing"], ["Zoom in / out", "Ctrl or Cmd + plus / minus, or plus / minus"],
+  ["Fit / to selection / 100%", "Shift + 1 / 2 / 0, or Ctrl or Cmd + 0 to fit"], ["Zoom where the pointer is", "Pinch, or Ctrl or Cmd + scroll"],
+  ["Move around the canvas", "Scroll, hold Space and drag, or drag the space around it"], ["The hand: drag anywhere to move around", "H"], ["Fit, from the space around it", "Double-click"],
   ["Hide or show the side panels", "Ctrl or Cmd + \\"], ["This list", "Ctrl or Cmd + /"],
 ];

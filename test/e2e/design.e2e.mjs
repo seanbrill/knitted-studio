@@ -97,6 +97,66 @@ test("the model designs a page while the board is open, and sees it", async () =
   await page.getByText("by your model").first().waitFor();
 });
 
+test("the board zooms past 100% and about the pointer, zooms to a frame, and drags about", async () => {
+  const view = page.locator(".design-view");
+  const box = (name) => page.locator("[data-frame-box]").filter({ has: page.locator(`iframe[title="${name}"]`) }).boundingBox();
+  await page.getByRole("button", { name: /^Zoom: fit to screen/ }).click();
+  await page.getByRole("menuitem", { name: /^200%/ }).click();
+  await page.getByRole("button", { name: "Zoom: 200%" }).waitFor();
+  await page.keyboard.press("Shift+Digit1");
+  await page.getByRole("button", { name: /^Zoom: fit to screen/ }).waitFor();
+
+  // A pinch zooms a little, and the point of the frame under the pointer stays under it.
+  await page.locator('iframe[title="Product"]').scrollIntoViewIfNeeded();
+  const b1 = await box("Product");
+  const p = { x: b1.x + b1.width * 0.6, y: b1.y + 40 };
+  await page.mouse.move(p.x, p.y);
+  await page.keyboard.down("Control"); await page.mouse.wheel(0, -100); await page.keyboard.up("Control");
+  await page.waitForFunction(() => !/fit to screen/.test(document.querySelector('[aria-label^="Zoom:"]').getAttribute("aria-label")));
+  const b2 = await box("Product");
+  assert.ok(b2.width / b1.width > 1.01 && b2.width / b1.width <= 1.081, `zoomed by ${b2.width / b1.width}`);
+  const fx = (p.x - b1.x) / b1.width, fy = (p.y - b1.y) / b1.height;
+  assert.ok(Math.abs(b2.x + fx * b2.width - p.x) < 2 && Math.abs(b2.y + fy * b2.height - p.y) < 2, "the point under the pointer stayed put");
+
+  // A double-click on a frame selects it and zooms to it: the whole frame, as big as the view holds it.
+  await page.getByRole("button", { name: "Menu, Desktop 1440" }).dblclick();
+  await page.getByRole("complementary", { name: "Frame: Menu" }).waitFor();
+  await page.waitForTimeout(300);
+  const v = await view.boundingBox(), m = await box("Menu");
+  assert.ok(m.x >= v.x && m.y >= v.y && m.x + m.width <= v.x + v.width && m.y + m.height <= v.y + v.height, "the whole frame is in view");
+  assert.ok(Math.abs(m.width - (v.width - 96)) < 4 || Math.abs(m.height - (v.height - 120)) < 4, `and as big as the view holds it: ${m.width}x${m.height} in ${v.width}x${v.height}`);
+
+  // A drag on the space between frames moves the board by as much as the pointer moved.
+  const empty = await view.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    for (let y = r.top + 20; y < r.bottom - 20; y += 15) for (let x = r.left + 20; x < r.right - 20; x += 15) {
+      const at = document.elementFromPoint(x, y);
+      if (at && el.contains(at) && !at.closest(".design-frame-box, button, a, input, textarea, select, [role=menu]") && y + 80 < r.bottom && x + 60 < r.right) return { x, y };
+    }
+    return null;
+  });
+  assert.ok(empty, "somewhere empty to drag from");
+  const s1 = await view.evaluate((el) => ({ l: el.scrollLeft, t: el.scrollTop }));
+  await page.mouse.move(empty.x, empty.y); await page.mouse.down(); await page.mouse.move(empty.x + 60, empty.y + 80, { steps: 6 }); await page.mouse.up();
+  const s2 = await view.evaluate((el) => ({ l: el.scrollLeft, t: el.scrollTop }));
+  assert.ok(Math.abs(s1.l - s2.l - 60) < 2 && Math.abs(s1.t - s2.t - 80) < 2, `dragged 60, 80 and it moved ${s1.l - s2.l}, ${s1.t - s2.t}`);
+  await page.getByRole("complementary", { name: "Frame: Menu" }).waitFor();
+
+  // With Space held, a drag over a frame moves the board too, and does not select the frame.
+  await page.getByRole("complementary", { name: "Frame: Menu" }).getByRole("button", { name: "Close" }).click();
+  const v2 = await view.boundingBox(), mb = await box("Menu");
+  const q = { x: mb.x + mb.width / 2, y: Math.max(mb.y + 10, Math.min(mb.y + mb.height / 2, v2.y + v2.height - 100)) };
+  const s3 = await view.evaluate((el) => el.scrollTop);
+  await page.keyboard.down("Space");
+  await page.mouse.move(q.x, q.y); await page.mouse.down(); await page.mouse.move(q.x, q.y + 50, { steps: 5 }); await page.mouse.up();
+  await page.keyboard.up("Space");
+  const s4 = await view.evaluate((el) => el.scrollTop);
+  assert.ok(Math.abs(s3 - s4 - 50) < 2, `Space and a drag moved it ${s3 - s4}`);
+  assert.equal(await page.getByRole("button", { name: "Menu, Desktop 1440" }).getAttribute("aria-pressed"), "false");
+  assert.equal(await page.getByRole("complementary", { name: /^Frame:/ }).count(), 0);
+  await page.keyboard.press("Shift+Digit1");
+});
+
 test("the sheet downloads as a picture and as code", async () => {
   const pic = await fetch(`${studio.url}/api/designs/${designId}/picture?frame=f7`);
   assert.equal(pic.headers.get("content-type"), "image/png");

@@ -159,6 +159,8 @@ export const api = {
     tag: (id: string, tags: string[]) => call<KnitRecord>("PATCH", `/api/knits/${id}`, { tags }),
     /** The person has looked at it: its New badge goes. */
     seen: (id: string) => call<KnitRecord>("PATCH", `/api/knits/${id}`, { seen: true }),
+    /** One the person likes, to find again with the Favourites filter; or not any more. */
+    favorite: (id: string, favorite: boolean) => call<KnitRecord>("PATCH", `/api/knits/${id}`, { favorite }),
     allSeen: (projectId: string) => call<{ marked: number }>("POST", `/api/projects/${projectId}/knits/seen`, {}),
     writePost: (id: string, ask?: string) => call<KnitRecord>("POST", `/api/knits/${id}/post`, ask ? { ask } : {}),
     setPost: (id: string, post: { caption?: string; hashtags?: string[]; audioId?: string | null }) => call<KnitRecord>("PUT", `/api/knits/${id}/post`, post),

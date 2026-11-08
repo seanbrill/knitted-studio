@@ -33,7 +33,8 @@ On the right, the **Inspector** shows what is selected: its position and size, i
 - Drag to move it. Drag a handle to resize it, or the round handle above it to turn it.
 - Double-click text to edit it in place. Click away or press Ctrl+Enter to keep it, and Escape to cancel. Wrap one word in stars, like `*sale*`, for the brand's serif accent.
 - Arrow keys nudge. Ctrl+D duplicates and Delete removes.
-- Pinch, or hold Ctrl and scroll, to zoom. **Fit** shows the whole frame.
+- Scroll to move about the canvas, or drag the space around the frame. Hold Space, or turn on the **Hand** (press H), to drag from anywhere, even over a Stitch. Dragging with the middle button works too.
+- Pinch, or hold Ctrl and scroll, to zoom about the pointer. Ctrl+= and Ctrl+- zoom in and out, and so do + and - on their own. The zoom menu in the top bar has **Fit to screen** (Shift+1 or Ctrl+0), **Zoom to selection** (Shift+2), and 50%, 100% (Shift+0) and 200%. Double-click the space around the frame to fit it again.
 
 **Keyboard shortcuts**, in the top bar's menu, lists the rest. On a Mac, use Cmd where it says Ctrl.
 

@@ -15,6 +15,7 @@
 // and the person is told (see `rebase`).
 
 import { create } from "zustand";
+import { stepZoom } from "../zoom";
 import { api, ApiError } from "@knitted/core/client";
 import { applyCommand, changedBetween, clashes, touches, type Actor, type Command, type Part, type Pattern, type Refusal, type Stitch, type Swatch, type Touch, type Yarn } from "@knitted/core";
 import { agentNow, whoChanged } from "../agent";
@@ -24,13 +25,6 @@ export type EditMode = "pattern" | "fill";
 
 export const ZOOM_MIN = 0.1;
 export const ZOOM_MAX = 4;
-/** What the zoom buttons and keys step through: a quarter at most between two, finer near 100%. */
-export const ZOOM_STEPS = [0.1, 0.125, 0.15, 0.175, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5, 0.6, 0.67, 0.75, 0.85, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 3.5, 4];
-/** The next step in or out from `now`, which may fall between two. */
-export function stepZoom(now: number, dir: 1 | -1): number {
-  const next = dir > 0 ? ZOOM_STEPS.find((z) => z > now * 1.001) : [...ZOOM_STEPS].reverse().find((z) => z < now * 0.999);
-  return next ?? (dir > 0 ? ZOOM_MAX : ZOOM_MIN);
-}
 export type SaveStatus = "saved" | "saving" | "error";
 interface HistoryEntry { label: string; undo: Command; redo: Command; }
 
@@ -66,6 +60,12 @@ export interface EditorState {
   setFitScale(s: number): void;
   /** One step in (1) or out (-1), from the zoom shown now. */
   zoomStep(dir: 1 | -1): void;
+  /** The hand: while it is on, a drag anywhere on the canvas moves it, and selects nothing. */
+  hand: boolean;
+  setHand(on: boolean): void;
+  /** Asked for by Zoom to selection: the canvas zooms to these stitches. Counted, so asking again works. */
+  zoomAsk: { ids: string[]; n: number } | null;
+  zoomToSelection(): void;
   setPlayhead(ms: number): void;
   setPlaying(p: boolean): void;
   dispatch(cmd: Command, opts?: { label?: string; coalesce?: boolean; history?: boolean }): Refusal[];
@@ -102,6 +102,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   draft: null,
   zoom: "fit",
   fitScale: 0.4,
+  hand: false,
+  zoomAsk: null,
   playhead: 0,
   playing: false,
   undoStack: [],
@@ -128,7 +130,9 @@ export const useEditor = create<EditorState>((set, get) => ({
   setDraft: (draft) => set({ draft }),
   setZoom: (zoom) => set({ zoom: zoom === "fit" ? "fit" : Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom)) }),
   setFitScale: (fitScale) => { if (Math.abs(fitScale - get().fitScale) > 1e-4) set({ fitScale }); },
-  zoomStep: (dir) => set((s) => ({ zoom: stepZoom(s.zoom === "fit" ? s.fitScale : s.zoom, dir) })),
+  zoomStep: (dir) => set((s) => ({ zoom: stepZoom(s.zoom === "fit" ? s.fitScale : s.zoom, dir, ZOOM_MIN, ZOOM_MAX) })),
+  setHand: (hand) => set({ hand }),
+  zoomToSelection: () => set((s) => (s.selection.length ? { zoomAsk: { ids: s.selection, n: (s.zoomAsk?.n ?? 0) + 1 } } : {})),
   setPlayhead: (playhead) => set({ playhead: Math.max(0, playhead) }),
   setPlaying: (playing) => set({ playing }),
   say: (text, refusals) => set({ notice: { id: ++noticeId, text, refusals } }),

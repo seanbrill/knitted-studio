@@ -221,6 +221,13 @@ export const SIZES: Size[] = [
   { name: "Banner", w: 1456, h: 816 },
 ];
 
+/** What a size is called: the named size of the same shape, at any scale, or null for another shape. */
+export function sizeNamed(w: number, h: number): string | null {
+  return SIZES.find((s) => Math.abs(w * s.h - h * s.w) <= 0.01 * h * s.w)?.name ?? null;
+}
+/** Every shape a knit can be found by: the named sizes, and the rest. */
+export const KNIT_SIZES = [...SIZES.map((s) => s.name), "Other"] as const;
+
 /**
  * A reusable layout. The thing the product is named after.
  *

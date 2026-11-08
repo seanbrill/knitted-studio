@@ -242,9 +242,65 @@ test("scrolling moves the canvas but never loses the frame, and a pinch zooms ge
   assert.ok(Math.abs((mid.x - g2.x) / g2.scale - u1.x) * g2.scale < 2 && Math.abs((mid.y - g2.y) / g2.scale - u1.y) * g2.scale < 2, "the point under the pointer stayed put");
   // Fit puts the whole frame back in view, in the middle.
   await page.keyboard.press("Control+0");
-  await page.getByRole("button", { name: "Fit to screen" }).filter({ hasText: "Fit" }).waitFor();
+  await page.getByRole("button", { name: /^Zoom: fit to screen/ }).waitFor();
   ({ view, frame } = await boxes());
   assert.ok(frame.y >= view.y && frame.y + frame.height <= view.y + view.height && Math.abs(frame.x - view.x - (view.x + view.width - frame.x - frame.width)) < 2);
+});
+
+test("with Space held, or the hand on, a drag over a stitch moves the canvas and not the stitch", async () => {
+  await openEditor();
+  for (let i = 0; i < 6; i++) await page.keyboard.press("Control+=");
+  const stitches = JSON.stringify((await getPattern()).stitches);
+  let { view, frame } = await boxes();
+  const mid = { x: view.x + view.width / 2, y: view.y + view.height / 2 };
+  const drag = async (dy) => { await page.mouse.move(mid.x, mid.y); await page.mouse.down(); await page.mouse.move(mid.x, mid.y + dy, { steps: 6 }); await page.mouse.up(); };
+  await page.keyboard.down("Space");
+  await drag(-80);
+  await page.keyboard.up("Space");
+  let moved = (await boxes()).frame;
+  assert.ok(Math.abs(moved.y - (frame.y - 80)) < 3, `Space and a drag moved it ${frame.y - moved.y}px`);
+  // The hand stays on until it is put down: H, or the button again.
+  const hand = page.getByRole("button", { name: "Hand" });
+  await hand.click();
+  assert.equal(await hand.getAttribute("aria-pressed"), "true");
+  frame = moved;
+  await drag(60);
+  moved = (await boxes()).frame;
+  assert.ok(Math.abs(moved.y - (frame.y + 60)) < 3, `the hand moved it ${moved.y - frame.y}px`);
+  await page.keyboard.press("h");
+  assert.equal(await hand.getAttribute("aria-pressed"), "false");
+  await new Promise((r) => setTimeout(r, 700));
+  assert.equal(JSON.stringify((await getPattern()).stitches), stitches, "no stitch moved");
+});
+
+test("the zoom menu: a size, fit, and zoom to what is selected, as big as the canvas holds it", async () => {
+  await openEditor();
+  await page.getByRole("button", { name: /^Zoom: fit to screen/ }).click();
+  await page.getByRole("menuitem", { name: /^200%/ }).click();
+  await page.getByRole("button", { name: "Zoom: 200%" }).waitFor();
+  await page.keyboard.press("Shift+Digit1");
+  await page.getByRole("button", { name: /^Zoom: fit to screen/ }).waitFor();
+  // Nothing selected: zoom to selection waits for something to be.
+  await page.getByRole("button", { name: /^Zoom: fit to screen/ }).click();
+  assert.equal(await page.getByRole("menuitem", { name: /select something first/ }).getAttribute("aria-disabled"), "true");
+  await page.keyboard.press("Escape");
+  await page.getByRole("list", { name: "Layers" }).getByRole("button", { name: /^headline/ }).click();
+  await page.getByRole("button", { name: /^Zoom: fit to screen/ }).click();
+  await page.getByRole("menuitem", { name: /^Zoom to selection/ }).click();
+  await page.waitForFunction(() => !/fit to screen/.test(document.querySelector('[aria-label^="Zoom:"]')?.getAttribute("aria-label") ?? "fit to screen"));
+  await page.waitForTimeout(200);
+  const view = await page.getByTestId("canvas-view").boundingBox();
+  const headline = (await getPattern()).stitches.find((s) => s.slot === "headline");
+  const sel = await page.getByTestId(`outline-${headline.id}`).first().boundingBox();
+  assert.ok(sel.x >= view.x && sel.y >= view.y && sel.x + sel.width <= view.x + view.width && sel.y + sel.height <= view.y + view.height, "the whole selection is in view");
+  assert.ok(Math.abs(sel.width - (view.width - 96)) < 4 || Math.abs(sel.height - (view.height - 96)) < 4, `and as big as the canvas holds it: ${sel.width}x${sel.height} in ${view.width}x${view.height}`);
+  // A double-click on the space round the frame fits it again. Zoomed in, the frame may fill the
+  // view: out a few steps first, so there is space to click.
+  for (let i = 0; i < 8; i++) await page.keyboard.press("Control+-");
+  const f = await page.getByTestId("canvas-frame").boundingBox();
+  assert.ok(f.x > view.x + 12, "space to the left of the frame");
+  await page.mouse.dblclick(view.x + 6, view.y + view.height / 2);
+  await page.getByRole("button", { name: /^Zoom: fit to screen/ }).waitFor();
 });
 
 test("both side bars fold away, stay folded after a reload, and come back with Ctrl+\\", async () => {

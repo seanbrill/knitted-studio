@@ -1,5 +1,15 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
+  "next": {
+    "title": "Zoom and drag anywhere, favourites, and knits by type",
+    "items": [
+      "In the editor and on a design sheet, hold Space or turn on the Hand (H) to drag from anywhere, even over a stitch or a frame. The middle button drags too.",
+      "A zoom menu in both: fit to screen, zoom to selection, 50%, 100% and 200%, with keys for each (Shift+1, Shift+2, Shift+0, and + and -).",
+      "A design sheet now zooms to 400%, and a pinch or Ctrl and scroll zooms about the pointer. Double-click a frame to zoom to it, and the space round it to fit again.",
+      "Star the knits you like, one at a time or several together, and show only your favourites. Your model can list them too.",
+      "Knits narrow to pictures or videos, and to a size: Story (Stories, Reels, TikTok, Shorts), Post, Square, Landscape or Banner."
+    ]
+  },
   "entries": [
     {
       "version": "0.1.25",

@@ -159,6 +159,42 @@ test("a pattern with missing Yarn cannot be knitted, and the dialog says what to
   assert.equal(await page.getByRole("button", { name: /^Knit \d+ file/ }).isDisabled(), true);
 });
 
+test("a star marks a favourite, and Knits shows only the favourites, or only one size", async () => {
+  const knits = () => j("GET", `/api/projects/${projectId}/knits`).then((r) => r.body);
+  const had = (await knits()).length;
+  const post = (await j("GET", `/api/projects/${projectId}/patterns`)).body.find((p) => p.size.name === "Post");
+  await j("POST", `/api/patterns/${post.id}/knit`, { params: {} });
+  await serverHas(studio, `/api/projects/${projectId}/knits`, (k) => k.length === had + 1, { timeout: 90000 });
+  await page.goto(`${studio.url}/projects/${projectId}/knits`);
+  const cards = page.getByRole("button", { name: /^Open / });
+  await cards.first().waitFor();
+
+  // By size: a Post is 4:5, whatever its pixels.
+  await page.getByRole("combobox", { name: "Size" }).click();
+  await page.getByRole("option", { name: /^Story 9:16 \(Stories, Reels/ }).waitFor();
+  await page.getByRole("option", { name: "Post 4:5" }).click();
+  await page.getByRole("button", { name: /^Open Launch post/ }).waitFor();
+  assert.equal(await cards.count(), 1);
+  await page.getByRole("combobox", { name: "Size" }).click();
+  await page.getByRole("option", { name: "Every size" }).click();
+  await page.waitForFunction((n) => document.querySelectorAll('button[aria-label^="Open "]').length === n, had + 1);
+
+  // The star: a favourite, found with Only favourites, and taken off again in the knit's own view.
+  const star = page.getByRole("button", { name: /^Favourite Launch post/ });
+  await star.click();
+  await serverHas(studio, `/api/projects/${projectId}/knits`, (k) => k.filter((x) => x.favorite).length === 1 && k.find((x) => x.favorite).patternId === post.id);
+  assert.equal(await star.getAttribute("aria-pressed"), "true");
+  await page.getByRole("checkbox", { name: "Only favourites (1)" }).check();
+  assert.equal(await cards.count(), 1);
+  await cards.first().click();
+  const fav = page.getByRole("dialog").getByRole("button", { name: "Favourite" });
+  assert.equal(await fav.getAttribute("aria-pressed"), "true");
+  await fav.click();
+  await serverHas(studio, `/api/projects/${projectId}/knits`, (k) => k.every((x) => !x.favorite));
+  await page.keyboard.press("Escape");
+  await page.getByText("No favourites yet").waitFor();
+});
+
 for (const theme of ["day", "night"]) {
   test(`no serious accessibility violations in the Knit dialog and the gallery in ${theme}`, async () => {
     await openKnit();

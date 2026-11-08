@@ -1530,6 +1530,24 @@
         "description": "Only knits of this pattern"
       },
       {
+        "name": "favorite",
+        "type": "boolean",
+        "required": false,
+        "description": "Only the person's favourites: what they liked best, the surest guide to what they want more of"
+      },
+      {
+        "name": "kind",
+        "type": "string",
+        "required": false,
+        "description": "Only pictures, or only videos. One of image, video."
+      },
+      {
+        "name": "size",
+        "type": "string",
+        "required": false,
+        "description": "Only knits of this shape, at any scale: Story is 9:16 (Stories, Reels, TikTok, Shorts), Post 4:5, Square 1:1, Landscape 16:9 (YouTube), Banner; Other for any other shape. One of Story, Post, Square, Landscape, Banner, Other."
+      },
+      {
         "name": "limit",
         "type": "integer",
         "required": false,
@@ -1558,6 +1576,24 @@
         "type": "string[]",
         "required": true,
         "description": ""
+      }
+    ]
+  },
+  {
+    "name": "favorite_knit",
+    "summary": "Mark knits as the person's favourites, or take them off, as the star in Knits does. Do it when the person asks: favourites are their own picks.",
+    "params": [
+      {
+        "name": "knitIds",
+        "type": "string[]",
+        "required": true,
+        "description": "The knits, by id from list_knits"
+      },
+      {
+        "name": "favorite",
+        "type": "boolean",
+        "required": true,
+        "description": "true to mark them, false to take them off"
       }
     ]
   },

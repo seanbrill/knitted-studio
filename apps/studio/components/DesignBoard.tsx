@@ -6,17 +6,31 @@
 // on the sheet, its frames change here as it saves them.
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { api } from "@knitted/core/client";
 import { DESIGN_DEVICES, deviceOf, frameSize, lintDesignCode, type Design, type DesignDevice, type DesignFrame, type DesignOp, type DesignSection, type Swatch } from "@knitted/core";
-import { Button, ConfirmDialog, Dialog, Field, IconButton, Input, Menu, SegmentedControl, Select, Textarea, Tip, Tooltip, icons, useToast } from "@knitted/ui";
+import { Button, ConfirmDialog, Dialog, Field, IconButton, Input, Menu, SegmentedControl, Select, Textarea, Tip, icons, useToast } from "@knitted/ui";
 import { useLive } from "@/lib/hooks";
 import { frameDoc, frameHeight } from "@/lib/design";
 import { AskModelButton, aboutDesign } from "./AskModel";
 import { ModelPresence } from "./ModelPresence";
+import { ZoomControls } from "./ZoomControls";
+import { stepZoom, typingIn, useSpaceHeld, wheelZoom, zoomKey } from "@/lib/zoom";
 
-const { ArrowLeft, ArrowUp, ArrowDown, ChevronRight, Copy, Download, MoreHorizontal, Pencil, Plus, Trash2, Undo2, X, ZoomIn, ZoomOut, AlertTriangle } = icons;
-const ZOOMS = [0.1, 0.15, 0.25, 0.33, 0.5, 0.75, 1];
+const { ArrowLeft, ArrowUp, ArrowDown, ChevronRight, Copy, Download, MoreHorizontal, Pencil, Plus, Trash2, Undo2, X, AlertTriangle } = icons;
+const ZOOM_MIN = 0.05;
+const ZOOM_MAX = 4;
+// Round a frame zoomed to: room to see it is the whole frame, and its label.
+const FRAME_ROOM = 48;
+// Somewhere on the board that is not a frame or a control: a drag there moves the board.
+const NOT_EMPTY = ".design-frame-box, button, a, input, textarea, select, [role=menu]";
+
+/**
+ * A place on the board to keep where it is on screen while the zoom changes: a point (x, y in the
+ * view) and where it falls on the nearest frame, as a part of that frame's width and height.
+ * Frames scale with the zoom and the space round them does not, so a frame is what holds still.
+ */
+interface Anchor { frame: string | null; fx: number; fy: number; x: number; y: number }
 // On screen, whatever the zoom: the board's padding, a section's, and the gap between frames.
 const AROUND = 2 * 40 + 2 * 24 + 32;
 const GAP = 28;
@@ -44,8 +58,8 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
   const { data: project } = useLive(() => api.projects.get(projectId), [projectId]);
   const [selected, setSelected] = useState<string | null>(null);
   const [zoom, setZoom] = useState<number | "fit">("fit");
-  const [natural, setNatural] = useState({ w: 0, h: 0 });
   const [viewW, setViewW] = useState(0);
+  const [hand, setHand] = useState(false);
   const [heights, setHeights] = useState<Record<string, number>>({});
   const [draft, setDraft] = useState<Draft | null>(null);
   const [preview, setPreview] = useState<Draft | null>(null);
@@ -53,6 +67,7 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
   const [asking, setAsking] = useState<Asking | null>(null);
   const view = useRef<HTMLDivElement>(null);
   const board = useRef<HTMLDivElement>(null);
+  const wrap = useRef<HTMLDivElement>(null);
 
   const where = design.sections.map((section) => ({ section, frame: section.frames.find((x) => x.id === selected) })).find((w): w is { section: DesignSection; frame: DesignFrame } => !!w.frame) ?? null;
 
@@ -60,19 +75,156 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
   const fit = useMemo(() => {
     if (!viewW) return 0.25;
     const z = Math.min(...design.sections.filter((s) => s.frames.length).map((s) => (viewW - AROUND - (s.frames.length - 1) * GAP) / s.frames.reduce((n, f) => n + f.width, 0)));
-    return Math.max(0.05, Math.min(1, Number.isFinite(z) ? z : 1));
+    return Math.max(ZOOM_MIN, Math.min(1, Number.isFinite(z) ? z : 1));
   }, [design, viewW]);
   const z = zoom === "fit" ? fit : zoom;
-  const step = (dir: 1 | -1) => setZoom(dir > 0 ? (ZOOMS.find((x) => x > z + 0.001) ?? 1) : ([...ZOOMS].reverse().find((x) => x < z - 0.001) ?? ZOOMS[0]));
+  // The zoom as last asked for: ahead of what is drawn while a pinch runs faster than drawing.
+  const zNow = useRef(z);
 
+  // The board is drawn scaled, so the space it scrolls in is sized by hand: its size times the zoom.
+  const sizeWrap = useCallback(() => {
+    if (!board.current || !wrap.current) return;
+    wrap.current.style.width = `${board.current.offsetWidth * zNow.current}px`;
+    wrap.current.style.height = `${board.current.offsetHeight * zNow.current}px`;
+  }, []);
   useEffect(() => {
     const ro = new ResizeObserver(() => {
       if (view.current) setViewW(view.current.clientWidth);
-      if (board.current) setNatural({ w: board.current.offsetWidth, h: board.current.offsetHeight });
+      sizeWrap();
     });
     if (view.current) ro.observe(view.current);
     if (board.current) ro.observe(board.current);
     return () => ro.disconnect();
+  }, [sizeWrap]);
+
+  // ── zooming about a point: what is under it stays under it ──
+  const anchor = useRef<Anchor | null>(null);
+  const anchorAt = (x: number, y: number): Anchor | null => {
+    const v = view.current; if (!v) return null;
+    const r = v.getBoundingClientRect();
+    const px = r.left + x, py = r.top + y;
+    let best: { el: HTMLElement; d: number } | null = null;
+    for (const el of v.querySelectorAll<HTMLElement>("[data-frame-box]")) {
+      const b = el.getBoundingClientRect();
+      const dx = Math.max(b.left - px, 0, px - b.right), dy = Math.max(b.top - py, 0, py - b.bottom);
+      if (!best || dx * dx + dy * dy < best.d) best = { el, d: dx * dx + dy * dy };
+    }
+    if (!best) return { frame: null, fx: (v.scrollLeft + x) / Math.max(1, v.scrollWidth), fy: (v.scrollTop + y) / Math.max(1, v.scrollHeight), x, y };
+    const b = best.el.getBoundingClientRect();
+    return { frame: best.el.dataset.frameBox ?? null, fx: (px - b.left) / Math.max(1, b.width), fy: (py - b.top) / Math.max(1, b.height), x, y };
+  };
+  const toAnchor = (a: Anchor) => {
+    const v = view.current; if (!v) return;
+    const r = v.getBoundingClientRect();
+    const el = a.frame ? v.querySelector<HTMLElement>(`[data-frame-box="${CSS.escape(a.frame)}"]`) : null;
+    if (el) {
+      const b = el.getBoundingClientRect();
+      v.scrollLeft += b.left + a.fx * b.width - (r.left + a.x);
+      v.scrollTop += b.top + a.fy * b.height - (r.top + a.y);
+    } else {
+      v.scrollLeft = a.fx * v.scrollWidth - a.x;
+      v.scrollTop = a.fy * v.scrollHeight - a.y;
+    }
+  };
+  useLayoutEffect(() => {
+    zNow.current = z;
+    sizeWrap();
+    const a = anchor.current;
+    anchor.current = null;
+    if (a) toAnchor(a);
+  }, [z]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Zoom to `to`, keeping the point at x, y in the view (its middle, unless given) where it is. */
+  const zoomTo = (to: number | "fit", x?: number, y?: number, keep?: Anchor) => {
+    const v = view.current;
+    const next = to === "fit" ? fit : Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, to));
+    const a = keep ?? anchorAt(x ?? (v?.clientWidth ?? 0) / 2, y ?? (v?.clientHeight ?? 0) / 2);
+    setZoom(to === "fit" ? "fit" : next);
+    if (Math.abs(next - zNow.current) < 1e-6) { if (keep) toAnchor(keep); return; }
+    zNow.current = next;
+    anchor.current = a;
+  };
+  const step = (dir: 1 | -1) => zoomTo(stepZoom(z, dir, ZOOM_MIN, ZOOM_MAX));
+  /** A frame, whole and in the middle of the view, as big as the view holds it. */
+  const zoomToFrame = (id: string) => {
+    const v = view.current;
+    const f = design.sections.flatMap((s) => s.frames).find((x) => x.id === id);
+    if (!v || !f) return;
+    const h = f.height ?? heights[f.id] ?? Math.round(f.width * 0.625);
+    const want = Math.min((v.clientWidth - 2 * FRAME_ROOM) / f.width, (v.clientHeight - 2 * FRAME_ROOM - 24) / h);
+    zoomTo(want, undefined, undefined, { frame: id, fx: 0.5, fy: 0.5, x: v.clientWidth / 2, y: v.clientHeight / 2 + 12 });
+  };
+
+  // Ctrl or Cmd with the wheel, or a pinch, zooms about the pointer. Without, the board scrolls.
+  const zoomAtRef = useRef(zoomTo);
+  useEffect(() => {
+    const v = view.current; if (!v) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      const r = v.getBoundingClientRect();
+      const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? v.clientHeight : 1);
+      zoomAtRef.current(wheelZoom(zNow.current, dy, ZOOM_MIN, ZOOM_MAX), e.clientX - r.left, e.clientY - r.top);
+    };
+    v.addEventListener("wheel", onWheel, { passive: false });
+    return () => v.removeEventListener("wheel", onWheel);
+  }, []);
+
+  // ── moving about: a drag on the space between frames, the middle button, or Space or the hand ──
+  const space = useSpaceHeld();
+  const handy = hand || space;
+  const drag = useRef<{ id: number; x: number; y: number; left: number; top: number; moved: boolean } | null>(null);
+  const [dragging, setDragging] = useState(false);
+  // The click a drag ends with is not a click: it neither selects nor lets go.
+  const quiet = useRef(false);
+  const panFrom = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY, left: e.currentTarget.scrollLeft, top: e.currentTarget.scrollTop, moved: false };
+  };
+  const panDownCapture = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === "touch") return;
+    if (e.button === 1 || (e.button === 0 && handy)) { e.stopPropagation(); panFrom(e); }
+  };
+  const panDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === "touch" || e.button !== 0 || (e.target as HTMLElement).closest(NOT_EMPTY)) return;
+    panFrom(e);
+  };
+  const panMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = drag.current; if (!d || d.id !== e.pointerId) return;
+    const dx = e.clientX - d.x, dy = e.clientY - d.y;
+    if (!d.moved && Math.hypot(dx, dy) < 3) return;
+    if (!d.moved) { d.moved = true; setDragging(true); }
+    e.currentTarget.scrollLeft = d.left - dx;
+    e.currentTarget.scrollTop = d.top - dy;
+  };
+  const panUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = drag.current; if (!d || d.id !== e.pointerId) return;
+    drag.current = null;
+    setDragging(false);
+    if (d.moved) { quiet.current = true; setTimeout(() => { quiet.current = false; }, 0); }
+  };
+
+  // The zoom keys, wherever the board has the keys: not while typing in the inspector or a dialog.
+  const keysRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  const onKeys = (e: KeyboardEvent) => {
+    if (e.defaultPrevented || typingIn(e.target)) return;
+    const k = zoomKey(e); if (!k) return;
+    if (k === "selection" && !selected) return;
+    e.preventDefault();
+    if (k === "in") step(1);
+    else if (k === "out") step(-1);
+    else if (k === "fit") zoomTo("fit");
+    else if (k === "actual") zoomTo(1);
+    else if (k === "selection" && selected) zoomToFrame(selected);
+    else if (k === "hand") setHand((h) => !h);
+  };
+  // The listeners hold refs, given the newest of the board's own handlers after each drawing.
+  useLayoutEffect(() => { zoomAtRef.current = zoomTo; keysRef.current = onKeys; });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => keysRef.current(e);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   // The inspector starts from the frame as it is, and follows it while nothing is changed there.
@@ -142,11 +294,8 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
           <IconButton label="Undo" hint="Takes back the last change to the sheet, yours or your model's." disabled={!design.canUndo} onClick={undo}><Undo2 size={16} /></IconButton>
         </div>
         <div className="editor-group">
-          <IconButton label="Zoom out" onClick={() => step(-1)}><ZoomOut size={16} /></IconButton>
-          <Tooltip label="Fit to screen" hint={zoom === "fit" ? "The widest section fits the window." : `Shown at ${Math.round(z * 100)}%. Press to fit the window.`}>
-            <button className="chip chip-button" onClick={() => setZoom("fit")} aria-label="Fit to screen" style={{ minWidth: 52, justifyContent: "center" }}>{zoom === "fit" ? "Fit" : `${Math.round(z * 100)}%`}</button>
-          </Tooltip>
-          <IconButton label="Zoom in" onClick={() => step(1)}><ZoomIn size={16} /></IconButton>
+          <ZoomControls zoom={zoom} scale={z} onZoom={(v) => zoomTo(v)} onStep={step} hand={hand} onHand={setHand}
+            onSelection={selected ? () => zoomToFrame(selected) : undefined} selectionHint="Zoom to selection (select a frame first)" />
         </div>
         <div className="editor-group roomy">
           <AskModelButton size="sm" about={aboutDesign(projectId, design)} />
@@ -158,8 +307,13 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
       </header>
 
       <div className="design-body">
-        <div className="design-view" ref={view} onClick={(e) => { if (!(e.target as HTMLElement).closest(".design-frame, button, a, [role=menu]")) setSelected(null); }}>
-          <div style={{ width: natural.w * z, height: natural.h * z }}>
+        <div className="design-view" ref={view} data-hand={handy || undefined} data-dragging={dragging || undefined}
+          onPointerDownCapture={panDownCapture} onPointerDown={panDown} onPointerMove={panMove} onPointerUp={panUp} onPointerCancel={panUp}
+          onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
+          onClickCapture={(e) => { if (quiet.current) { quiet.current = false; e.stopPropagation(); e.preventDefault(); } }}
+          onClick={(e) => { if (!handy && !(e.target as HTMLElement).closest(".design-frame, button, a, [role=menu]")) setSelected(null); }}
+          onDoubleClick={(e) => { if (!handy && !(e.target as HTMLElement).closest(NOT_EMPTY)) zoomTo("fit"); }}>
+          <div ref={wrap}>
             <div ref={board} className="design-board" style={{ transform: `scale(${z})`, "--z": z } as CSSProperties}>
               {design.sections.map((s, i) => (
                 <section key={s.id} className="design-section" aria-labelledby={`sec-${s.id}`}>
@@ -174,7 +328,7 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
                     {s.frames.map((f) => {
                       const shown = selected === f.id && preview ? { ...f, ...preview, height: preview.height ?? undefined } : f;
                       return <FrameView key={f.id} f={shown} doc={frameDoc(shown, swatch, projectId)} height={heights[f.id]} selected={selected === f.id}
-                        onSelect={() => setSelected(f.id)} onHeight={(h) => setHeights((m) => (m[f.id] === h ? m : { ...m, [f.id]: h }))} />;
+                        onSelect={() => setSelected(f.id)} onZoom={() => zoomToFrame(f.id)} onHeight={(h) => setHeights((m) => (m[f.id] === h ? m : { ...m, [f.id]: h }))} />;
                     })}
                     {!s.frames.length && <button type="button" className="design-add" onClick={() => setAsking({ kind: "frame", section: s })}><Plus aria-hidden /> Add a frame</button>}
                   </div>
@@ -207,17 +361,18 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
 }
 
 /** One frame on the board: its label, the frame drawn as a page, and the button that selects it. */
-function FrameView({ f, doc, height, selected, onSelect, onHeight }: { f: DesignFrame; doc: string; height?: number; selected: boolean; onSelect: () => void; onHeight: (h: number) => void }) {
+function FrameView({ f, doc, height, selected, onSelect, onZoom, onHeight }: { f: DesignFrame; doc: string; height?: number; selected: boolean; onSelect: () => void; onZoom: () => void; onHeight: (h: number) => void }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const h = f.height ?? height ?? Math.round(f.width * 0.625);
   return (
     <figure className="design-frame" style={{ width: f.width }}>
       <figcaption title={`${f.name}, ${frameSize(f)}${f.by === "model" ? ", by your model" : ""}`}>{f.name}<span>{frameSize(f)}</span>{f.by === "model" && <span>by your model</span>}</figcaption>
-      <div className="design-frame-box" style={{ width: f.width, height: h }}>
+      <div className="design-frame-box" data-frame-box={f.id} style={{ width: f.width, height: h }}>
         {/* Drawn and nothing more: no scripts run in it, and nothing in it can be focused or clicked. */}
         <iframe ref={ref} title={f.name} inert sandbox="allow-same-origin" srcDoc={doc} style={{ width: f.width, height: h }}
           onLoad={async () => { if (!f.height && ref.current) { const m = await frameHeight(ref.current); if (m) onHeight(m); } }} />
-        <button type="button" className="design-frame-hit" aria-label={`${f.name}, ${frameSize(f)}`} aria-pressed={selected} onClick={onSelect} />
+        {/* data-pan-ok: with a frame focused, Space still drags the board about. */}
+        <button type="button" className="design-frame-hit" data-pan-ok aria-label={`${f.name}, ${frameSize(f)}`} aria-pressed={selected} onClick={onSelect} onDoubleClick={onZoom} />
       </div>
     </figure>
   );

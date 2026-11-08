@@ -90,6 +90,7 @@ const SAY = {
   get_job: () => "Checking on a job",
   cancel_job: () => "Stopping a job",
   list_knits: (a, c) => `Looking at what ${c.project ?? "the project"} has knitted`,
+  favorite_knit: (a) => `${a.favorite === false ? "Taking" : "Marking"} ${Array.isArray(a.knitIds) && a.knitIds.length > 1 ? `${a.knitIds.length} knits` : "a knit"} ${a.favorite === false ? "off your favourites" : "as a favourite"}`,
   tag_knit: (a) => `Tagging a knit${Array.isArray(a.tags) && a.tags.length ? ` ${a.tags.join(", ")}` : ""}`,
   set_knit_post: (a) => (a.caption ? `Writing a caption: ${quote(a.caption)}` : "Choosing what goes with a knit"),
   get_guide: (a) => `Reading the guide${a.topic ? ` on ${a.topic}` : ""}`,

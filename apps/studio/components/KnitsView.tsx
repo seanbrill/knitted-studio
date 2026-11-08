@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { api, knitFileUrl, type KnitRecord } from "@knitted/core/client";
-import { foldersIn, isInside, nameOf } from "@knitted/core";
+import { KNIT_SIZES, foldersIn, isInside, nameOf, sizeNamed } from "@knitted/core";
 import { Button, Chip, ConfirmDialog, Dialog, EmptyState, Input, Select, Skeleton, icons, useToast } from "@knitted/ui";
 import { formatBytes, timeAgo, useLive } from "@/lib/hooks";
 import { FolderCrumbs, FolderDialogs, FolderList, NewFolderButton, useFolders } from "./Folders";
@@ -21,7 +21,26 @@ const KNIT_SORTS: SortBy<KnitRecord>[] = [
   { value: "size", label: "Biggest first", key: (k) => k.bytes, desc: true },
 ];
 
-const { Download, Trash2, AlertTriangle, Copy, FolderInput, X, Check, Send } = icons;
+const { Download, Trash2, AlertTriangle, Copy, FolderInput, X, Check, Send, Star } = icons;
+
+/** A knit's star: press to make it a favourite, again to take it off. */
+function FavoriteStar({ k, onToggle, inRow }: { k: KnitRecord; onToggle: (k: KnitRecord) => void; inRow?: boolean }) {
+  return (
+    <button type="button" className={`knit-star${inRow ? " in-row" : ""}`} aria-pressed={k.favorite} aria-label={`Favourite ${k.label}`} title={k.favorite ? "A favourite. Press to take it off." : "Add to your favourites"} onClick={() => onToggle(k)}>
+      <Star size={16} fill={k.favorite ? "currentColor" : "none"} aria-hidden />
+    </button>
+  );
+}
+
+// A size by what it is for, so a reel is easy to find: a Story-shaped video.
+const SIZE_LABELS: Record<string, string> = {
+  Story: "Story 9:16 (Stories, Reels, TikTok, Shorts)",
+  Post: "Post 4:5",
+  Square: "Square 1:1",
+  Landscape: "Landscape 16:9 (YouTube)",
+  Banner: "Banner",
+  Other: "Other sizes",
+};
 
 export function KnitsView({ projectId }: { projectId: string }) {
   const toast = useToast();
@@ -32,6 +51,11 @@ export function KnitsView({ projectId }: { projectId: string }) {
   const show = (k: KnitRecord) => { setOpen(k); if (!k.seenAt) void api.knit.seen(k.id).then(refresh, () => {}); };
   const unseen = (knits ?? []).filter((k) => !k.seenAt).length;
   const [onlyNew, setOnlyNew] = useState(false);
+  const favorites = (knits ?? []).filter((k) => k.favorite).length;
+  const [onlyFavorites, setOnlyFavorites] = useState(false);
+  const favorite = async (k: KnitRecord, on = !k.favorite) => {
+    try { const next = await api.knit.favorite(k.id, on); setOpen((o) => (o?.id === k.id ? next : o)); await refresh(); } catch (e) { toast((e as Error).message); }
+  };
   const retag = async (tags: string[]) => { if (!open) return; setOpen(await api.knit.tag(open.id, tags)); await refresh(); };
   const [del, setDel] = useState<KnitRecord | null>(null);
   // Anything knitted after this page opened is new, and gets the signature "stitching in" reveal.
@@ -41,12 +65,17 @@ export function KnitsView({ projectId }: { projectId: string }) {
   const view = useView<KnitRecord>("knits", KNIT_SORTS);
   const [q, setQ] = useState("");
   const [format, setFormat] = useState("all");
+  const [kind, setKind] = useState<"all" | "image" | "video">("all");
+  const [size, setSize] = useState("all");
   const [tag, setTag] = useState<string | undefined>();
   const [tagText, setTagText] = useState("");
   const formats = useMemo(() => [...new Set((knits ?? []).map((k) => k.format))].sort(), [knits]);
-  // A search or a format looks in the folder the person is in and every folder inside it.
-  const filtering = !!q.trim() || format !== "all" || !!tag || (onlyNew && unseen > 0);
-  const here = view.sorted((knits ?? []).filter((k) => (filtering ? isInside(k.folder, kit.here) && k.label.toLowerCase().includes(q.trim().toLowerCase()) && (format === "all" || k.format === format) && (!tag || k.tags.includes(tag)) && (!onlyNew || !unseen || !k.seenAt) : k.folder === kit.here)));
+  // The types there are: pictures or videos, and the shapes, in the order the sizes are named.
+  const kinds = useMemo(() => new Set((knits ?? []).map((k) => k.kind)), [knits]);
+  const sizes = useMemo(() => { const has = new Set((knits ?? []).map((k) => sizeNamed(k.width, k.height) ?? "Other")); return KNIT_SIZES.filter((s) => has.has(s)); }, [knits]);
+  // A search or a filter looks in the folder the person is in and every folder inside it.
+  const filtering = !!q.trim() || format !== "all" || kind !== "all" || size !== "all" || !!tag || (onlyNew && unseen > 0) || onlyFavorites;
+  const here = view.sorted((knits ?? []).filter((k) => (filtering ? isInside(k.folder, kit.here) && k.label.toLowerCase().includes(q.trim().toLowerCase()) && (format === "all" || k.format === format) && (kind === "all" || k.kind === kind) && (size === "all" || (sizeNamed(k.width, k.height) ?? "Other") === size) && (!tag || k.tags.includes(tag)) && (!onlyNew || !unseen || !k.seenAt) && (!onlyFavorites || k.favorite) : k.folder === kit.here)));
   // Batches are kept together only newest first: sorted another way, each knit stands on its own.
   const batched = view.sort === "newest";
   // A batch of several is a set under its own header. The knits between batches share one grid, keyed by the
@@ -67,6 +96,7 @@ export function KnitsView({ projectId }: { projectId: string }) {
   // What is being posted: the open knit, or the picked ones together.
   const [posting, setPosting] = useState<KnitRecord[] | null>(null);
   const pickedNew = sel.picked.filter((k) => !k.seenAt);
+  const pickedAllFavorites = sel.picked.length > 0 && sel.picked.every((k) => k.favorite);
   // A folder downloads as a zip of it and the folders in it, each a folder in the zip.
   const anything = kit.here ? kit.countIn(kit.here) > 0 : (knits ?? []).length > 0;
 
@@ -89,15 +119,19 @@ export function KnitsView({ projectId }: { projectId: string }) {
       {(knits?.length ?? 0) > 0 && (
         <div style={{ display: "flex", gap: "var(--space-3)", alignItems: "center", flexWrap: "wrap", marginBottom: "var(--space-4)" }}>
           <Input aria-label={kit.here ? `Search ${nameOf(kit.here)} and the folders in it` : "Search knits"} placeholder="Search knits" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 220 }} />
+          {(kinds.size > 1 || kind !== "all") && <div style={{ minWidth: 150 }}><Select aria-label="Pictures or videos" value={kind} onValueChange={(x) => setKind(x as typeof kind)} options={[{ value: "all", label: "Pictures and videos" }, { value: "image", label: "Pictures" }, { value: "video", label: "Videos" }]} /></div>}
+          {(sizes.length > 1 || size !== "all") && <div style={{ minWidth: 150 }}><Select aria-label="Size" value={size} onValueChange={setSize} options={[{ value: "all", label: "Every size" }, ...sizes.map((s) => ({ value: s, label: SIZE_LABELS[s] ?? s }))]} /></div>}
           <div style={{ minWidth: 150 }}><Select aria-label="Format" value={format} onValueChange={setFormat} options={[{ value: "all", label: "Every format" }, ...formats.map((f) => ({ value: f, label: f.toUpperCase() }))]} /></div>
           <TagFilter tags={(knits ?? []).map((k) => k.tags)} value={tag} onChange={setTag} />
           {unseen > 0 && <label className="body-sm" style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={onlyNew} onChange={(e) => setOnlyNew(e.target.checked)} /> Only new ({unseen})</label>}
+          {(favorites > 0 || onlyFavorites) && <label className="body-sm" style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={onlyFavorites} onChange={(e) => setOnlyFavorites(e.target.checked)} /> Only favourites ({favorites})</label>}
           <ViewBar view={view} what="knits" />
         </div>
       )}
       <SelectionBar sel={sel} total={here.length}>
         <Button size="sm" onClick={() => kit.askMove(sel.picked, `${sel.count} ${sel.count === 1 ? "knit" : "knits"}`)}><FolderInput size={13} aria-hidden /> Move to folder</Button>
         <Button size="sm" onClick={() => setTagging(true)}>Add tag</Button>
+        <Button size="sm" onClick={async () => { const on = !pickedAllFavorites; for (const k of sel.picked) await api.knit.favorite(k.id, on); await refresh(); toast(on ? `Added ${sel.count} to your favourites` : `Took ${sel.count} off your favourites`); }}><Star size={13} aria-hidden /> {pickedAllFavorites ? "Take off favourites" : "Add to favourites"}</Button>
         <Button size="sm" onClick={() => setPosting(sel.picked)}><Send size={13} aria-hidden /> Post together</Button>
         <a className="btn btn-secondary btn-sm" href={`/api/projects/${projectId}/knits/zip?ids=${sel.picked.map((k) => k.id).join(",")}`}><Download size={13} aria-hidden /> Download</a>
         {pickedNew.length > 0 && <Button size="sm" onClick={async () => { for (const k of pickedNew) await api.knit.seen(k.id); await refresh(); }}><Check size={13} aria-hidden /> Mark seen</Button>}
@@ -107,7 +141,7 @@ export function KnitsView({ projectId }: { projectId: string }) {
       {!knits || !kit.folders ? <Skeleton height={200} /> : knits.length === 0 && kit.folders.length === 0 ? (
         <EmptyState title="Nothing knitted yet" body="Open a pattern and press Knit. Everything you make from this project shows up here." />
       ) : here.length === 0 ? (
-        filtering ? <EmptyState title="Nothing matches" body="Try another search, format or tag." /> : kit.here && !kit.gone && foldersIn(kit.folders, kit.here).length === 0 && <EmptyState title={`Nothing in ${nameOf(kit.here)} yet`} body="Drag knits onto this folder, or open one and choose Move to folder." />
+        filtering ? (onlyFavorites && !favorites ? <EmptyState title="No favourites yet" body="Press the star on a knit you like, and it shows here." /> : <EmptyState title="Nothing matches" body={onlyFavorites ? "None of your favourites matches. Try another search or filter." : "Try another search or filter."} />) : kit.here && !kit.gone && foldersIn(kit.folders, kit.here).length === 0 && <EmptyState title={`Nothing in ${nameOf(kit.here)} yet`} body="Drag knits onto this folder, or open one and choose Move to folder." />
       ) : (
         <div style={{ display: "grid", gap: "var(--space-8)" }}>
           {groups.map(({ key, batch, knits: group }) => (
@@ -135,7 +169,7 @@ export function KnitsView({ projectId }: { projectId: string }) {
                           <p className="label" style={{ margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{k.label}</p>
                           <p className="eyebrow" style={{ margin: "2px 0 0", display: "flex", gap: 6, alignItems: "center" }}>{k.format} · {k.width}x{k.height} · {formatBytes(k.bytes)}{warn > 0 && <span title={`${warn} to review`} style={{ color: "var(--danger)" }}><AlertTriangle size={12} aria-hidden /></span>}{k.patternChangedSince && <span title="Its pattern was changed after this was knitted. Knit it again to bring it up to date." style={{ textTransform: "none", letterSpacing: 0 }}>· pattern changed</span>}</p>
                         </div>
-                        <span aria-hidden className="body-sm" style={{ color: "var(--ink-muted)", whiteSpace: "nowrap", display: "flex", gap: 8, alignItems: "center" }}>{!k.seenAt && <span className="new-badge in-row">New</span>}{timeAgo(k.createdAt)}</span>
+                        <span className="body-sm" style={{ color: "var(--ink-muted)", whiteSpace: "nowrap", display: "flex", gap: 8, alignItems: "center", position: "relative", zIndex: 2 }}><span aria-hidden style={{ display: "contents" }}>{!k.seenAt && <span className="new-badge in-row">New</span>}{timeAgo(k.createdAt)}</span><FavoriteStar k={k} onToggle={favorite} inRow /></span>
                       </div>
                     </li>
                   );
@@ -151,8 +185,9 @@ export function KnitsView({ projectId }: { projectId: string }) {
                             {k.kind === "image" ? <img src={knitFileUrl(k)} alt="" loading="lazy" style={{ display: "block", width: "100%", height: "100%", objectFit: "contain" }} /> : <video src={knitFileUrl(k)} muted preload="metadata" style={{ display: "block", width: "100%", height: "100%", objectFit: "contain" }} />}
                           </div>
                         </div>
-                        <p className="label" aria-hidden style={{ margin: "var(--space-2) 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{k.label}</p>
+                        <p className="label" aria-hidden style={{ margin: "var(--space-2) 0 0", paddingRight: 30, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{k.label}</p>
                         <p className="eyebrow" aria-hidden style={{ margin: "2px 0 0", display: "flex", gap: 6, alignItems: "center" }}>{k.format} · {k.width}x{k.height} · {formatBytes(k.bytes)}{warn > 0 && <span title={`${warn} to review`} style={{ color: "var(--danger)" }}><AlertTriangle size={12} aria-hidden /></span>}{k.patternChangedSince && <span title="Its pattern was changed after this was knitted. Knit it again to bring it up to date." style={{ textTransform: "none", letterSpacing: 0 }}>· pattern changed</span>}</p>
+                        <FavoriteStar k={k} onToggle={favorite} />
                       </div>
                     </li>
                   );
@@ -166,6 +201,7 @@ export function KnitsView({ projectId }: { projectId: string }) {
       <Dialog open={!!open} onOpenChange={(o) => !o && setOpen(null)} wide title={open?.label ?? "Knit"}
         actions={open && (<>
           <Button variant="ghost" onClick={() => { setDel(open); setOpen(null); }}><Trash2 size={14} aria-hidden /> Delete</Button>
+          <Button aria-pressed={open.favorite} tip={open.favorite ? "One of your favourites. Press to take it off." : "Find it again with Only favourites."} onClick={() => void favorite(open)}><Star size={14} fill={open.favorite ? "currentColor" : "none"} aria-hidden /> Favourite</Button>
           <Button onClick={() => { kit.askMove([open], open.label); setOpen(null); }}><FolderInput size={14} aria-hidden /> Move to folder</Button>
           <AskModelButton about={aboutKnit(open)} />
           <Button onClick={() => { setPosting([open]); setOpen(null); }}><Send size={14} aria-hidden /> Post</Button>

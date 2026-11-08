@@ -46,6 +46,16 @@ The dialog shows how far it has got, and **Cancel** stops it. What was already d
 
 Files knitted together are grouped in the project's **Knits** tab, as a batch. **Download batch** gives you a zip of them.
 
+## Finding a knit
+
+The **Knits** tab searches by name. It can also narrow to **Pictures** or **Videos**, to a size, a format or a tag, to **Only new**, or to **Only favourites**. A size is a shape, at any scale:
+
+- **Story**, 9:16, is what Stories, Reels, TikTok and Shorts take. A reel is a Story-shaped video.
+- **Post** is 4:5, **Square** 1:1, and **Landscape** 16:9, for YouTube.
+- **Banner** is the link card, and **Other sizes** is anything else.
+
+Press the star on a knit, or **Favourite** when it is open, to mark one you like. Pick several to star them together. Your model sees your favourites too (`list_knits` with `favorite`): the surest guide to what you want more of.
+
 ## Through your model
 
 Your model knits with `knit_pattern`. Its `rows` are the same table, one set of slot values per post, and `sizes` the same sizes. Ask for twelve and you get twelve files in the project's Knits. When you ask in the studio, **Files it may knit per request**, in Settings, Model, sets how many one request may make.

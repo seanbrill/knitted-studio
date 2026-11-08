@@ -5,12 +5,13 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api } from "@knitted/core/client";
 import { SIZES, type Size } from "@knitted/core";
-import { Button, Dialog, Field, IconButton, Input, Menu, SegmentedControl, Select, Tip, Tooltip, icons } from "@knitted/ui";
+import { Button, Dialog, Field, IconButton, Input, Menu, SegmentedControl, Select, Tip, icons } from "@knitted/ui";
 import { useEditor, type EditMode } from "@/lib/editor/store";
 import { useLive } from "@/lib/hooks";
 import { ModelPresence } from "../ModelPresence";
+import { ZoomControls } from "../ZoomControls";
 
-const { Undo2, Redo2, ZoomIn, ZoomOut, Clock, Command, Film, ArrowLeft, ChevronRight, MoreHorizontal, Palette } = icons as unknown as Record<string, React.ComponentType<{ size?: number }>>;
+const { Undo2, Redo2, Clock, Command, Film, ArrowLeft, ChevronRight, MoreHorizontal, Palette } = icons as unknown as Record<string, React.ComponentType<{ size?: number }>>;
 const Clk = Clock ?? Command;
 
 /**
@@ -26,7 +27,6 @@ export function TopBar({ projectId, timeline, onTimeline, onHistory, onShortcuts
   const { data: project } = useLive(() => api.projects.get(projectId), [projectId]);
   const size = SIZES.find((s) => s.w === pattern.size.w && s.h === pattern.size.h);
   const sizeValue = size?.name ?? "Custom";
-  const zoomPct = Math.round((st.zoom === "fit" ? 0 : st.zoom) * 100);
   const base = `/projects/${projectId}`;
   const projectName = project?.name ?? "Project";
   // A Part open here: its way back is to Parts, and it is not knitted on its own.
@@ -71,11 +71,8 @@ export function TopBar({ projectId, timeline, onTimeline, onHistory, onShortcuts
         <IconButton label="Redo" shortcut="Shift+Ctrl+Z" disabled={!redoStack.length} onClick={st.redo}><Redo2 size={16} /></IconButton>
       </div>
       <div className="editor-group">
-        <span className="editor-wide"><IconButton label="Zoom out" shortcut="Ctrl+-" hint="Or pinch, or hold Ctrl and scroll." onClick={() => st.zoomStep(-1)}><ZoomOut size={16} /></IconButton></span>
-        <Tooltip label="Fit to screen" shortcut="Ctrl+0" hint={st.zoom === "fit" ? "The whole pattern is in view." : `Shown at ${zoomPct}%. Press to see the whole pattern.`}>
-          <button className="chip chip-button" onClick={() => st.setZoom("fit")} aria-label="Fit to screen" style={{ minWidth: 52, justifyContent: "center" }}>{st.zoom === "fit" ? "Fit" : `${zoomPct}%`}</button>
-        </Tooltip>
-        <span className="editor-wide"><IconButton label="Zoom in" shortcut="Ctrl+=" hint="Or pinch, or hold Ctrl and scroll." onClick={() => st.zoomStep(1)}><ZoomIn size={16} /></IconButton></span>
+        <ZoomControls zoom={st.zoom} scale={st.zoom === "fit" ? st.fitScale : st.zoom} onZoom={st.setZoom} onStep={st.zoomStep}
+          onSelection={st.selection.length ? st.zoomToSelection : undefined} selectionHint="Zoom to selection (select something first)" hand={st.hand} onHand={st.setHand} />
       </div>
       <div className="editor-group">
         <IconButton label="Timeline" pressed={timeline} hint="When each stitch comes in and goes, for a pattern that plays as a video." onClick={onTimeline}><Film size={16} /></IconButton>

@@ -85,7 +85,7 @@
 .dialog-wide { width: min(720px, calc(100vw - 32px)); }
 .dialog-title { font-family: var(--font-display); font-weight: 800; font-size: 22px; letter-spacing: -0.02em; margin: 0 0 var(--space-2); }
 .dialog-desc { color: var(--ink-muted); font-size: 13px; margin: 0 0 var(--space-5); }
-.dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-6); }
+.dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-6); }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes dialog-in { from { opacity: 0; transform: translate(-50%, calc(-50% + 8px)); } to { opacity: 1; transform: translate(-50%, -50%); } }
 
@@ -249,7 +249,10 @@
 
 /* The canvas (Canvas.tsx): it moves about the frame and never lets it out of reach. */
 .canvas-view { cursor: default; }
-.canvas-view[data-dragging] { cursor: grabbing; }
+/* With Space held or the hand on, the whole view is a thing to drag about, whatever is under the pointer. */
+.canvas-view[data-hand], .design-view[data-hand] { cursor: grab; }
+.canvas-view[data-hand] *, .design-view[data-hand] *, .design-view[data-dragging] * { cursor: inherit !important; }
+.canvas-view[data-dragging], .design-view[data-dragging] { cursor: grabbing; user-select: none; }
 .canvas-bar { position: absolute; z-index: 2; background: var(--ink-muted); opacity: 0.35; border-radius: 2px; pointer-events: none; }
 .canvas-bar-x { bottom: 3px; height: 4px; }
 .canvas-bar-y { right: 3px; width: 4px; }
@@ -335,6 +338,14 @@
 .spend-table td { padding: 4px 8px 4px 0; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
 .new-badge { position: absolute; z-index: 2; top: 14px; right: 14px; padding: 2px 7px; border-radius: 999px; background: var(--ember); color: var(--on-ember); font: 700 10px/1.4 var(--font-ui); letter-spacing: 0.06em; text-transform: uppercase; box-shadow: 0 1px 3px rgba(23, 17, 11, 0.25); pointer-events: none; }
 .new-badge.in-row { position: static; box-shadow: none; flex: none; }
+/* A knit's star: always there once it is a favourite, and on a card that is pointed at or in focus. */
+.knit-star { position: absolute; z-index: 2; right: 6px; bottom: 6px; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 999px; background: transparent; color: var(--ink-muted); cursor: pointer; opacity: 0; }
+.knit-star.in-row { position: relative; right: auto; bottom: auto; }
+.knit-star:hover { background: var(--surface-sunken); color: var(--ink); }
+.knit-star:focus-visible { opacity: 1; outline: 2px solid var(--ember); outline-offset: 1px; }
+.knit-star[aria-pressed="true"] { opacity: 1; color: var(--ember); }
+.pickable:hover .knit-star, .pickable:focus-within .knit-star { opacity: 1; }
+@media (hover: none) { .knit-star { opacity: 1; } }
 .tab-new { margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--ember); color: var(--on-ember); font: 700 10px/16px var(--font-ui); display: inline-block; vertical-align: 1px; }
 .play-badge svg { margin-left: 2px; width: 55%; height: 55%; }
 
