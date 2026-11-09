@@ -1,16 +1,18 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
-  "next": {
-    "title": "The editor and Ask, finished from the design sheets",
-    "items": [
-      "The editor's pattern list shows each pattern drawn small beside its name, so the one you want is easy to find.",
-      "With nothing selected, the inspector runs the checks Knit runs and says what to fix before it knits: missing files, low contrast, text that will not fit. Pick a problem to select what it is about. It checks again after each save.",
-      "Ask shows what your model is doing in plain words, like Filling headline on Spring sale, and says Filled once it is done.",
-      "While your model knits, its step shows which file it is on, with a bar that fills as it goes.",
-      "A note your model has finished writing shows once, in What it did, not twice."
-    ]
-  },
   "entries": [
+    {
+      "version": "0.1.36",
+      "date": "2026-11-08",
+      "title": "The editor and Ask, finished from the design sheets",
+      "items": [
+        "The editor's pattern list shows each pattern drawn small beside its name, so the one you want is easy to find.",
+        "With nothing selected, the inspector runs the checks Knit runs and says what to fix before it knits: missing files, low contrast, text that will not fit. Pick a problem to select what it is about. It checks again after each save.",
+        "Ask shows what your model is doing in plain words, like Filling headline on Spring sale, and says Filled once it is done.",
+        "While your model knits, its step shows which file it is on, with a bar that fills as it goes.",
+        "A note your model has finished writing shows once, in What it did, not twice."
+      ]
+    },
     {
       "version": "0.1.35",
       "date": "2026-11-08",
