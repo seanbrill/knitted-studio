@@ -1,19 +1,21 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
-  "next": {
-    "title": "A studio that arrives in place",
-    "items": [
-      "While a section loads, it shows its filters, folders and cards at their real sizes, so nothing jumps when they arrive. The project's name keeps its height too.",
-      "Cards and folders fade in as they arrive, a moment apart, and stay put after. With reduced motion on, they only fade.",
-      "Going to another page, a thin orange line across the top shows it is on its way. A fast page shows nothing.",
-      "Notes in the corner have a close button and at most three show at once. When something goes wrong the note is red and stays longer.",
-      "A button that started something spins where its icon was until it is done.",
-      "Folder tiles are all one height, with what is inside on one line, and the whole name when you point at it.",
-      "A design sheet opened from its address shows a header, a footer and any other frame that fits what is in it at its real height straight away, not at a guess until something changes.",
-      "A knit that has just arrived shows its whole selection ring and your model's red outline, not cut off at its edges."
-    ]
-  },
   "entries": [
+    {
+      "version": "0.1.34",
+      "date": "2026-11-08",
+      "title": "A studio that arrives in place",
+      "items": [
+        "While a section loads, it shows its filters, folders and cards at their real sizes, so nothing jumps when they arrive. The project's name keeps its height too.",
+        "Cards and folders fade in as they arrive, a moment apart, and stay put after. With reduced motion on, they only fade.",
+        "Going to another page, a thin orange line across the top shows it is on its way. A fast page shows nothing.",
+        "Notes in the corner have a close button and at most three show at once. When something goes wrong the note is red and stays longer.",
+        "A button that started something spins where its icon was until it is done.",
+        "Folder tiles are all one height, with what is inside on one line, and the whole name when you point at it.",
+        "A design sheet opened from its address shows a header, a footer and any other frame that fits what is in it at its real height straight away, not at a guess until something changes.",
+        "A knit that has just arrived shows its whole selection ring and your model's red outline, not cut off at its edges."
+      ]
+    },
     {
       "version": "0.1.33",
       "date": "2026-11-08",
