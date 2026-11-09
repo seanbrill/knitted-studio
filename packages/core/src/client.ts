@@ -358,12 +358,24 @@ export interface SyncJob {
 export interface KnitParams { sizes?: Size[]; format?: "png" | "jpeg" | "webp" | "mp4"; scale?: 1 | 2; fps?: 30 | 60; rows?: Record<string, string>[]; reuse?: boolean; }
 export interface JobItem {
   id: string; kind: string; status: "queued" | "running" | "done" | "failed" | "cancelled" | "interrupted"; projectId: string | null; error: string | null;
-  progress: { total: number; done: number; current: string | null; units: { label: string; status: string; issues: KnitIssue[]; knitId?: string }[]; step?: string; frames?: { done: number; total: number } | null } | null;
+  progress: {
+    total: number; done: number; current: string | null; step?: string; frames?: { done: number; total: number } | null;
+    /** Each file of the knit so far, the one being made last. */
+    units: { label: string; status: string; issues: KnitIssue[]; knitId?: string }[];
+    /** Every file it will make, as [width, height] of its size, and whether they are videos. */
+    shapes?: [number, number][]; kind?: "image" | "video";
+    /** Which file's picture jobPreviewUrl shows: the one being drawn, while a video's frames are. */
+    preview?: number | null;
+  } | null;
   /** What it was asked to do: for a knit, which pattern. */
   input?: { patternId?: string; patternName?: string } | null;
   result: { knitIds: string[]; failed: number } | null; createdAt: string; finishedAt: string | null;
 }
 export const knitFileUrl = (k: { id: string }, download = false) => `/api/knits/${k.id}/file${download ? "?download=1" : ""}`;
+/** A video knit's poster: the moment its pattern shows whole. */
+export const knitPosterUrl = (k: { id: string }) => `/api/knits/${k.id}/poster`;
+/** The picture of the file a knit job is drawing now; `n` is progress.preview, so a new file is a new address. */
+export const jobPreviewUrl = (jobId: string, n: number) => `/api/jobs/${jobId}/preview?file=${n}`;
 export type { KnitRecord, KnitIssue, KnitFormat };
 export interface KnitVersions { size: Size; row: number | null; current: number; versions: { no: number; look: string; createdAt: string; files: KnitRecord[] }[] }
 export type { SpendLimits, UsageSummary };

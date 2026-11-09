@@ -9,7 +9,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { PLATFORMS, PLATFORM_IDS, captionLength, checkPost, fullCaption, type Platform } from "@knitted/core";
-import { api, knitFileUrl, type KnitRecord, type SocialAccount, type TikTokCreator } from "@knitted/core/client";
+import { api, knitFileUrl, knitPosterUrl, type KnitRecord, type SocialAccount, type TikTokCreator } from "@knitted/core/client";
 import { Button, Dialog, Field, Input, SegmentedControl, Select, Skeleton, Switch, Textarea, icons, useToast } from "@knitted/ui";
 import { formatBytes, useLive } from "@/lib/hooks";
 import { formatName } from "./KnitView";
@@ -82,7 +82,7 @@ export function PostDialog({ projectId, knits, open, onOpenChange }: { projectId
   const what = (
     <aside className="post-what" aria-label="What is posted">
       <div className="post-what-pics" data-many={knits.length > 1 || undefined}>
-        {knits.slice(0, 4).map((k) => k.kind === "image" ? <img key={k.id} src={knitFileUrl(k)} alt={k.label} /> : <video key={k.id} src={knitFileUrl(k)} muted preload="metadata" aria-label={k.label} />)}
+        {knits.slice(0, 4).map((k) => k.kind === "image" ? <img key={k.id} src={knitFileUrl(k)} alt={k.label} /> : <img key={k.id} src={knitPosterUrl(k)} alt={k.label} onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />)}
       </div>
       <p className="post-meta">
         {knits.length === 1 ? (first!.kind === "video" ? `1 video, ${Math.round((first!.durationMs ?? 0) / 1000)} seconds` : "1 picture") : `${knits.length} ${knits.every((k) => k.kind === "image") ? "pictures" : "files"}, as a carousel`}

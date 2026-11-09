@@ -7,7 +7,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import { PLATFORMS, PLATFORM_IDS, metricsLine } from "@knitted/core";
-import { api, knitFileUrl, type KnitRecord, type SocialAccount, type SocialConfigView, type SocialPost } from "@knitted/core/client";
+import { api, type KnitRecord, type SocialAccount, type SocialConfigView, type SocialPost } from "@knitted/core/client";
+import { KnitPicture } from "./KnitPicture";
 import { Button, ConfirmDialog, Dialog, EmptyState, Field, Input, Skeleton, icons, useToast } from "@knitted/ui";
 import { timeAgo, useLive } from "@/lib/hooks";
 import { PlatformMark } from "./PostDialog";
@@ -112,7 +113,7 @@ function PostRow({ p, knit, count, account, onMove }: { p: SocialPost; knit?: Kn
   return (
     <li className="card" style={{ padding: "8px var(--space-3) 8px 8px", display: "grid", gridTemplateColumns: "56px minmax(0, 1fr) auto", gap: "var(--space-3)", alignItems: "center" }}>
       <div aria-hidden className="thumb" style={{ width: 56, height: 56, padding: 4 }}>
-        {knit ? (knit.kind === "image" ? <img src={knitFileUrl(knit)} alt="" loading="lazy" style={{ display: "block", maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} /> : <video src={knitFileUrl(knit)} muted preload="metadata" style={{ display: "block", maxWidth: "100%", maxHeight: "100%" }} />) : null}
+        {knit ? <KnitPicture knit={knit} /> : null}
       </div>
       <div style={{ minWidth: 0 }}>
         <p className="label" style={{ margin: 0 }}>{name} · {who}{count > 1 ? ` · ${count} knits` : ""}</p>

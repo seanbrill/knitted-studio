@@ -174,6 +174,18 @@ export function stillMs(p: Pick<Pattern, "motion" | "durationMs">): number {
 }
 
 /**
+ * The moment a video knit's poster shows: its still moment, the picture its pattern's card
+ * shows. With nothing coming in, a second in (a quarter of a short one), so footage that opens
+ * on black is past that. Never after its last frame.
+ */
+export function posterMs(p: Pick<Pattern, "motion" | "durationMs">, fps = 30): number {
+  if (!(p.durationMs > 0)) return 0;
+  const still = stillMs(p);
+  const at = still > 0 ? still : Math.min(1000, p.durationMs / 4);
+  return Math.round(Math.max(0, Math.min(at, p.durationMs - 1000 / fps)));
+}
+
+/**
  * When a stitch is on screen, by its clips: it starts coming in at `from` and is all there at
  * `inAt`; it starts going at `outAt` and is gone at `goneAt`. Only a first clip that is an
  * entrance keeps it off screen before it (compileMotion's fill rule); with none, it is there

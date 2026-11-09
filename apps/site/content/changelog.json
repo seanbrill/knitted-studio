@@ -1,5 +1,15 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
+  "next": {
+    "title": "Knitting as it happens, and video posters",
+    "items": [
+      "A video's card shows its poster: the moment its pattern shows whole, a frame of the video itself, with how long it runs. Before, every video card showed its first frame, which is often empty.",
+      "Point at a video's card and it plays there, muted, with a line for where it is. Moving away puts the poster back. Where your system asks for less motion, it stays still.",
+      "The knit view's player, its versions, Posts and the Post dialog show the poster too, and a folder of videos peeks with them.",
+      "Videos knitted before this get their poster the first time they are shown, made from the video and then kept.",
+      "While a knit runs, the queue shows the file being drawn as soon as its frames start, and every file of the knit in its shape: done ones as they land, the rest as outlines."
+    ]
+  },
   "entries": [
     {
       "version": "0.1.46",

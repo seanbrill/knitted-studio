@@ -1,9 +1,13 @@
 // Knits: what a Knit produced. Output files live under the project's knits
 // directory; this table is how the gallery, the job runner and MCP find them.
 
-import { rm } from "node:fs/promises";
-import { join } from "node:path";
+import { existsSync } from "node:fs";
+import { mkdir, rename, rm } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import sharp from "sharp";
 import { newId } from "./ids.ts";
+import { posterMs } from "./motion.ts";
+import { hasTool, run } from "./proc.ts";
 import { NotFoundError, type Store } from "./store.ts";
 import { folderNamed } from "./folders.ts";
 import { SIZES, sizeNamed } from "./types.ts";
@@ -60,6 +64,48 @@ const toKnit = (r: Row): KnitRecord => ({
 const formatOf = (k: KnitRecord): KnitFormat => ({ id: k.id, kind: k.kind, format: k.format, scale: k.scale, width: k.width, height: k.height, bytes: k.bytes, ...(k.kind === "video" && k.report?.fps && k.report.fps !== 30 ? { fps: k.report.fps } : {}) });
 
 export const knitPath = (store: Store, k: Pick<KnitRecord, "projectId" | "file">) => join(store.paths.outDir(k.projectId), k.file);
+
+// ── posters ─────────────────────────────────────────────────────────────────────────────
+// A video knit's poster: the picture its card and its player show before it plays, the moment
+// its pattern shows whole (posterMs). The knit draws it with the video, from the same page
+// (engine/runner.mjs). They are kept out of sight beside the knits, as Yarn keeps its thumbnails.
+
+const POSTERS = ".posters";
+/** A poster is at most this many pixels on its long side: a card is small, and the player not much bigger. */
+const POSTER_PX = 1080;
+export const knitPosterPath = (store: Store, k: Pick<KnitRecord, "projectId" | "id">) => join(store.paths.outDir(k.projectId), POSTERS, `${k.id}.jpg`);
+/** The picture of the file a knit job is drawing now, for the queue: its poster, before the knit is. */
+export const jobPreviewPath = (store: Store, projectId: string, jobId: string) => join(store.paths.outDir(projectId), POSTERS, `job-${jobId}.jpg`);
+
+/** Save a picture, from a screenshot or a frame, as a poster at `target`. Written whole, then put in place. */
+export async function savePoster(picture: Buffer, target: string): Promise<void> {
+  await mkdir(dirname(target), { recursive: true });
+  const part = `${target}.${process.pid}-${Date.now()}.part`;
+  try {
+    await sharp(picture).resize(POSTER_PX, POSTER_PX, { fit: "inside", withoutEnlargement: true }).jpeg({ quality: 82, mozjpeg: true }).toFile(part);
+    await rename(part, target);
+  } finally { await rm(part, { force: true }); }
+}
+
+/**
+ * A video knit's poster, made from the video when it has none: a knit made before posters were
+ * drawn with it. At the moment its pattern, as it is now, shows whole. The path, or null when it
+ * cannot be made (no ffmpeg, a file gone): the card then shows the video's first frame.
+ */
+export async function ensureKnitPoster(store: Store, k: KnitRecord): Promise<string | null> {
+  if (k.kind !== "video") return null;
+  const target = knitPosterPath(store, k);
+  if (existsSync(target)) return target;
+  if (!existsSync(knitPath(store, k)) || !(await hasTool("ffmpeg"))) return null;
+  let motion;
+  try { motion = k.patternId ? store.getPattern(k.patternId).motion : undefined; } catch { motion = undefined; }
+  const at = posterMs({ motion, durationMs: k.durationMs ?? 0 }, k.report.fps ?? 30);
+  try {
+    const { out } = await run("ffmpeg", ["-v", "error", "-ss", (at / 1000).toFixed(3), "-i", knitPath(store, k), "-frames:v", "1", "-f", "image2pipe", "-c:v", "png", "-"], { binary: true, timeoutMs: 60_000 });
+    await savePoster(out, target);
+    return target;
+  } catch { return null; }
+}
 
 // Now, but after every knit this process made or picked: files of one knit made in the same
 // millisecond would otherwise sort either way, and the current version with them.
@@ -267,7 +313,7 @@ export async function deleteKnitFiles(store: Store, id: string, what: "file" | "
     const { versions, current } = versionsOf(rows);
     gone = what === "all" ? rows : what === "version" ? rows.filter((r) => (r.look ?? r.id) === (k.look ?? k.id)) : versions.filter((v) => v !== current).flatMap((v) => v.files);
   }
-  for (const g of gone) await rm(knitPath(store, g), { force: true });
+  for (const g of gone) { await rm(knitPath(store, g), { force: true }); await rm(knitPosterPath(store, g), { force: true }); }
   store.write(() => {
     const del = store.db.prepare("delete from knits where id = ?");
     for (const g of gone) del.run(g.id);

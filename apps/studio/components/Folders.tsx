@@ -268,7 +268,7 @@ function FolderTile({ kit, path, mark, lead }: { kit: FolderKit; path: string; m
             <span className="label" title={nameOf(path)} style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nameOf(path)}</span>
             <span className="body-sm" style={{ display: "block", marginTop: 2, color: "var(--ink-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{facts}</span>
           </span>
-          {peeks.length > 0 && <span aria-hidden className="folder-peek">{peeks.map((src) => <img key={src} src={src} alt="" loading="lazy" draggable={false} />)}</span>}
+          {peeks.length > 0 && <span aria-hidden className="folder-peek">{peeks.map((src) => <img key={src} src={src} alt="" loading="lazy" draggable={false} onError={(e) => { e.currentTarget.style.display = "none"; }} />)}</span>}
           <span style={{ position: "relative", zIndex: 2 }}>
             <Menu trigger={<IconButton label={`Actions for the folder ${nameOf(path)}`}><MoreHorizontal size={16} /></IconButton>} items={items} />
           </span>

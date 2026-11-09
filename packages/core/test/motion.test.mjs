@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyCommand, compileMotion, entersAt, motionEnd, motionLint, pieceTimes, preflight, PRESETS, FALLBACK_SWATCH, sceneChange, shownOf, stillMs, wordMs } from "../src/index.ts";
+import { applyCommand, compileMotion, entersAt, motionEnd, motionLint, pieceTimes, preflight, PRESETS, FALLBACK_SWATCH, posterMs, sceneChange, shownOf, stillMs, wordMs } from "../src/index.ts";
 
 const base = (motion, durationMs = 6000, extra = {}) => ({
   id: "p", projectId: "pj", name: "M", size: { name: "S", w: 1080, h: 1920 }, durationMs, version: 1, updatedAt: "", motion,
@@ -69,6 +69,13 @@ test("one picture of a video is once everything that enters before anything leav
   assert.equal(stillMs(base({ tracks: { h: [clip("a", "pulse", 0, 1200)] } })), 0, "a loop is not an entrance");
   assert.equal(stillMs(base({ tracks: { h: [clip("a", "fade-in", 0, 600)] } }, 0)), 0, "a pattern that is not a video is knitted at its start");
   assert.equal(stillMs(base(undefined)), 0);
+});
+test("a video's poster is its still moment; with nothing coming in, a second in; never past its last frame", () => {
+  assert.equal(posterMs(base({ tracks: { h: [clip("a", "fade-in", 0, 1000)] } })), 1000);
+  assert.equal(posterMs(base({ tracks: { h: [clip("a", "pulse", 0, 1200)] } })), 1000, "footage that opens on black is past it");
+  assert.equal(posterMs({ ...base({ tracks: {} }), durationMs: 2000 }), 500, "a quarter of a short one");
+  assert.equal(posterMs({ ...base({ tracks: { h: [clip("a", "fade-in", 0, 3000)] } }), durationMs: 3000 }, 30), 2967, "the last frame, not after it");
+  assert.equal(posterMs(base({ tracks: { h: [clip("a", "fade-in", 0, 600)] } }, 0)), 0, "a picture has none");
 });
 
 // ── commands ────────────────────────────────────────────────────────────────

@@ -2,9 +2,12 @@
 
 // What is being knitted, in one place: the knit under way with a bar that moves as its
 // frames are drawn, and the ones waiting their turn under it, each to cancel, or all at once.
+// The knit under way shows the file it is drawing (a video's poster, drawn before its frames)
+// and every file it makes: the done ones as they land, the rest as outlines in their shape.
 
 import Link from "next/link";
-import { api, type JobItem } from "@knitted/core/client";
+import { api, jobPreviewUrl, type JobItem } from "@knitted/core/client";
+import { KnitPicture } from "./KnitPicture";
 import { Button, IconButton, icons } from "@knitted/ui";
 import { useMarks } from "@/lib/agent";
 import { ModelMark } from "./ModelMark";
@@ -49,17 +52,29 @@ export function KnitQueue({ jobs, href, place, compact }: { jobs: JobItem[]; hre
         const pct = Math.round(knitShare(j) * 100);
         const of = p && p.total > 1 ? `File ${Math.min(p.total, p.done + 1)} of ${p.total}` : null;
         const frames = p?.frames && p.frames.total ? `frame ${p.frames.done} of ${p.frames.total}` : null;
+        // The file being made: the one after those done, as the runner counts them.
+        const at = p ? Math.min(p.done, Math.max(0, p.total - 1)) : 0;
+        const shape = p?.shapes?.[at];
+        const drawn = p?.preview != null && p.preview === at;
         return (
-          <div key={j.id} style={{ display: "grid", gap: 6, position: "relative" }}>
+          <div key={j.id} className="kq-run" data-compact={compact || undefined}>
             <ModelMark mark={marks.get(j.id)} />
-            <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-              <span className="body-sm" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{where(j)}{p?.current ?? nameOf(j)}</span>
-              <span className="body-sm" style={{ color: "var(--ink-muted)", whiteSpace: "nowrap" }}>{[of, p?.step, frames].filter(Boolean).join(" · ")}</span>
-              <span className="label" style={{ minWidth: 40, textAlign: "right" }}>{pct}%</span>
-              <IconButton label={`Cancel knitting ${nameOf(j)}`} onClick={() => api.knit.cancel(j.id)}><X size={14} aria-hidden /></IconButton>
+            <div className="kq-now" aria-hidden style={{ aspectRatio: shape ? `${shape[0]} / ${shape[1]}` : "4 / 5" }}>
+              {drawn ? <img src={jobPreviewUrl(j.id, at)} alt="" /> : <span className="skeleton kq-wait-pic" />}
+              {drawn && p?.frames ? <span className="kq-tag">Drawing</span> : null}
+              {drawn && p?.frames?.total ? <span className="kq-mini"><span style={{ width: `${Math.round((p.frames.done / p.frames.total) * 100)}%` }} /></span> : null}
             </div>
-            <div className="knit-bar" role="progressbar" aria-label={`Knitting ${nameOf(j)}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
-              <span style={{ width: `${pct}%` }} />
+            <div className="kq-info">
+              <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+                <span className="body-sm" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{where(j)}{p?.current ?? nameOf(j)}</span>
+                <span className="body-sm" style={{ color: "var(--ink-muted)", whiteSpace: "nowrap" }}>{[of, p?.step, frames].filter(Boolean).join(" · ")}</span>
+                <span className="label" style={{ minWidth: 40, textAlign: "right" }}>{pct}%</span>
+                <IconButton label={`Cancel knitting ${nameOf(j)}`} onClick={() => api.knit.cancel(j.id)}><X size={14} aria-hidden /></IconButton>
+              </div>
+              {!compact && p?.shapes && p.shapes.length > 1 ? <Files job={j} at={at} /> : null}
+              <div className="knit-bar" role="progressbar" aria-label={`Knitting ${nameOf(j)}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+                <span style={{ width: `${pct}%` }} />
+              </div>
             </div>
           </div>
         );
@@ -77,5 +92,40 @@ export function KnitQueue({ jobs, href, place, compact }: { jobs: JobItem[]; hre
         </ul>
       )}
     </section>
+  );
+}
+
+/** How many of a knit's files the strip shows; more are a count either side. */
+const SHOWN = 10;
+
+/**
+ * Every file of a knit under way, in its own shape: done ones as they are (a video by its
+ * poster), the one being made ringed, the rest as outlines. Past ten, the ten round the one
+ * being made, and a count of the rest either side.
+ */
+function Files({ job, at }: { job: JobItem; at: number }) {
+  const p = job.progress!;
+  const shapes = p.shapes ?? [];
+  const from = Math.max(0, Math.min(at - 3, shapes.length - SHOWN));
+  const to = Math.min(shapes.length, from + SHOWN);
+  return (
+    <ol className="kq-files" aria-label={`The files of ${nameOf(job)}`}>
+      {from > 0 && <li className="kq-more">+{from}</li>}
+      {shapes.slice(from, to).map(([w, h], k) => {
+        const i = from + k;
+        const u = p.units[i];
+        const done = !!u?.knitId && (u.status === "done" || u.status === "reused");
+        const state = done ? "done" : u?.status === "failed" ? "failed" : i === at ? "now" : "waiting";
+        return (
+          <li key={i} className="kq-file" data-state={state} style={{ aspectRatio: `${w} / ${h}` }}>
+            {done ? <KnitPicture knit={{ id: u.knitId!, kind: p.kind ?? "image" }} fit="cover" /> : null}
+            {state === "now" && p.preview === i ? <img src={jobPreviewUrl(job.id, i)} alt="" /> : null}
+            {done ? <span className="kq-tick" aria-hidden>✓</span> : state === "failed" ? <span className="kq-tick" aria-hidden>!</span> : null}
+            <span className="sr-only">{u?.label ?? `File ${i + 1}`}: {state === "done" ? "done" : state === "failed" ? "could not be made" : state === "now" ? "being made" : "waiting"}</span>
+          </li>
+        );
+      })}
+      {to < shapes.length && <li className="kq-more">+{shapes.length - to}</li>}
+    </ol>
   );
 }

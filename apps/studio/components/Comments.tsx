@@ -8,7 +8,7 @@
 import { useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { CommentThread } from "@knitted/core";
-import { api, type KnitRecord } from "@knitted/core/client";
+import { api, knitPosterUrl, type KnitRecord } from "@knitted/core/client";
 import { Button, ConfirmDialog, IconButton, Textarea, icons, useToast } from "@knitted/ui";
 import { timeAgo, useLive } from "@/lib/hooks";
 import { currentChoice } from "@/lib/model-choice";
@@ -232,7 +232,7 @@ export function KnitWithComments({ knit, src }: { knit: KnitRecord; src: string 
     <div className="knit-stage">
       <div className="pin-media" data-picking={c.picking || undefined}>
         {video
-          ? <video ref={player} src={src} controls onTimeUpdate={(e) => setAt(e.currentTarget.currentTime * 1000)} onSeeked={(e) => setAt(e.currentTarget.currentTime * 1000)} />
+          ? <video ref={player} src={src} poster={knitPosterUrl(knit)} controls onTimeUpdate={(e) => setAt(e.currentTarget.currentTime * 1000)} onSeeked={(e) => setAt(e.currentTarget.currentTime * 1000)} />
           : <img src={src} alt={knit.label} />}
         <Pins threads={shownThreads(threads, c)} draft={c.draft} active={c.active} at={video ? at : undefined}
           onPick={(t) => { c.setActive(t.id); if (t.timeMs != null && player.current) { player.current.pause(); player.current.currentTime = t.timeMs / 1000; } }} />

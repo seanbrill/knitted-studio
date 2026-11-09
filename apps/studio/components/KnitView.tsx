@@ -7,7 +7,8 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { api, knitFileUrl, type KnitIssue, type KnitRecord } from "@knitted/core/client";
+import { api, knitFileUrl, knitPosterUrl, type KnitIssue, type KnitRecord } from "@knitted/core/client";
+import { KnitPicture } from "./KnitPicture";
 import { Button, Chip, ConfirmDialog, IconButton, Input, Menu, SegmentedControl, TabPanel, Tabs, Viewer, icons, useToast, type MenuItems } from "@knitted/ui";
 import { formatBytes, timeAgo, useLive } from "@/lib/hooks";
 import { KnitPost } from "./KnitPost";
@@ -136,7 +137,7 @@ export function KnitView({ knit, here, onOpen, onClose, onChanged, onMove, onPos
         <div className="viewer-media" data-other={other || undefined}>
           <div className="pin-media" data-picking={c.picking || undefined}>
             {video
-              ? <video key={viewing.id} ref={player} src={knitFileUrl(viewing)} controls onTimeUpdate={(e) => setAt(e.currentTarget.currentTime * 1000)} onSeeked={(e) => setAt(e.currentTarget.currentTime * 1000)} />
+              ? <video key={viewing.id} ref={player} src={knitFileUrl(viewing)} poster={knitPosterUrl(viewing)} controls onTimeUpdate={(e) => setAt(e.currentTarget.currentTime * 1000)} onSeeked={(e) => setAt(e.currentTarget.currentTime * 1000)} />
               : <img key={viewing.id} src={knitFileUrl(viewing)} alt={knit.label} />}
             <Pins threads={shownThreads(threads, c)} draft={c.draft} active={c.active} at={video ? at : undefined}
               onPick={(t) => { setTab("comments"); c.setActive(t.id); if (t.timeMs != null && player.current) { player.current.pause(); player.current.currentTime = t.timeMs / 1000; } }} />
@@ -174,7 +175,7 @@ export function KnitView({ knit, here, onOpen, onClose, onChanged, onMove, onPos
                 return (
                   <li key={v.look} className="kv-row" data-active={looking || undefined}>
                     <button type="button" className="kv-pick" aria-pressed={looking} onClick={() => setViewingId(isCurrent ? null : shown.id)}>
-                      <span className="kv-thumb" aria-hidden>{shown.kind === "image" ? <img src={knitFileUrl(shown)} alt="" loading="lazy" /> : <video src={knitFileUrl(shown)} muted preload="metadata" />}</span>
+                      <span className="kv-thumb" aria-hidden><KnitPicture knit={shown} /></span>
                       <span className="kv-text">
                         <span className="kv-name">Version {v.no}{isCurrent && <span className="kv-badge" data-tone="current">Current</span>}{looking && !isCurrent && <span className="kv-badge">Looking at it</span>}</span>
                         <small>Knitted {timeAgo(v.createdAt)} · {v.files.map(formatName).join(", ")} · {formatBytes(v.files.reduce((m, f) => m + f.bytes, 0))}</small>

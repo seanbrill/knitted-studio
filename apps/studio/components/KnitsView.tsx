@@ -1,11 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { api, knitFileUrl, type KnitRecord } from "@knitted/core/client";
+import { api, knitFileUrl, knitPosterUrl, type KnitRecord } from "@knitted/core/client";
 import { KNIT_SIZES, foldersIn, isInside, nameOf, sizeNamed } from "@knitted/core";
 import { Button, ConfirmDialog, ContextMenu, EmptyState, IconButton, Input, Menu, Select, SkeletonSection, icons, useToast, type MenuItems } from "@knitted/ui";
 import { formatBytes, timeAgo, useLive } from "@/lib/hooks";
 import { FolderCrumbs, FolderDialogs, FolderList, NewFolderButton, useFolders } from "./Folders";
+import { KnitPicture } from "./KnitPicture";
 import { KnitQueue } from "./KnitQueue";
 import { KnitView, formatName, saveHref } from "./KnitView";
 import { AskModelDialog, aboutKnit } from "./AskModel";
@@ -89,7 +90,7 @@ export function KnitsView({ projectId }: { projectId: string }) {
   };
   // Anything knitted after this page opened is new, and gets the signature "stitching in" reveal.
   const [openedAt] = useState(() => Date.now());
-  const kit = useFolders(projectId, "knits", knits, { onChanged: refresh, peek: (t) => { const k = t as KnitRecord; return k.kind === "image" ? knitFileUrl(k) : null; }, zipOf: (f) => `/api/projects/${projectId}/knits/zip?folder=${encodeURIComponent(f)}` });
+  const kit = useFolders(projectId, "knits", knits, { onChanged: refresh, peek: (t) => { const k = t as KnitRecord; return k.kind === "image" ? knitFileUrl(k) : knitPosterUrl(k); }, zipOf: (f) => `/api/projects/${projectId}/knits/zip?folder=${encodeURIComponent(f)}` });
 
   const view = useView<KnitRecord>("knits", KNIT_SORTS);
   const [q, setQ] = useState("");
@@ -124,6 +125,12 @@ export function KnitsView({ projectId }: { projectId: string }) {
   const lead = leadOf(marks);
   // What a dialog is about: the picked knits, or the one whose menu it came from.
   const [tagFor, setTagFor] = useState<KnitRecord[] | null>(null);
+  // The card pointed at, or reached with the keyboard: a video there plays, muted, in its place.
+  const [pointed, setPointed] = useState<string | null>(null);
+  const pointAt = (id: string) => ({
+    onPointerEnter: () => setPointed(id), onPointerLeave: () => setPointed((p) => (p === id ? null : p)),
+    onFocus: () => setPointed(id), onBlur: () => setPointed((p) => (p === id ? null : p)),
+  });
   const [deleteFor, setDeleteFor] = useState<KnitRecord[] | null>(null);
   const [asking, setAsking] = useState<KnitRecord | null>(null);
   // What is being posted: the open knit, or the picked ones together.
@@ -240,7 +247,7 @@ export function KnitsView({ projectId }: { projectId: string }) {
                       <div className="card card-link" style={{ position: "relative", padding: "6px var(--space-3) 6px 6px", display: "grid", gridTemplateColumns: "56px minmax(0, 1fr) auto", gap: "var(--space-3)", alignItems: "center" }}>
                         <button aria-label={`Open ${k.label}${k.seenAt ? "" : (k.versions ?? 1) > 1 ? ", a new version" : ", new"}${(k.versions ?? 1) > 1 ? `, ${k.versions} versions` : ""}${k.patternChangedSince ? ", its pattern changed since" : ""}${noted(k.id) ? `, ${noted(k.id)} open comment${noted(k.id) === 1 ? "" : "s"}` : ""}`} onClick={(e) => (picking(e) ? sel.toggle(k.id, e.shiftKey) : show(k))} style={{ position: "absolute", inset: 0, zIndex: 1, background: "transparent", border: 0, cursor: "pointer", borderRadius: "var(--radius-md)" }} />
                         <div aria-hidden className="thumb" style={{ width: 56, height: 56, padding: 4 }}>
-                          {k.kind === "image" ? <img src={knitFileUrl(k)} alt="" loading="lazy" style={{ display: "block", maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} /> : <video src={knitFileUrl(k)} muted preload="metadata" style={{ display: "block", maxWidth: "100%", maxHeight: "100%" }} />}
+                          <KnitPicture knit={k} />
                         </div>
                         <div aria-hidden style={{ minWidth: 0 }}>
                           <p className="label" style={{ margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{k.label}</p>
@@ -256,13 +263,13 @@ export function KnitsView({ projectId }: { projectId: string }) {
                     <li key={k.id} data-thing={k.id} className={`pickable${fresh ? " stitching-in" : ""}`} data-selected={sel.has(k.id)} draggable onDragStart={kit.dragThings(sel.has(k.id) ? sel.picked.map((x) => x.id) : [k.id])}>
                       <PickBox sel={sel} id={k.id} name={k.label} className="pick-box" />
                       <ContextMenu items={menuFor(k)}>
-                      <div className={`card card-link${(k.versions ?? 1) > 1 ? " knit-stack" : ""}`} style={{ position: "relative", height: "100%", padding: "var(--space-2)" }}>
+                      <div className={`card card-link${(k.versions ?? 1) > 1 ? " knit-stack" : ""}`} style={{ position: "relative", height: "100%", padding: "var(--space-2)" }} {...pointAt(k.id)}>
                         <button aria-label={`Open ${k.label}${k.seenAt ? "" : (k.versions ?? 1) > 1 ? ", a new version" : ", new"}${(k.versions ?? 1) > 1 ? `, ${k.versions} versions` : ""}${k.patternChangedSince ? ", its pattern changed since" : ""}${noted(k.id) ? `, ${noted(k.id)} open comment${noted(k.id) === 1 ? "" : "s"}` : ""}`} onClick={(e) => (picking(e) ? sel.toggle(k.id, e.shiftKey) : show(k))} style={{ position: "absolute", inset: 0, zIndex: 1, background: "transparent", border: 0, cursor: "pointer", borderRadius: "var(--radius-md)" }} />
                         {!k.seenAt && <span aria-hidden className="new-badge">{(k.versions ?? 1) > 1 ? "New version" : "New"}</span>}
                         {/* On the card's 4:5 mat, as a pattern's card has it, so a row of knits lines up whatever their sizes. */}
                         <div aria-hidden className="thumb" style={{ padding: "var(--space-2)" }}>
                           <div style={{ width: k.width / k.height > 0.8 ? "100%" : `${(k.width / k.height / 0.8) * 100}%`, aspectRatio: `${k.width} / ${k.height}`, borderRadius: "var(--radius-sm)", overflow: "hidden", boxShadow: "0 1px 4px rgba(23,17,11,.18)" }}>
-                            {k.kind === "image" ? <img src={knitFileUrl(k)} alt="" loading="lazy" style={{ display: "block", width: "100%", height: "100%", objectFit: "contain" }} /> : <video src={knitFileUrl(k)} muted preload="metadata" style={{ display: "block", width: "100%", height: "100%", objectFit: "contain" }} />}
+                            <KnitPicture knit={k} playing={pointed === k.id} badge />
                           </div>
                         </div>
                         <p className="label" aria-hidden style={{ margin: "var(--space-2) 0 0", paddingRight: 30, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{k.label}</p>

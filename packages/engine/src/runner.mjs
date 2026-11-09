@@ -10,15 +10,15 @@
 
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import sharp from "sharp";
-import { applyCommand, fontFor, hasErrors, overflowIssues, postflight, preflight, resolveStyle, safeZoneIssues, SIZES, videoFps } from "@knitted/core";
-import { activeSwatch, chooseKnit, findKnitByHash, getPart, insertKnit, knitPath, listYarn, unitKey, versionsOf } from "@knitted/core/node";
+import { applyCommand, fontFor, hasErrors, overflowIssues, posterMs, postflight, preflight, resolveStyle, safeZoneIssues, SIZES, videoFps } from "@knitted/core";
+import { activeSwatch, chooseKnit, findKnitByHash, getPart, insertKnit, jobPreviewPath, knitPath, knitPosterPath, listYarn, savePoster, unitKey, versionsOf } from "@knitted/core/node";
 import { fontFaceCss, fontPath, manifest as fontManifest } from "@knitted/fonts";
 import { familiesUsed, pageFor } from "@knitted/render";
-import { FPS, frameTimes, run } from "./knit.mjs";
+import { fastShots, FPS, frameTimes, run } from "./knit.mjs";
 import { openRenderer } from "./renderer.mjs";
 import { mixAudio, muxAudio, videoHash } from "./audio.mjs";
 import { prepareFootage } from "./footage.mjs";
@@ -298,8 +298,11 @@ export async function runKnit(store, { jobId, projectId, patternId, params = {},
   await mkdir(join(outRoot, day), { recursive: true });
   await mkdir(pagesDir, { recursive: true });
 
-  const progress = { total: units.length, done: 0, current: null, units: [] };
+  // shapes and kind: every file it will make, so the queue can show each as an outline until it lands.
+  // preview: which file's picture is at `preview`, the one being drawn, while a video's frames are.
+  const progress = { total: units.length, done: 0, current: null, units: [], preview: null, shapes: units.map((u) => [u.size.w, u.size.h]), kind: motion ? "video" : "image" };
   const publish = () => store.updateJob(jobId, { status: "running", progress });
+  const preview = jobPreviewPath(store, projectId, jobId);
   publish();
 
   const own = !injected;
@@ -308,7 +311,7 @@ export async function runKnit(store, { jobId, projectId, patternId, params = {},
   try {
     for (const [n, unit] of units.entries()) {
       if (signal?.aborted) throw new Cancelled();
-      progress.current = unit.label; progress.step = "Getting ready"; progress.frames = null; publish();
+      progress.current = unit.label; progress.step = "Getting ready"; progress.frames = null; progress.preview = null; publish();
       const entry = { label: unit.label, status: "pending", issues: [...unit.problems] };
       progress.units.push(entry);
       try {
@@ -354,6 +357,13 @@ export async function runKnit(store, { jobId, projectId, patternId, params = {},
           issues.push(...safeZoneIssues(unit.pattern, swatch, measured.filter((m) => m.top != null)).filter((i) => !zoned.has(i.stitchId)));
           if (motion) {
             const { knit } = await import("./knit.mjs");
+            // Its poster first: the moment it shows whole, drawn by this page, so it is a frame of
+            // the video. The queue shows it while the frames are drawn, and the knit keeps it.
+            await page.evaluate(() => window.__stage.ready());
+            await page.evaluate((t) => window.__stage.seek(t), posterMs(unit.pattern, fps));
+            const shoot = await fastShots(page);
+            await savePoster(shoot ? await shoot() : await page.screenshot({ type: "png" }), preview);
+            progress.preview = n;
             progress.step = "Drawing the frames";
             // Every few frames, so the bar moves without a write for each one.
             const r = await knit(page, { outDir: join(outRoot, day), name: `${base}.silent`, durationMs: unit.pattern.durationMs, fps, signal, onFrame: (done, total) => { progress.frames = { done, total }; if (done % 6 === 0 || done === total) publish(); } });
@@ -415,6 +425,7 @@ export async function runKnit(store, { jobId, projectId, patternId, params = {},
           durationMs: motion ? unit.pattern.durationMs : null, hash, report,
           unit: unitOf(patternId, pattern, unit), look: lookFor(store, unit, swatch, yarnMap), scale,
         });
+        if (motion) await copyFile(preview, knitPosterPath(store, rec)).catch(() => {});
         entry.status = "done"; entry.knitId = rec.id; entry.issues = issues;
         results.push(rec);
       } catch (e) {
@@ -437,6 +448,7 @@ export async function runKnit(store, { jobId, projectId, patternId, params = {},
     throw e;
   } finally {
     if (own) await renderer.close();
+    await rm(preview, { force: true });
   }
 }
 
