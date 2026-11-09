@@ -1,15 +1,17 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
-  "next": {
-    "title": "Captions you can make longer",
-    "items": [
-      "Asking your model for a longer caption, like one for LinkedIn that tells the whole story, works now. The model thinks before it writes, and that thinking used up the room the caption needed, so a longer one was cut off part way and came back as \"could not be read\".",
-      "Captions come back in the shape knitted asks for, so they always read. A caption with line breaks between paragraphs keeps them.",
-      "Say which network a caption is for, and your model keeps it within what that network takes: 280 characters on X, 500 on Threads, 3,000 on LinkedIn.",
-      "If an answer is ever cut off, it says so, and what to do."
-    ]
-  },
   "entries": [
+    {
+      "version": "0.1.37",
+      "date": "2026-11-09",
+      "title": "Captions you can make longer",
+      "items": [
+        "Asking your model for a longer caption, like one for LinkedIn that tells the whole story, works now. The model thinks before it writes, and that thinking used up the room the caption needed, so a longer one was cut off part way and came back as \"could not be read\".",
+        "Captions come back in the shape knitted asks for, so they always read. A caption with line breaks between paragraphs keeps them.",
+        "Say which network a caption is for, and your model keeps it within what that network takes: 280 characters on X, 500 on Threads, 3,000 on LinkedIn.",
+        "If an answer is ever cut off, it says so, and what to do."
+      ]
+    },
     {
       "version": "0.1.36",
       "date": "2026-11-08",
