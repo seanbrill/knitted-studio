@@ -1,17 +1,19 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
-  "next": {
-    "title": "The Brief, Swatch and Parts, in one shape with the rest",
-    "items": [
-      "The Brief reads beside an outline of the profile's parts, which marks the part you are reading and goes to one with a press. The website, with Sync again, and your notes for your model sit beside it and stay in sight.",
-      "New swatch is one menu of the three ways to start: blank or from a template, from a website, or from a file.",
-      "Each swatch has its own menu, from its ... button or a right-click: Use for this project, Duplicate, Move to folder, Export and Delete. M and Delete work on its row too.",
-      "Each colour is one row: its well, its own name, its hex, and what it is used as. Colours, Fonts, Logos, Voice and Shape are each a card, with their actions in the head, and Add a logo finds a picture in Yarn by name.",
-      "Parts are cards of one height, each part centred and scaled in a well of one shape, with Edit, or Edit a copy for a starter, and a menu for the rest.",
-      "The pictures to pick from in Make a photo or video and in Add a logo are squares of one size."
-    ]
-  },
   "entries": [
+    {
+      "version": "0.1.45",
+      "date": "2026-11-09",
+      "title": "The Brief, Swatch and Parts, in one shape with the rest",
+      "items": [
+        "The Brief reads beside an outline of the profile's parts, which marks the part you are reading and goes to one with a press. The website, with Sync again, and your notes for your model sit beside it and stay in sight.",
+        "New swatch is one menu of the three ways to start: blank or from a template, from a website, or from a file.",
+        "Each swatch has its own menu, from its ... button or a right-click: Use for this project, Duplicate, Move to folder, Export and Delete. M and Delete work on its row too.",
+        "Each colour is one row: its well, its own name, its hex, and what it is used as. Colours, Fonts, Logos, Voice and Shape are each a card, with their actions in the head, and Add a logo finds a picture in Yarn by name.",
+        "Parts are cards of one height, each part centred and scaled in a well of one shape, with Edit, or Edit a copy for a starter, and a menu for the rest.",
+        "The pictures to pick from in Make a photo or video and in Add a logo are squares of one size."
+      ]
+    },
     {
       "version": "0.1.44",
       "date": "2026-11-09",
