@@ -114,3 +114,139 @@ test("the store keeps each version, so Undo walks back through changes, and a de
   assert.equal(restoreDesign(store, copy.id).deletedAt, null);
   assert.equal(listDesigns(store, p.id).length, 2);
 });
+
+// ── the board as a canvas (design sheet f49) ──
+import { BOARD, dropIndex, frameRev, guessHeight, layoutDesign, snapToGrid } from "../src/index.ts";
+import { codeHash, compactDesignVersions, designVersion, getDesignMeta, getFrameCode, setFrameHeights } from "../src/node.ts";
+
+const fr = (id, width, height) => ({ id, width, ...(height ? { height } : {}) });
+
+test("sections not placed stand in a column, in order, with their frames in a row", () => {
+  const lay = layoutDesign([
+    { id: "s1", frames: [fr("f1", 1440, 900), fr("f2", 390, 844)] },
+    { id: "s2", frames: [] },
+    { id: "s3", frames: [fr("f3", 1440)] },
+  ]);
+  const [a, b, c] = lay.sections;
+  assert.deepEqual([a.x, a.y, a.w, a.h], [0, 0, BOARD.pad * 2 + 1440 + BOARD.gap + 390, BOARD.pad * 2 + 900]);
+  assert.deepEqual(a.frames.map((f) => [f.id, f.x, f.y]), [["f1", BOARD.pad, BOARD.pad], ["f2", BOARD.pad + 1440 + BOARD.gap, BOARD.pad]]);
+  assert.deepEqual([b.x, b.y, b.w, b.h], [0, a.h + BOARD.stack, BOARD.emptyW, BOARD.emptyH], "an empty section has room to add a frame");
+  assert.equal(c.y, b.y + b.h + BOARD.stack);
+  assert.equal(c.frames[0].h, guessHeight({ width: 1440 }), "a frame not measured yet is a guess");
+  assert.deepEqual([lay.x, lay.y, lay.w, lay.h], [0, 0, a.w, c.y + c.h]);
+  assert.equal(layoutDesign([{ id: "s1", frames: [fr("f1", 1440)] }], () => 2400).sections[0].frames[0].h, 2400, "a measured height is used");
+});
+
+test("a placed section is where it was put, and the column stands under the placed ones", () => {
+  const lay = layoutDesign([
+    { id: "s1", frames: [fr("f1", 400, 300)] },
+    { id: "s2", x: -800, y: 400, frames: [fr("f2", 400, 300)] },
+    { id: "s3", x: 2000, y: -200, frames: [fr("f3", 400, 1000)] },
+  ]);
+  const [a, b, c] = lay.sections;
+  assert.deepEqual([b.x, b.y, b.placed], [-800, 400, true]);
+  assert.deepEqual([c.x, c.y, c.placed], [2000, -200, true]);
+  assert.deepEqual([a.x, a.y, a.placed], [0, Math.max(400 + b.h, -200 + c.h) + BOARD.stack, false]);
+  assert.deepEqual([b.frames[0].x, b.frames[0].y], [-800 + BOARD.pad, 400 + BOARD.pad], "frames go with their section");
+  assert.deepEqual([lay.x, lay.y], [-800, -200], "the board starts at its top left section");
+  assert.equal(lay.w, 2000 + c.w + 800);
+});
+
+test("a section's width wraps its frames into rows, never narrower than its widest frame", () => {
+  const frames = [fr("f1", 1440, 900), fr("f2", 390, 844), fr("f3", 1440, 600), fr("f4", 390, 844)];
+  const lay = layoutDesign([{ id: "s1", width: 1440 + 390 + BOARD.gap + 2 * BOARD.pad, frames }]);
+  const [s] = lay.sections;
+  assert.deepEqual(s.frames.map((f) => [f.id, f.x, f.y]), [
+    ["f1", BOARD.pad, BOARD.pad], ["f2", BOARD.pad + 1440 + BOARD.gap, BOARD.pad],
+    ["f3", BOARD.pad, BOARD.pad + 900 + BOARD.rowGap], ["f4", BOARD.pad + 1440 + BOARD.gap, BOARD.pad + 900 + BOARD.rowGap],
+  ]);
+  assert.equal(s.h, 2 * BOARD.pad + 900 + BOARD.rowGap + 844);
+  const narrow = layoutDesign([{ id: "s1", width: 500, frames }]).sections[0];
+  assert.equal(narrow.w, 1440 + 2 * BOARD.pad, "as wide as its widest frame");
+  assert.deepEqual(narrow.frames.map((f) => f.x), [BOARD.pad, BOARD.pad, BOARD.pad, BOARD.pad], "one frame a row");
+});
+
+test("a frame dropped in a section goes in the gap nearest the point, in the row nearest it", () => {
+  const lay = layoutDesign([{ id: "s1", width: 2 * 400 + BOARD.gap + 2 * BOARD.pad, frames: [fr("f1", 400, 300), fr("f2", 400, 300), fr("f3", 400, 300)] }]);
+  const s = lay.sections[0];
+  const [f1, f2, f3] = s.frames;
+  assert.equal(dropIndex(s, null, f1.x + 10, f1.y + 10), 0);
+  assert.equal(dropIndex(s, null, f1.x + 300, f1.y + 10), 1);
+  assert.equal(dropIndex(s, null, f2.x + 300, f2.y + 10), 2, "after the last in its row");
+  assert.equal(dropIndex(s, null, f3.x + 300, f3.y + 100), 3, "after the last of all");
+  assert.equal(dropIndex(s, "f1", f3.x + 10, f3.y + 10), 1, "the moved frame does not count: before f3, among the others");
+  assert.equal(dropIndex(layoutDesign([{ id: "s2", frames: [] }]).sections[0], "f1", 0, 0), 0);
+  assert.equal(snapToGrid(57), 40);
+  assert.equal(snapToGrid(-61), -80);
+});
+
+test("sections are placed, wrapped and put back in the column; a sheet takes as many frames as it is given", () => {
+  const base = { name: "S", sections: [{ id: "s1", name: "Pages", frames: [] }] };
+  const placed = applyDesignOps(base, [{ op: "placeSection", section: "Pages", x: 120.4, y: -80 }, { op: "updateSection", section: "s1", width: 3000 }, { op: "addSection", name: "Shop", x: 2000, y: 0, width: 1200 }], "human");
+  assert.deepEqual([placed.sections[0].x, placed.sections[0].y, placed.sections[0].width], [120, -80, 3000]);
+  assert.deepEqual([placed.sections[1].x, placed.sections[1].y, placed.sections[1].width], [2000, 0, 1200]);
+  const back = applyDesignOps(placed, [{ op: "placeSection", section: "s1", x: null, y: null }, { op: "updateSection", section: "s1", width: null }], "human");
+  assert.deepEqual(Object.keys(back.sections[0]).sort(), ["frames", "id", "name"]);
+  assert.throws(() => applyDesignOps(base, [{ op: "placeSection", section: "s1", x: "left", y: 0 }], "human"), /x on the board/);
+  assert.throws(() => applyDesignOps(base, [{ op: "placeSection", section: "s1", x: 0, y: 5e7 }], "human"), /y on the board/);
+  assert.throws(() => applyDesignOps(base, [{ op: "updateSection", section: "s1", width: 100 }], "human"), /400 to 100,000/);
+  const many = applyDesignOps(base, [
+    ...Array.from({ length: 60 }, (_, i) => ({ op: "addSection", name: `Part ${i}` })),
+    ...Array.from({ length: 260 }, (_, i) => ({ op: "setFrame", section: "s1", name: `Frame ${i}`, html: `<p>${i}</p>` })),
+  ], "model");
+  assert.equal(many.sections.length, 61, "past the 40 sections a sheet once had");
+  assert.equal(many.sections[0].frames.length, 260, "and past the 200 frames");
+  assert.equal(applyDesignOps(many, [{ op: "duplicateFrame", frameId: "f260" }], "human").sections[0].frames.length, 261);
+});
+
+test("Undo keeps each frame's code once, not a copy of the sheet a change, and brings each version back exactly", () => {
+  const d = createDesign(store, p.id, { name: "Kept once" });
+  const before = getDesign(store, d.id);
+  for (let i = 1; i <= 6; i++) changeDesign(store, d.id, [{ op: "setFrame", section: "Pages", frameId: "f7", html: `<h1>Version ${i}</h1>` }], "model");
+  const rows = store.db.prepare("select count(*) n from design_code where design_id = ?").get(d.id).n;
+  const frames = before.sections.flatMap((s) => s.frames);
+  const distinct = new Set(frames.map((f) => codeHash(f.html, f.css))).size;
+  assert.equal(rows, distinct + 5, "the starting frames once, and each earlier Home once");
+  for (const r of store.db.prepare("select data from design_versions where design_id = ?").all(d.id)) {
+    assert.match(r.data, /^\{"refs":1,/);
+    assert.doesNotMatch(r.data, /"html"/, "no code in a kept version");
+  }
+  for (let i = 5; i >= 1; i--) assert.equal(undoDesign(store, d.id).sections[2].frames[0].html, `<h1>Version ${i}</h1>`);
+  assert.deepEqual(undoDesign(store, d.id).sections, before.sections, "the sheet as it started, to the letter");
+});
+
+test("versions kept as whole copies are kept the lighter way when the library opens, and still undo", () => {
+  const d = createDesign(store, p.id, { name: "Old versions" });
+  const first = getDesign(store, d.id);
+  // As 0.1.48 kept them: the whole sheet, code and all.
+  store.db.prepare("insert into design_versions (design_id, version, name, data, actor, at) values (?, ?, ?, ?, ?, ?)").run(d.id, 1, first.name, JSON.stringify({ sections: first.sections }), "human", NOW);
+  store.db.prepare("update designs set version = 2, data = ? where id = ?").run(JSON.stringify({ sections: [{ id: "s1", name: "Gone", frames: [] }] }), d.id);
+  assert.ok(compactDesignVersions(store) >= 1);
+  assert.match(store.db.prepare("select data from design_versions where design_id = ?").get(d.id).data, /^\{"refs":1,/);
+  assert.equal(compactDesignVersions(store), 0, "once");
+  assert.deepEqual(undoDesign(store, d.id).sections, first.sections);
+});
+
+test("the board's sheet has no code: each frame's names it, and how tall it was drawn while that is still so", () => {
+  const d = createDesign(store, p.id, { name: "Light" });
+  const full = getDesign(store, d.id);
+  const meta = getDesignMeta(store, d.id);
+  const home = meta.sections[2].frames[0];
+  assert.equal(home.html, undefined);
+  assert.equal(home.code, codeHash(full.sections[2].frames[0].html, full.sections[2].frames[0].css));
+  assert.equal(home.chars, full.sections[2].frames[0].html.length + full.sections[2].frames[0].css.length);
+  assert.ok(JSON.stringify(meta).length * 3 < JSON.stringify(full).length, "a small part of the whole");
+  assert.equal(designVersion(store, d.id), 1);
+  assert.deepEqual(Object.keys(getFrameCode(store, d.id, ["f7", "f99"])), ["f7"]);
+  assert.equal(getFrameCode(store, d.id, ["f7"]).f7.html, full.sections[2].frames[0].html);
+
+  assert.equal(setFrameHeights(store, d.id, { f7: { rev: frameRev(home), height: 2210 }, f99: { rev: "x", height: 5 }, f8: { rev: "x", height: -1 } }), 1, "only frames on the sheet, at a height a frame can be");
+  assert.equal(getDesignMeta(store, d.id).sections[2].frames[0].measured, 2210);
+  setFrameHeights(store, d.id, { f8: { rev: "not as it is", height: 900 } });
+  assert.equal(getDesignMeta(store, d.id).sections[2].frames[1].measured, undefined, "measured as it was not");
+  changeDesign(store, d.id, [{ op: "setFrame", section: "Pages", frameId: "f7", html: "<h1>New</h1>" }]);
+  assert.equal(getDesignMeta(store, d.id).sections[2].frames[0].measured, undefined, "changed since it was measured");
+  changeDesign(store, d.id, [{ op: "setFrame", section: "Pages", frameId: "f7", height: 900 }]);
+  setFrameHeights(store, d.id, { f7: { rev: frameRev(getDesignMeta(store, d.id).sections[2].frames[0]), height: 1200 } });
+  assert.equal(getDesignMeta(store, d.id).sections[2].frames[0].measured, undefined, "a fixed height needs no measuring");
+});

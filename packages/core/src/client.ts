@@ -15,7 +15,7 @@ import type { Platform } from "./social-pure.ts";
 import type { StockItem, StockKind, StockProvider, StockSource } from "./stock-pure.ts";
 import type { GenAspect, GenKind, GenProvider, GenQuality, GenSource } from "./gen-pure.ts";
 import type { Insights } from "./social-insights.ts";
-import type { Design, DesignLint, DesignOp } from "./design-pure.ts";
+import type { Design, DesignLint, DesignMeta, DesignOp, FrameCode } from "./design-pure.ts";
 
 export interface ProjectSummary extends Project { counts: { patterns: number; yarn: number; knits: number; newKnits: number }; cover: { id: string; hash: string } | null; }
 export interface ActivityItem { id: string; projectId: string | null; actor: string; action: string; subject: string | null; detail: unknown; createdAt: string; }
@@ -134,15 +134,21 @@ export const api = {
     remove: (id: string) => call<{ ok: true }>("DELETE", `/api/comments/${id}`),
   },
   designs: {
-    list: (projectId: string) => call<Design[]>("GET", `/api/projects/${projectId}/designs`),
-    create: (projectId: string, b: { name: string; start?: "brand" | "blank" }) => call<Design>("POST", `/api/projects/${projectId}/designs`, b),
+    list: (projectId: string) => call<DesignMeta[]>("GET", `/api/projects/${projectId}/designs`),
+    create: (projectId: string, b: { name: string; start?: "brand" | "blank" }) => call<DesignMeta>("POST", `/api/projects/${projectId}/designs`, b),
+    /** The whole sheet, every frame's code with it. The board asks for `board` and `code` instead. */
     get: (id: string) => call<Design>("GET", `/api/designs/${id}`),
-    change: (id: string, ops: DesignOp[]) => call<Design & { made: { sections: string[]; frames: string[] }; lint: Record<string, DesignLint[]> }>("PATCH", `/api/designs/${id}`, { ops }),
-    undo: (id: string) => call<Design>("PATCH", `/api/designs/${id}`, { undo: true }),
-    restore: (id: string) => call<Design>("PATCH", `/api/designs/${id}`, { restore: true }),
-    duplicate: (id: string) => call<Design>("POST", `/api/designs/${id}/duplicate`),
+    /** The sheet without its code; with `since`, { same: true } when it is still at that version. */
+    board: (id: string, since?: number) => call<DesignMeta | { same: true }>("GET", `/api/designs/${id}/board${since != null ? `?since=${since}` : ""}`),
+    code: (id: string, frameIds: string[]) => call<Record<string, FrameCode>>("GET", `/api/designs/${id}/frames?ids=${frameIds.map(encodeURIComponent).join(",")}`),
+    sizes: (id: string, sizes: Record<string, { rev: string; height: number }>) => call<{ kept: number }>("POST", `/api/designs/${id}/sizes`, { sizes }),
+    measure: (id: string) => call<Record<string, { rev: string; height: number }>>("POST", `/api/designs/${id}/measure`),
+    thumbUrl: (id: string, frameId: string, v: string) => `/api/designs/${id}/frames/${encodeURIComponent(frameId)}/thumb?v=${encodeURIComponent(v)}`,
+    change: (id: string, ops: DesignOp[]) => call<DesignMeta & { made: { sections: string[]; frames: string[] }; lint: Record<string, DesignLint[]> }>("PATCH", `/api/designs/${id}`, { ops }),
+    undo: (id: string) => call<DesignMeta>("PATCH", `/api/designs/${id}`, { undo: true }),
+    restore: (id: string) => call<DesignMeta>("PATCH", `/api/designs/${id}`, { restore: true }),
+    duplicate: (id: string) => call<DesignMeta>("POST", `/api/designs/${id}/duplicate`),
     remove: (id: string) => call<{ ok: true }>("DELETE", `/api/designs/${id}`),
-    /** The sheet, a section or a frame as a PNG to download. */
     pictureUrl: (id: string, o: { section?: string; frame?: string; scale?: 1 | 2 } = {}) => `/api/designs/${id}/picture?${new URLSearchParams(Object.entries(o).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)]))}`,
     codeUrl: (id: string, o: { section?: string } = {}) => `/api/designs/${id}/code${o.section ? `?section=${encodeURIComponent(o.section)}` : ""}`,
     bundleUrl: (id: string, o: { section?: string } = {}) => `/api/designs/${id}/bundle${o.section ? `?section=${encodeURIComponent(o.section)}` : ""}`,

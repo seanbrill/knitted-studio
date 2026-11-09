@@ -72,7 +72,7 @@ function designOut(d, { code = false, frameId } = {}) {
   return {
     id: d.id, name: d.name, version: d.version,
     sections: d.sections.map((s) => ({
-      id: s.id, name: s.name, ...(s.note ? { note: s.note } : {}),
+      id: s.id, name: s.name, ...(s.note ? { note: s.note } : {}), ...(s.x != null ? { at: { x: s.x, y: s.y } } : {}), ...(s.width ? { width: s.width } : {}),
       frames: s.frames.map((f) => ({ id: f.id, name: f.name, size: frameSize(f), width: f.width, ...(f.height ? { height: f.height } : {}), ...(f.note ? { note: f.note } : {}), ...(f.by ? { by: f.by } : {}),
         ...(code || f.id === frameId ? { html: f.html, css: f.css } : { codeChars: f.html.length + f.css.length }) })),
     })),
@@ -100,7 +100,7 @@ function commentOut(t) {
   };
 }
 
-const DESIGN_OPS = ["rename", "addSection", "updateSection", "moveSection", "removeSection", "moveFrame", "duplicateFrame", "removeFrame"];
+const DESIGN_OPS = ["rename", "addSection", "updateSection", "moveSection", "placeSection", "removeSection", "moveFrame", "duplicateFrame", "removeFrame"];
 
 const tagList = (tags) => { if (tags !== undefined && !(Array.isArray(tags) && tags.every((t) => typeof t === "string"))) throw new Error("tags is a list of words, like [\"product\", \"shot\"]."); };
 /** What an import added. The same file twice is the same Yarn, so the tags asked for land on the one there, and it stays where it is filed. */
@@ -728,7 +728,7 @@ export const TOOLS = [
       const png = await lookAt(engine, store, designId, { frameId: id });
       return png ? { __image: png.toString("base64"), mime: "image/png", caption: `${said} This is it, drawn.${f.height ? "" : " A tall page is cut into columns, left to right."}`, id: designId, frameId: id } : { saved: said, frameId: id, note: "It could not be drawn here: knitted's browser is not ready, so look later with view_design." };
     } },
-  { name: "arrange_design", description: "ARRANGE a design sheet, all changes or none: rename it, add, rename, move or remove sections, and move, copy or remove frames. Each change is { op, ... }: rename {name}; addSection {name, note?, at?}; updateSection {section, name?, note?}; moveSection {section, to}; removeSection {section}; moveFrame {frameId, section, at?}; duplicateFrame {frameId, name?}; removeFrame {frameId}. at and to count from 0. The person can undo it.", inputSchema: obj({ designId: DESIGN, changes: { type: "array", minItems: 1, maxItems: 50, items: { type: "object", properties: { op: { type: "string", enum: DESIGN_OPS } }, required: ["op"] } } }, ["designId", "changes"]),
+  { name: "arrange_design", description: "ARRANGE a design sheet, all changes or none: rename it, add, rename, place, wrap, move or remove sections, and move, copy or remove frames. Each change is { op, ... }: rename {name}; addSection {name, note?, at?, x?, y?, width?}; updateSection {section, name?, note?, width?}; moveSection {section, to}; placeSection {section, x, y}; removeSection {section}; moveFrame {frameId, section, at?}; duplicateFrame {frameId, name?}; removeFrame {frameId}. at and to count from 0. The board is in the frames' pixels: placeSection puts a section's top left corner at x, y (multiples of 40 line up with the grid), and null for both puts it back in the column of sections not placed, which stands under the placed ones in order. A section's width wraps its frames into rows (null: one row). The person can undo it.", inputSchema: obj({ designId: DESIGN, changes: { type: "array", minItems: 1, maxItems: 50, items: { type: "object", properties: { op: { type: "string", enum: DESIGN_OPS } }, required: ["op"] } } }, ["designId", "changes"]),
     async handler({ designId, changes }, { store }) {
       const bad = changes.find((c) => !DESIGN_OPS.includes(c?.op));
       if (bad) throw new Error(`"${bad?.op}" is not a change arrange_design makes. Design a frame with set_design_frame.`);

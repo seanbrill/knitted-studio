@@ -1,5 +1,16 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
+  "next": {
+    "title": "Design sheets without a limit",
+    "items": [
+      "A design sheet takes as many frames and sections as the site needs. The limits of 200 frames and 40 sections are gone.",
+      "The board loads only what you are looking at. A sheet opens without its code: a frame small on screen is a picture of it, drawn once and kept until the frame changes; a frame big enough to read is drawn live; frames out of view are outlines. A sheet of 101 frames opened in 174 milliseconds instead of 643, in 11 MB of memory instead of 70.",
+      "The studio measures each frame once and keeps its height, so the board is laid out as it will be before you scroll to a frame, and nothing moves as frames come in.",
+      "Sections can stand anywhere on the board, on a 40 pixel grid, with a width their frames wrap to in rows. Your model places them with arrange_design for now; sections not placed stand in a column under the placed ones.",
+      "Undo keeps a frame's code once, not once for every step. On one sheet, a history of 50 steps went from 59 MB to 1.3 MB; history already kept is converted when the studio opens.",
+      "Zoom goes out to 2%, from 5%. Far out, a section's name shrinks with the board once it would no longer fit above the section."
+    ]
+  },
   "entries": [
     {
       "version": "0.1.48",

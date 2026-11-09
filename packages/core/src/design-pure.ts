@@ -1,7 +1,8 @@
 // Design sheets: a whole site's UI on one board, like a Figma file, in labelled sections
 // (Foundations, Components, Pages) of frames. A frame is a screen or a piece of one, written
 // as HTML and CSS at a device's width, and drawn with the project's Swatch through CSS
-// variables, so a change to the brand restyles every frame at once.
+// variables, so a change to the brand restyles every frame at once. A section can be placed
+// anywhere on the board; one not placed stands in a column under those that are.
 //
 // Browser-safe and pure: the board, the store, the engine and the model's tools all build a
 // frame's page and apply changes through the same functions here.
@@ -33,7 +34,17 @@ export interface DesignFrame {
   by?: "human" | "model";
   updatedAt: string;
 }
-export interface DesignSection { id: string; name: string; note?: string; frames: DesignFrame[] }
+export interface DesignSection {
+  id: string;
+  name: string;
+  note?: string;
+  /** Where its top left corner is on the board, in the frames' pixels. Absent, it stands in the column. */
+  x?: number;
+  y?: number;
+  /** How wide it is: its frames wrap into rows to fit. Absent, they stand in one row. */
+  width?: number;
+  frames: DesignFrame[];
+}
 export interface Design {
   id: string;
   projectId: string;
@@ -47,7 +58,21 @@ export interface Design {
   deletedAt: string | null;
 }
 
-export const DESIGN_LIMITS = { sections: 40, frames: 200, html: 200_000, css: 100_000, minWidth: 240, maxWidth: 3840, minHeight: 160, maxHeight: 20_000 };
+// A sheet takes as many sections and frames as it is given: the board loads only what is seen.
+/**
+ * A frame without its code, as the board lays it out and loads it: `code` names its code (a
+ * hash of it), `chars` is how long it is, and `measured` is how tall it was last drawn, when it
+ * is as tall as what is in it and nothing has changed since.
+ */
+export type FrameMeta = Omit<DesignFrame, "html" | "css"> & { code: string; chars: number; measured?: number };
+export type SectionMeta = Omit<DesignSection, "frames"> & { frames: FrameMeta[] };
+/** A sheet without its frames' code: what the board needs to lay it out, a small part of the whole. */
+export interface DesignMeta extends Omit<Design, "sections"> { sections: SectionMeta[] }
+export interface FrameCode { code: string; html: string; css: string }
+/** A frame as drawn: its code at its size. A height measured for it is kept under this. */
+export const frameRev = (f: Pick<FrameMeta, "code" | "width" | "height">) => `${f.code}-${f.width}${f.height ? `x${f.height}` : ""}`;
+
+export const DESIGN_LIMITS = { html: 200_000, css: 100_000, minWidth: 240, maxWidth: 3840, minHeight: 160, maxHeight: 20_000, far: 1_000_000 };
 
 /** The device a width is, if it is one of them. */
 export function deviceOf(width: number): DesignDevice | null {
@@ -146,9 +171,11 @@ ${withYarn(f.html)}
 /** A change to a sheet. Sections and frames are named by id, or a section by its name. */
 export type DesignOp =
   | { op: "rename"; name: string }
-  | { op: "addSection"; name: string; note?: string; at?: number }
-  | { op: "updateSection"; section: string; name?: string; note?: string }
+  | { op: "addSection"; name: string; note?: string; at?: number; x?: number; y?: number; width?: number }
+  | { op: "updateSection"; section: string; name?: string; note?: string; width?: number | null }
   | { op: "moveSection"; section: string; to: number }
+  /** To a place on the board, its top left corner at x, y; null for both puts it back in the column. */
+  | { op: "placeSection"; section: string; x: number | null; y: number | null }
   | { op: "removeSection"; section: string }
   | { op: "setFrame"; section: string; frameId?: string; name?: string; width?: number; height?: number | null; html?: string; css?: string; note?: string; at?: number }
   | { op: "moveFrame"; frameId: string; section: string; at?: number }
@@ -200,6 +227,23 @@ function cleanSize(width: unknown, height: unknown): { width?: number; height?: 
   return out;
 }
 
+/** A place on the board, in whole pixels. */
+function cleanAt(v: unknown, what: string): number {
+  const n = Math.round(Number(v));
+  if (v === null || v === undefined || v === "" || !Number.isFinite(n) || Math.abs(n) > DESIGN_LIMITS.far) throw new DesignProblem(`Give the section's ${what} on the board, in pixels: a number from -${DESIGN_LIMITS.far.toLocaleString("en")} to ${DESIGN_LIMITS.far.toLocaleString("en")}.`);
+  return n;
+}
+/** A section's width: its frames wrap into rows to fit it. */
+function cleanSectionWidth(v: unknown): number {
+  const n = Math.round(Number(v));
+  if (!(n >= 400 && n <= 100_000)) throw new DesignProblem("A section is 400 to 100,000 pixels wide. Leave the width out for its frames in one row.");
+  return n;
+}
+function place2(s: DesignSection, x: unknown, y: unknown) {
+  if (x === null && y === null) { delete s.x; delete s.y; return; }
+  s.x = cleanAt(x, "x"); s.y = cleanAt(y, "y");
+}
+
 /**
  * Apply changes in order, all or none. Returns the sheet as it is after them, and the ids of
  * the sections and frames they made, so the caller can say where its work went.
@@ -210,22 +254,25 @@ export function applyDesignOps(design: { name: string; sections: DesignSection[]
   const sections: DesignSection[] = structuredClone(design.sections);
   const made = { sections: [] as string[], frames: [] as string[] };
   const lint: Record<string, DesignLint[]> = {};
-  const count = () => sections.reduce((n, s) => n + s.frames.length, 0);
   for (const o of ops) {
     switch (o.op) {
       case "rename": name = cleanName(o.name, "design"); break;
       case "addSection": {
-        if (sections.length >= DESIGN_LIMITS.sections) throw new DesignProblem(`A design has up to ${DESIGN_LIMITS.sections} sections. Start another design for the rest.`);
-        const s: DesignSection = { id: nextId(sections, "s"), name: cleanName(o.name, "section"), note: cleanNote(o.note), frames: [] };
+        const s: DesignSection = { id: nextId(sections, "s"), name: cleanName(o.name, "section"), frames: [] };
+        const note = cleanNote(o.note); if (note) s.note = note;
+        if (o.x !== undefined || o.y !== undefined) place2(s, o.x, o.y);
+        if (o.width != null) s.width = cleanSectionWidth(o.width);
         place(sections, s, o.at); made.sections.push(s.id); break;
       }
       case "updateSection": {
         const s = findSection(sections, o.section);
         if (o.name !== undefined) s.name = cleanName(o.name, "section");
-        if (o.note !== undefined) s.note = cleanNote(o.note);
+        if (o.note !== undefined) { const note = cleanNote(o.note); if (note) s.note = note; else delete s.note; }
+        if (o.width === null) delete s.width; else if (o.width !== undefined) s.width = cleanSectionWidth(o.width);
         break;
       }
       case "moveSection": { const s = findSection(sections, o.section); sections.splice(sections.indexOf(s), 1); place(sections, s, o.to); break; }
+      case "placeSection": { place2(findSection(sections, o.section), o.x, o.y); break; }
       case "removeSection": { const s = findSection(sections, o.section); sections.splice(sections.indexOf(s), 1); break; }
       case "setFrame": {
         const s = findSection(sections, o.section);
@@ -248,7 +295,6 @@ export function applyDesignOps(design: { name: string; sections: DesignSection[]
           if (problems.length) lint[f.id] = problems;
         } else {
           if (o.frameId) throw new DesignProblem(`There is no frame "${o.frameId}" in this design.`);
-          if (count() >= DESIGN_LIMITS.frames) throw new DesignProblem(`A design has up to ${DESIGN_LIMITS.frames} frames. Start another design for the rest.`);
           const f: DesignFrame = { id: nextId(sections, "f"), name: cleanName(o.name, "frame"), width: size.width ?? DESIGN_DEVICES.desktop.width, html, css, by, updatedAt: now };
           if (size.height) f.height = size.height;
           const note = cleanNote(o.note); if (note) f.note = note;
@@ -263,7 +309,6 @@ export function applyDesignOps(design: { name: string; sections: DesignSection[]
         section.frames.splice(index, 1); place(to.frames, frame, o.at); break;
       }
       case "duplicateFrame": {
-        if (count() >= DESIGN_LIMITS.frames) throw new DesignProblem(`A design has up to ${DESIGN_LIMITS.frames} frames.`);
         const { section, frame, index } = findFrame(sections, o.frameId);
         const copy: DesignFrame = { ...structuredClone(frame), id: nextId(sections, "f"), name: o.name ? cleanName(o.name, "frame") : `${frame.name} copy`, by, updatedAt: now };
         section.frames.splice(index + 1, 0, copy); made.frames.push(copy.id); break;
@@ -273,6 +318,77 @@ export function applyDesignOps(design: { name: string; sections: DesignSection[]
     }
   }
   return { name, sections, made, lint };
+}
+
+// ── the board ─────────────────────────────────────────────────────────────────
+// Where everything is, in the frames' own pixels: the board in the studio, the sheet drawn as
+// a picture and the model's view of it all lay it out here, so they agree. A section placed
+// on the board is where it was put; the others stand in a column under those, in order.
+
+/** The board's spacing, in the frames' pixels. Sections snap to `grid`. */
+export const BOARD = { grid: 40, pad: 80, gap: 80, rowGap: 120, stack: 320, emptyW: 560, emptyH: 320 } as const;
+
+export interface LaidFrame { id: string; x: number; y: number; w: number; h: number }
+export interface LaidSection { id: string; x: number; y: number; w: number; h: number; placed: boolean; frames: LaidFrame[] }
+export interface BoardLayout { sections: LaidSection[]; x: number; y: number; w: number; h: number }
+type LayoutSection = Pick<DesignSection, "id" | "x" | "y" | "width"> & { frames: Pick<DesignFrame, "id" | "width" | "height">[] };
+
+/** How tall a frame is drawn before it has been measured: a desktop screen's shape. */
+export const guessHeight = (f: Pick<DesignFrame, "width" | "height">) => f.height ?? Math.round(f.width * 0.625);
+
+/** A section's frames in rows, from its top left corner. */
+function laySection(s: LayoutSection, heightOf: (f: Pick<DesignFrame, "id" | "width" | "height">) => number): { w: number; h: number; frames: LaidFrame[] } {
+  const { pad, gap, rowGap } = BOARD;
+  if (!s.frames.length) return { w: Math.max(s.width ?? 0, BOARD.emptyW), h: BOARD.emptyH, frames: [] };
+  const widest = Math.max(...s.frames.map((f) => f.width));
+  const room = s.width ? Math.max(s.width - 2 * pad, widest) : Infinity;
+  const frames: LaidFrame[] = [];
+  let x = 0, y = 0, rowH = 0, right = 0;
+  for (const f of s.frames) {
+    if (x > 0 && x + f.width > room) { y += rowH + rowGap; x = 0; rowH = 0; }
+    const h = f.height ?? heightOf(f);
+    frames.push({ id: f.id, x: pad + x, y: pad + y, w: f.width, h });
+    right = Math.max(right, x + f.width);
+    x += f.width + gap;
+    rowH = Math.max(rowH, h);
+  }
+  return { w: Math.max(s.width ?? 0, right + 2 * pad), h: y + rowH + 2 * pad, frames };
+}
+
+/** The whole board: each section and frame where it is drawn, and the box round them all. */
+export function layoutDesign(sections: LayoutSection[], heightOf: (f: Pick<DesignFrame, "id" | "width" | "height">) => number = guessHeight): BoardLayout {
+  const laid = sections.map((s) => ({ s, ...laySection(s, heightOf) }));
+  const placed = laid.filter((l) => l.s.x != null && l.s.y != null);
+  let y = placed.length ? Math.max(...placed.map((l) => l.s.y! + l.h)) + BOARD.stack : 0;
+  const out: LaidSection[] = laid.map((l) => {
+    const at = l.s.x != null && l.s.y != null ? { x: l.s.x, y: l.s.y, placed: true } : { x: 0, y, placed: false };
+    if (!at.placed) y += l.h + BOARD.stack;
+    return { id: l.s.id, x: at.x, y: at.y, w: l.w, h: l.h, placed: at.placed, frames: l.frames.map((f) => ({ ...f, x: f.x + at.x, y: f.y + at.y })) };
+  });
+  if (!out.length) return { sections: [], x: 0, y: 0, w: 0, h: 0 };
+  const x0 = Math.min(...out.map((s) => s.x)), y0 = Math.min(...out.map((s) => s.y));
+  const x1 = Math.max(...out.map((s) => s.x + s.w)), y1 = Math.max(...out.map((s) => s.y + s.h));
+  return { sections: out, x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+/** The nearest point on the grid. */
+export const snapToGrid = (v: number, grid: number = BOARD.grid) => Math.round(v / grid) * grid;
+
+/**
+ * Where a frame dropped at a point of the board goes in a section: the index among its frames,
+ * not counting the frame being moved. The row nearest the point, then the gap nearest it.
+ */
+export function dropIndex(section: LaidSection, frameId: string | null, bx: number, by: number): number {
+  const others = section.frames.filter((f) => f.id !== frameId);
+  if (!others.length) return 0;
+  // Rows: frames that share a top.
+  const rows: LaidFrame[][] = [];
+  for (const f of others) { const r = rows.find((row) => row[0].y === f.y); if (r) r.push(f); else rows.push([f]); }
+  const dist = (r: LaidFrame[]) => { const top = r[0].y, bottom = Math.max(...r.map((f) => f.y + f.h)); return by < top ? top - by : by > bottom ? by - bottom : 0; };
+  const row = rows.reduce((a, b) => (dist(b) < dist(a) ? b : a));
+  const before = row.findIndex((f) => bx < f.x + f.w / 2);
+  const at = before === -1 ? row[row.length - 1] : row[before];
+  return others.indexOf(at) + (before === -1 ? 1 : 0);
 }
 
 // ── a sheet to start from ─────────────────────────────────────────────────────

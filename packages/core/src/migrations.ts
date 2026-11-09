@@ -452,4 +452,27 @@ export const MIGRATIONS: Migration[] = [
       create index knits_head on knits (project_id, head, created_at);
     `,
   },
+  {
+    version: 21,
+    name: "design code and sizes",
+    // A sheet's versions keep each frame's code once, here, named by its hash, instead of a
+    // whole copy of the sheet a version (designs.ts). design_sizes: how tall each frame was
+    // last drawn, as the frame was then, so a sheet is laid out before any frame is drawn.
+    sql: `
+      create table design_code (
+        design_id text not null references designs(id) on delete cascade,
+        hash text not null,
+        html text not null,
+        css text not null,
+        primary key (design_id, hash)
+      );
+      create table design_sizes (
+        design_id text not null references designs(id) on delete cascade,
+        frame_id text not null,
+        rev text not null,
+        height integer not null,
+        primary key (design_id, frame_id)
+      );
+    `,
+  },
 ];

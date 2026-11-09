@@ -5,14 +5,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { api } from "@knitted/core/client";
-import type { Design, Swatch } from "@knitted/core";
+import type { DesignMeta, Swatch } from "@knitted/core";
 import { Button, Dialog, EmptyState, Field, IconButton, Input, Menu, SkeletonSection, useToast, icons } from "@knitted/ui";
 import { timeAgo, useLive } from "@/lib/hooks";
 import { leadOf, useMarks } from "@/lib/agent";
 import { ModelMark } from "./ModelMark";
-import { frameDoc } from "@/lib/design";
+import { brandKey, frameDoc, framePicUrl } from "@/lib/design";
 import { AskModelButton, aboutDesign } from "./AskModel";
 
 const { Plus, MessageSquare, MoreHorizontal, Copy, Trash2, Download } = icons;
@@ -21,7 +21,7 @@ const START = [
   { value: "blank", label: "Blank", what: "One empty section, for you or your model to fill." },
 ] as const;
 
-export const counts = (d: Design) => {
+export const counts = (d: Pick<DesignMeta, "sections">) => {
   const frames = d.sections.reduce((n, s) => n + s.frames.length, 0);
   return `${d.sections.length} section${d.sections.length === 1 ? "" : "s"}, ${frames} frame${frames === 1 ? "" : "s"}`;
 };
@@ -80,15 +80,24 @@ export function DesignsView({ projectId }: { projectId: string }) {
   );
 }
 
-/** The first page of the sheet, small: a picture of what it is. */
-function Preview({ design, swatch, projectId }: { design: Design; swatch: Swatch; projectId: string }) {
+/**
+ * The first page of the sheet, small: a picture of what it is, drawn by the studio. Where the
+ * studio cannot draw pictures, the page itself, drawn here.
+ */
+function Preview({ design, swatch, projectId }: { design: DesignMeta; swatch: Swatch; projectId: string }) {
   const all = design.sections.flatMap((s) => s.frames);
   const f = all.find((x) => /home|landing|page/i.test(x.name) && x.width >= 1000) ?? all.find((x) => x.width >= 1000) ?? all[0];
   const [w, setW] = useState(0);
+  const [live, setLive] = useState<{ html: string; css: string } | null>(null);
+  const [failed, setFailed] = useState(false);
+  const brand = useMemo(() => brandKey(swatch), [swatch]);
+  const h = f ? f.height ?? Math.round(f.width * 0.625) : 0;
   return (
     <div className="design-card-preview" ref={(el) => { if (el && el.clientWidth !== w) setW(el.clientWidth); }}>
-      {f && w > 0 && <iframe title={`${f.name}, a preview`} aria-hidden tabIndex={-1} inert sandbox="allow-same-origin" srcDoc={frameDoc({ ...f, height: f.height ?? Math.round(f.width * 0.625) }, swatch, projectId)}
-        style={{ width: f.width, height: f.height ?? Math.round(f.width * 0.625), transform: `scale(${w / f.width})` }} />}
+      {f && !failed && <img src={framePicUrl(design.id, f, brand)} alt="" decoding="async" loading="lazy" draggable={false}
+        onError={() => { setFailed(true); void api.designs.code(design.id, [f.id]).then((c) => c[f.id] && setLive(c[f.id])).catch(() => {}); }} />}
+      {f && live && w > 0 && <iframe title={`${f.name}, a preview`} aria-hidden tabIndex={-1} inert sandbox="allow-same-origin" srcDoc={frameDoc({ ...f, ...live, height: h }, swatch, projectId)}
+        style={{ width: f.width, height: h, transform: `scale(${w / f.width})` }} />}
     </div>
   );
 }

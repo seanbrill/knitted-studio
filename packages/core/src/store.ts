@@ -22,6 +22,7 @@ import { paths as defaultPaths, type KnittedPaths } from "./paths.ts";
 import { SWATCH_TEMPLATES, insertSwatch } from "./swatch.ts";
 import { cleanFolder, fileInto } from "./folders.ts";
 import { backfillKnitVersions } from "./knit-versions.ts";
+import { compactDesignVersions } from "./designs.ts";
 
 export class ValidationError extends Error { readonly kind = "validation"; }
 export class NotFoundError extends Error { readonly kind = "not_found"; }
@@ -480,9 +481,13 @@ export function getStore(p: KnittedPaths = defaultPaths()): Store {
   return s;
 }
 
-/** Knits made before versions, given theirs, once. Should it fail, each file still shows as a knit of its own. */
+/**
+ * Knits made before versions, given theirs, once. Should it fail, each file still shows as a knit
+ * of its own. And design versions kept as whole copies, kept the lighter way, once.
+ */
 function sorted(store: Store): Store {
   try { backfillKnitVersions(store); } catch (e) { console.error(`Could not sort older knits into versions: ${(e as Error).message}`); }
+  try { compactDesignVersions(store); } catch (e) { console.error(`Could not keep older design versions the lighter way: ${(e as Error).message}`); }
   return store;
 }
 

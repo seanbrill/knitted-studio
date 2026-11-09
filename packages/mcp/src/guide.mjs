@@ -180,7 +180,7 @@ Writing a frame (set_design_frame):
 - No scripts and nothing from the web: a state is a frame of its own ("Menu, open"). Animation and hover do not show: show the state that matters.
 - One main action per screen, in the primary colour. Room between sections (80 to 120 on desktop). Type sizes from Foundations, Type.
 
-Checking, every time: set_design_frame draws the frame back to you. Look at it: is the text the business's, does it fit, does the hierarchy read, are the pictures right, does the phone version work? Fix it with set_design_frame and its frameId. view_design with a sectionId shows a section's frames side by side, to check they belong together. arrange_design renames, moves, copies and removes sections and frames.
+Checking, every time: set_design_frame draws the frame back to you. Look at it: is the text the business's, does it fit, does the hierarchy read, are the pictures right, does the phone version work? Fix it with set_design_frame and its frameId. view_design with a sectionId shows a section's frames side by side, to check they belong together. arrange_design renames, moves, copies and removes sections and frames, and places sections: anywhere on the board (placeSection, on a 40 pixel grid), and with a width so their frames wrap into rows. Sections not placed stand in a column under the placed ones. A sheet takes as many frames as the site needs: the board loads only what the person is looking at.
 
 When you are done, say what you designed, section by section, and what the person should look at: copy to check, pictures still to choose.`,
 

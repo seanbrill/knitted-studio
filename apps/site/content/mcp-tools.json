@@ -1886,7 +1886,7 @@
   },
   {
     "name": "arrange_design",
-    "summary": "ARRANGE a design sheet, all changes or none: rename it, add, rename, move or remove sections, and move, copy or remove frames. Each change is { op, ... }: rename {name}; addSection {name, note?, at?}; updateSection {section, name?, note?}; moveSection {section, to}; removeSection {section}; moveFrame {frameId, section, at?}; duplicateFrame {frameId, name?}; removeFrame {frameId}. at and to count from 0. The person can undo it.",
+    "summary": "ARRANGE a design sheet, all changes or none: rename it, add, rename, place, wrap, move or remove sections, and move, copy or remove frames. Each change is { op, ... }: rename {name}; addSection {name, note?, at?, x?, y?, width?}; updateSection {section, name?, note?, width?}; moveSection {section, to}; placeSection {section, x, y}; removeSection {section}; moveFrame {frameId, section, at?}; duplicateFrame {frameId, name?}; removeFrame {frameId}. at and to count from 0. The board is in the frames' pixels: placeSection puts a section's top left corner at x, y (multiples of 40 line up with the grid), and null for both puts it back in the column of sections not placed, which stands under the placed ones in order. A section's width wraps its frames into rows (null: one row). The person can undo it.",
     "params": [
       {
         "name": "designId",

@@ -107,13 +107,18 @@ test("the model designs a page while the board is open, and sees it", async () =
   assert.equal(r.isError, undefined, JSON.stringify(r).slice(0, 300));
   assert.equal(r.content[0].type, "image");
   assert.match(r.content[1].text, /^Added Menu \(f\d+\) in Shop \(s4\), Desktop 1440\./);
+  // It is on the board as soon as it is saved, small, as a picture; zoomed to, it is drawn live.
+  await page.locator("[data-frame-box]").filter({ has: page.getByRole("button", { name: "Menu, Desktop 1440" }) }).locator('[data-drawn="picture"], [data-drawn="live"]').or(page.locator('[data-frame-box]:has(button[aria-label="Menu, Desktop 1440"])[data-drawn="picture"]')).first().waitFor({ state: "attached" }).catch(() => {});
+  await page.getByRole("button", { name: "Menu, Desktop 1440" }).dblclick();
   await frame("Menu").getByRole("heading", { name: "Our menu" }).waitFor();
   await page.getByText("by your model").first().waitFor();
   // The frame it made is outlined on the board, with who and what, and what it is doing shows here too.
-  const menu = page.locator("[data-frame-box]").filter({ has: page.locator('iframe[title="Menu"]') });
+  const menu = page.locator("[data-frame-box]").filter({ has: page.getByRole("button", { name: "Menu, Desktop 1440" }) });
   await menu.getByTestId("model-on").waitFor();
   assert.match(await menu.getByTestId("model-on").innerText(), /A model\s*Adding .Menu./);
   await page.getByRole("region", { name: "What A model is doing" }).waitFor();
+  await page.keyboard.press("Shift+Digit1");
+  await page.getByRole("button", { name: /^Zoom: fit to screen/ }).waitFor();
 });
 
 test("each frame keeps its own unsaved changes: picking another shows that one's code, and going back shows them again", async () => {
@@ -318,3 +323,46 @@ for (const theme of ["day", "night"]) {
     assert.deepEqual(await axeProblems(page), []);
   });
 }
+
+test("a sheet of more than 200 frames loads only what is seen: small frames as pictures, the rest outlines, and a frame zoomed to drawn live", async () => {
+  const big = (await j("POST", `/api/projects/${projectId}/designs`, { name: "Big", start: "blank" })).body;
+  assert.equal(big.sections[0].frames.length, 0);
+  assert.equal(JSON.stringify(big).includes('"html"'), false, "a new sheet comes back without code");
+  const ops = Array.from({ length: 20 }, (_, i) => ({ op: "addSection", name: `Part ${i + 1}` }));
+  for (let s = 1; s <= 21; s++) for (let f = 1; f <= 10; f++) {
+    ops.push({ op: "setFrame", section: s === 21 ? "Pages" : `Part ${s}`, name: `Page ${s}.${f}`, width: f % 2 ? 1440 : 390, html: `<main style="padding:80px"><h1 style="font-size:96px;margin:0">Page ${s}.${f}</h1></main>` });
+  }
+  for (let i = 0; i < ops.length; i += 100) {
+    const r = await j("PATCH", `/api/designs/${big.id}`, { ops: ops.slice(i, i + 100) });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(JSON.stringify(r.body).includes('"html"'), false, "a change comes back without the sheet's code");
+  }
+  const meta = (await j("GET", `/api/designs/${big.id}/board`)).body;
+  assert.equal(meta.sections.reduce((n, s) => n + s.frames.length, 0), 210, "past the 200 frames a sheet once had");
+  assert.deepEqual((await j("GET", `/api/designs/${big.id}/board?since=${meta.version}`)).body, { same: true }, "a board that has the sheet is told nothing more");
+
+  await page.goto(`${studio.url}/projects/${projectId}/designs/${big.id}`);
+  await page.getByRole("heading", { name: "Part 1", exact: true }).waitFor();
+  // At the fit of ten frames side by side, each is small: pictures, none live.
+  await page.locator('[data-drawn="picture"] img').first().waitFor();
+  await page.waitForFunction(() => [...document.querySelectorAll('[data-drawn="picture"] img')].some((i) => i.complete && i.naturalWidth > 0));
+  const drawn = await page.evaluate(() => {
+    const n = (k) => document.querySelectorAll(`[data-drawn="${k}"]`).length;
+    return { live: n("live"), picture: n("picture"), outline: n("outline"), iframes: document.querySelectorAll(".design-board iframe").length };
+  });
+  assert.equal(drawn.live + drawn.picture + drawn.outline, 210, "every frame has its place");
+  assert.equal(drawn.iframes, 0, `no frame is small enough to read and drawn live anyway: ${JSON.stringify(drawn)}`);
+  assert.ok(drawn.outline > 100, `frames out of view are only outlines: ${JSON.stringify(drawn)}`);
+  assert.ok(drawn.picture > 0 && drawn.picture < 110, `and those in view, pictures: ${JSON.stringify(drawn)}`);
+
+  // The studio measures the frames, so the board is laid out before each is seen.
+  await serverHas(studio, `/api/designs/${big.id}/board`, (d) => d.sections.every((s) => s.frames.every((f) => f.measured > 0)), { timeout: 120_000 });
+
+  // A frame far down, zoomed to, is drawn live, and only a few with it.
+  await page.getByRole("button", { name: "Page 18.3, Desktop 1440" }).dblclick();
+  await page.frameLocator('iframe[title="Page 18.3"]').getByRole("heading", { name: "Page 18.3" }).waitFor();
+  const near = await page.evaluate(() => document.querySelectorAll(".design-board iframe").length);
+  assert.ok(near >= 1 && near <= 16, `${near} drawn live`);
+  assert.deepEqual(await axeProblems(page), []);
+  await page.goto(`${studio.url}/projects/${projectId}/designs/${designId}`);
+});

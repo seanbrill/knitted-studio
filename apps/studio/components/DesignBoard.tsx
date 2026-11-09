@@ -4,14 +4,20 @@
 // the selected frame's name, size and code beside it. Every change is saved as a version, so
 // Undo walks back through the person's changes and their model's alike. While a model works
 // on the sheet, its frames change here as it saves them.
+//
+// The board is laid out by layoutDesign (the same layout the sheet's pictures use) in the
+// frames' own pixels, and only what is seen is loaded: a frame big enough on screen to read is
+// drawn live, a smaller one is a picture of it the studio drew once, and one out of view is an
+// outline. The sheet comes without its code; each frame's code is asked for when it is drawn
+// live or picked, and a change brings back only the frames that changed.
 
 import Link from "next/link";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { api } from "@knitted/core/client";
-import { DESIGN_DEVICES, deviceOf, frameSize, lintDesignCode, type Design, type DesignDevice, type DesignFrame, type DesignOp, type DesignSection, type Swatch } from "@knitted/core";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { api, ApiError, subscribeChanges } from "@knitted/core/client";
+import { DESIGN_DEVICES, BOARD, deviceOf, frameRev, frameSize, guessHeight, layoutDesign, lintDesignCode, type BoardLayout, type DesignDevice, type DesignFrame, type DesignMeta, type DesignOp, type FrameCode, type FrameMeta, type LaidFrame, type SectionMeta, type Swatch } from "@knitted/core";
 import { Button, ConfirmDialog, Dialog, Field, IconButton, Input, Menu, SegmentedControl, Select, Textarea, Tip, icons, useToast } from "@knitted/ui";
 import { useLive } from "@/lib/hooks";
-import { frameDoc, frameHeight } from "@/lib/design";
+import { brandKey, frameDoc, frameHeight, framePicUrl, hashOf } from "@/lib/design";
 import { AskModelButton, aboutDesign } from "./AskModel";
 import { ModelPresence } from "./ModelPresence";
 import { ModelAtWork } from "./ModelAtWork";
@@ -22,22 +28,27 @@ import { CommentThreads, PinCatch, Pins, shownThreads, useCommentState, useComme
 import { stepZoom, typingIn, useSpaceHeld, wheelZoom, zoomKey } from "@/lib/zoom";
 
 const { ArrowLeft, ArrowUp, ArrowDown, ChevronRight, Copy, Download, FileCode, MessageSquare, MoreHorizontal, Package, Pencil, Plus, Trash2, Undo2, X, AlertTriangle } = icons;
-const ZOOM_MIN = 0.05;
+const ZOOM_MIN = 0.02;
 const ZOOM_MAX = 4;
 // Round a frame zoomed to: room to see it is the whole frame, and its label.
 const FRAME_ROOM = 48;
+// Round the board at its fit: room on screen beside it, and above it for the section names.
+const EDGE = 40;
+const EDGE_TOP = 64;
 // Somewhere on the board that is not a frame or a control: a drag there moves the board.
 const NOT_EMPTY = ".design-frame-box, button, a, input, textarea, select, [role=menu]";
-
-/**
- * A place on the board to keep where it is on screen while the zoom changes: a point (x, y in the
- * view) and where it falls on the nearest frame, as a part of that frame's width and height.
- * Frames scale with the zoom and the space round them does not, so a frame is what holds still.
- */
-interface Anchor { frame: string | null; fx: number; fy: number; x: number; y: number }
-// On screen, whatever the zoom: the board's padding, a section's, and the gap between frames.
-const AROUND = 2 * 40 + 2 * 24 + 32;
-const GAP = 28;
+// What is drawn live: a frame at least this wide on screen, while pictures can be had, and no
+// more than so many at once. Without pictures (no browser to draw them), more are live, and the
+// rest are outlines.
+const LIVE_MIN = 360;
+const LIVE_MAX = 16;
+const LIVE_MAX_BARE = 40;
+// Below this zoom there is no room above a frame for its name.
+const LABELS_MIN = 14 / BOARD.pad;
+/** A section's name keeps its size on screen until it would not fit in the room between sections (about 44 pixels), then shrinks with the board. */
+const HEAD_Z = 44 / BOARD.stack;
+/** An empty section's "Add a frame" (about 180 by 136 pixels) fits the room inside it (400 by 160) the same way. */
+const ADD_Z = 0.85;
 const DEVICE_OPTIONS: { value: DesignDevice | "custom"; label: string }[] = [...(Object.keys(DESIGN_DEVICES) as DesignDevice[]).map((d) => ({ value: d, label: DESIGN_DEVICES[d].name })), { value: "custom", label: "Custom" }];
 
 /** A new frame's code: a heading in the brand, to write over. */
@@ -51,34 +62,117 @@ const draftOf = (f: DesignFrame): Draft => ({ name: f.name, width: f.width, heig
 const same = (a: Draft, b: Draft) => (Object.keys(a) as (keyof Draft)[]).every((k) => a[k] === b[k]);
 
 type Asking =
-  | { kind: "section"; section?: DesignSection }
-  | { kind: "frame"; section: DesignSection }
-  | { kind: "delete-section"; section: DesignSection };
+  | { kind: "section"; section?: SectionMeta }
+  | { kind: "frame"; section: SectionMeta }
+  | { kind: "delete-section"; section: SectionMeta };
 
-export function DesignBoard({ projectId, initial, swatch }: { projectId: string; initial: Design; swatch: Swatch }) {
+/** How a frame is drawn now: live, as a picture, or as its outline. */
+type Mode = "live" | "pic";
+/** Part of the board, in the frames' pixels. */
+interface Rect { x: number; y: number; w: number; h: number }
+
+/** The sheet without its code, kept current: asked again when something changes, and only sent when it did. */
+function useSheet(initial: DesignMeta) {
+  const [design, setDesign] = useState(initial);
+  const version = useRef(initial.version);
+  const put = useCallback((d: DesignMeta) => { version.current = d.version; setDesign(d); }, []);
+  const refresh = useCallback(async () => {
+    try {
+      const r = await api.designs.board(initial.id, version.current);
+      if (!("same" in r)) put(r);
+    } catch { /* the next change asks again */ }
+  }, [initial.id, put]);
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const off = subscribeChanges(() => { clearTimeout(t); t = setTimeout(() => void refresh(), 150); });
+    return () => { off(); clearTimeout(t); };
+  }, [refresh]);
+  return { design, put, refresh };
+}
+
+/**
+ * Which frames are drawn live and which as pictures, for the part of the board in view: those in
+ * view and near it, the biggest on screen and the picked one live, up to a number at once.
+ */
+function pickModes(lay: BoardLayout, view: Rect, z: number, selected: string | null, pics: boolean, noPic: Set<string>): Map<string, Mode> {
+  const out = new Map<string, Mode>();
+  const ox = view.w * 0.25, oy = view.h * 0.25;
+  const near = (r: Rect, mx: number, my: number) => r.x < view.x + view.w + mx && r.x + r.w > view.x - mx && r.y < view.y + view.h + my && r.y + r.h > view.y - my;
+  const seen: LaidFrame[] = [];
+  for (const s of lay.sections) if (near(s, ox, oy)) for (const f of s.frames) if (near(f, ox, oy)) seen.push(f);
+  const live = seen
+    .filter((f) => f.id === selected || noPic.has(f.id) || !pics || f.w * z >= LIVE_MIN)
+    .map((f) => ({ f, rank: (f.id === selected ? 4 : 0) + (near(f, 0, 0) ? 2 : 0), area: Math.min(f.w, view.w) * Math.min(f.h, view.h) }))
+    .sort((a, b) => b.rank - a.rank || b.area - a.area)
+    .slice(0, pics ? LIVE_MAX : LIVE_MAX_BARE);
+  for (const { f } of live) out.set(f.id, "live");
+  if (pics) for (const f of seen) if (!out.has(f.id) && !noPic.has(f.id)) out.set(f.id, "pic");
+  return out;
+}
+
+export function DesignBoard({ projectId, initial, swatch }: { projectId: string; initial: DesignMeta; swatch: Swatch }) {
   const toast = useToast();
-  const { data, refresh } = useLive(() => api.designs.get(initial.id), [initial.id]);
-  const design = data ?? initial;
+  const { design, put } = useSheet(initial);
   const { data: project } = useLive(() => api.projects.get(projectId), [projectId]);
   const [selected, setSelected] = useState<string | null>(null);
   const [zoom, setZoom] = useState<number | "fit">("fit");
   const [viewW, setViewW] = useState(0);
+  const [viewH, setViewH] = useState(0);
   const [hand, setHand] = useState(false);
-  const [heights, setHeights] = useState<Record<string, number>>({});
+  // How tall frames were drawn here: live, or as pictures. Each is kept under the frame as drawn.
+  const [heights, setHeights] = useState<Record<string, { rev: string; h: number }>>({});
   // What is written in the inspector and not saved yet, by frame: a frame's draft stays its own
   // when another frame is picked, and is there again on going back to it.
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [preview, setPreview] = useState<{ id: string; draft: Draft } | null>(null);
   const [saving, setSaving] = useState<"idle" | "saving" | "error">("idle");
   const [asking, setAsking] = useState<Asking | null>(null);
+  // Pictures of frames, while the studio can draw them; and frames whose picture would not come.
+  const [pics, setPics] = useState(true);
+  const [noPic, setNoPic] = useState<Set<string>>(() => new Set());
   const view = useRef<HTMLDivElement>(null);
-  const board = useRef<HTMLDivElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
+
+  // ── code, a frame at a time ──
+  // The code here, for drawing; the ref holds the same for asking, outside drawing.
+  const code = useRef(new Map<string, FrameCode>());
+  const [codes, setCodes] = useState<ReadonlyMap<string, FrameCode>>(() => new Map());
+  const asked = useRef(new Set<string>());
+  const wanted = useRef(new Set<string>());
+  const askTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const metaOf = useMemo(() => new Map(design.sections.flatMap((s) => s.frames.map((f) => [f.id, f] as const))), [design]);
+  const codeOf = (id: string): FrameCode | undefined => { const c = codes.get(id); return c && c.code === metaOf.get(id)?.code ? c : undefined; };
+  /** Ask for the code of these frames, when it is not here as they are now: a few at once, together. */
+  const need = useCallback((ids: string[]) => {
+    for (const id of ids) {
+      const m = metaOf.get(id);
+      if (!m || code.current.get(id)?.code === m.code || asked.current.has(`${id}:${m.code}`)) continue;
+      wanted.current.add(id);
+    }
+    if (!wanted.current.size || askTimer.current) return;
+    askTimer.current = setTimeout(async () => {
+      askTimer.current = undefined;
+      const ids = [...wanted.current];
+      wanted.current.clear();
+      const keys = ids.map((id) => `${id}:${metaOf.get(id)?.code}`);
+      for (const k of keys) asked.current.add(k);
+      try {
+        const got = await api.designs.code(design.id, ids);
+        for (const [id, c] of Object.entries(got)) code.current.set(id, c);
+        setCodes(new Map(code.current));
+      } catch { /* asked again when next wanted */ }
+      // Asked once at a time, not once ever: Undo can bring back code that was here before.
+      for (const k of keys) asked.current.delete(k);
+    }, 20);
+  }, [design.id, metaOf]);
 
   // The frames a model is designing or looking at, outlined; following it, the newest is brought into view.
   const marks = useMarks((w) => (w.designId === initial.id ? w.frameIds : null));
   const leadFrame = leadOf(marks);
-  const where = design.sections.map((section) => ({ section, frame: section.frames.find((x) => x.id === selected) })).find((w): w is { section: DesignSection; frame: DesignFrame } => !!w.frame) ?? null;
+  const where = design.sections.map((section) => ({ section, frame: section.frames.find((x) => x.id === selected) })).find((w): w is { section: SectionMeta; frame: FrameMeta } => !!w.frame) ?? null;
+  const selectedCode = where ? codeOf(where.frame.id) : undefined;
+  const full: DesignFrame | null = where && selectedCode ? { ...where.frame, html: selectedCode.html, css: selectedCode.css } : null;
+  useEffect(() => { if (selected) need([selected]); }, [selected, need, design]);
 
   // Comments: pinned to a spot on a frame, or on the sheet as a whole. With the panel open, a
   // click on a frame places one; the pins of the open ones show on the board all the time.
@@ -99,88 +193,98 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
   };
   const pickComment = (id: string) => { setCommenting(true); setSelected(null); cs.setActive(id); };
 
-  // The zoom that fits the widest section in the window: frames scale, the space round them does not.
-  const fit = useMemo(() => {
-    if (!viewW) return 0.25;
-    const z = Math.min(...design.sections.filter((s) => s.frames.length).map((s) => (viewW - AROUND - (s.frames.length - 1) * GAP) / s.frames.reduce((n, f) => n + f.width, 0)));
-    return Math.max(ZOOM_MIN, Math.min(1, Number.isFinite(z) ? z : 1));
-  }, [design, viewW]);
+  // ── the layout: where every section and frame is, in the frames' pixels ──
+  // What is written in the inspector shows on the board a moment after the typing stops, at its size.
+  const shownPreview = preview && selected === preview.id && drafts[preview.id] ? preview : null;
+  const previewRev = shownPreview ? `p-${hashOf(shownPreview.draft.html + "\0" + shownPreview.draft.css)}-${shownPreview.draft.width}` : null;
+  const sections = useMemo(() => !shownPreview ? design.sections : design.sections.map((s) => ({
+    ...s, frames: s.frames.map((f) => (f.id === shownPreview.id ? { ...f, name: shownPreview.draft.name, width: shownPreview.draft.width, height: shownPreview.draft.height ?? undefined } : f)),
+  })), [design, shownPreview]);
+  const lay = useMemo(() => layoutDesign(sections, (f) => {
+    const m = f as FrameMeta;
+    const seen = heights[m.id];
+    const rev = shownPreview?.id === m.id ? previewRev : frameRev(m);
+    return seen && seen.rev === rev ? seen.h : (shownPreview?.id !== m.id && m.measured) || guessHeight(m);
+  }), [sections, heights, shownPreview, previewRev]);
+  const boxOf = useMemo(() => new Map(lay.sections.flatMap((s) => s.frames.map((f) => [f.id, f] as const))), [lay]);
+
+  // The zoom that fits the board's width in the window, no bigger than the frames' own size.
+  const fit = useMemo(() => (!viewW || !lay.w ? 0.25 : Math.max(ZOOM_MIN, Math.min(1, (viewW - 2 * EDGE) / lay.w))), [lay.w, viewW]);
   const z = zoom === "fit" ? fit : zoom;
   // The zoom as last asked for: ahead of what is drawn while a pinch runs faster than drawing.
   const zNow = useRef(z);
+  // Room round the board, on screen: half the window, so any frame can be brought to its middle.
+  const mx = Math.max(EDGE, Math.round(viewW / 2)), my = Math.max(EDGE, Math.round(viewH / 2));
 
-  // The board is drawn scaled, so the space it scrolls in is sized by hand: its size times the zoom.
-  const sizeWrap = useCallback(() => {
-    if (!board.current || !wrap.current) return;
-    wrap.current.style.width = `${board.current.offsetWidth * zNow.current}px`;
-    wrap.current.style.height = `${board.current.offsetHeight * zNow.current}px`;
-  }, []);
   useEffect(() => {
-    const ro = new ResizeObserver(() => {
-      if (view.current) setViewW(view.current.clientWidth);
-      sizeWrap();
-    });
+    const ro = new ResizeObserver(() => { if (view.current) { setViewW(view.current.clientWidth); setViewH(view.current.clientHeight); } });
     if (view.current) ro.observe(view.current);
-    if (board.current) ro.observe(board.current);
     return () => ro.disconnect();
-  }, [sizeWrap]);
+  }, []);
 
-  // ── zooming about a point: what is under it stays under it ──
-  const anchor = useRef<Anchor | null>(null);
-  const anchorAt = (x: number, y: number): Anchor | null => {
-    const v = view.current; if (!v) return null;
-    const r = v.getBoundingClientRect();
-    const px = r.left + x, py = r.top + y;
-    let best: { el: HTMLElement; d: number } | null = null;
-    for (const el of v.querySelectorAll<HTMLElement>("[data-frame-box]")) {
-      const b = el.getBoundingClientRect();
-      const dx = Math.max(b.left - px, 0, px - b.right), dy = Math.max(b.top - py, 0, py - b.bottom);
-      if (!best || dx * dx + dy * dy < best.d) best = { el, d: dx * dx + dy * dy };
-    }
-    if (!best) return { frame: null, fx: (v.scrollLeft + x) / Math.max(1, v.scrollWidth), fy: (v.scrollTop + y) / Math.max(1, v.scrollHeight), x, y };
-    const b = best.el.getBoundingClientRect();
-    return { frame: best.el.dataset.frameBox ?? null, fx: (px - b.left) / Math.max(1, b.width), fy: (py - b.top) / Math.max(1, b.height), x, y };
+  // ── where the view is on the board ──
+  /** A point in the view, as a point on the board. */
+  const toBoard = (sx: number, sy: number, at = { z: zNow.current, x: lay.x, y: lay.y }) => {
+    const v = view.current!;
+    return { bx: (v.scrollLeft + sx - mx) / at.z + at.x, by: (v.scrollTop + sy - my) / at.z + at.y };
   };
-  const toAnchor = (a: Anchor) => {
+  /** Scroll so the board's point bx, by is at sx, sy in the view. */
+  const bring = (bx: number, by: number, sx: number, sy: number) => {
     const v = view.current; if (!v) return;
-    const r = v.getBoundingClientRect();
-    const el = a.frame ? v.querySelector<HTMLElement>(`[data-frame-box="${CSS.escape(a.frame)}"]`) : null;
-    if (el) {
-      const b = el.getBoundingClientRect();
-      v.scrollLeft += b.left + a.fx * b.width - (r.left + a.x);
-      v.scrollTop += b.top + a.fy * b.height - (r.top + a.y);
-    } else {
-      v.scrollLeft = a.fx * v.scrollWidth - a.x;
-      v.scrollTop = a.fy * v.scrollHeight - a.y;
-    }
+    v.scrollLeft = (bx - lay.x) * zNow.current + mx - sx;
+    v.scrollTop = (by - lay.y) * zNow.current + my - sy;
   };
+
+  // A point on the board to keep where it is on screen while the zoom changes.
+  const anchor = useRef<{ bx: number; by: number; sx: number; sy: number } | null>(null);
+  // Where the board was last drawn from: when its corner moves (a section put above or left of
+  // the rest, or the window resized), the view moves with it, so nothing on screen jumps.
+  const drawn = useRef<{ x: number; y: number; z: number; mx: number; my: number } | null>(null);
+  const [ready, setReady] = useState(false);
   useLayoutEffect(() => {
+    const v = view.current, w = wrap.current;
+    if (!v || !w || !viewW) return;
     zNow.current = z;
-    sizeWrap();
+    w.style.width = `${lay.w * z + 2 * mx}px`;
+    w.style.height = `${lay.h * z + 2 * my}px`;
+    const was = drawn.current;
     const a = anchor.current;
     anchor.current = null;
-    if (a) toAnchor(a);
-  }, [z]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (a) bring(a.bx, a.by, a.sx, a.sy);
+    else if (!was) { v.scrollLeft = mx - EDGE; v.scrollTop = my - EDGE_TOP; }
+    else {
+      // The board moved under the view (its corner, the window's size, or the fit with it): what
+      // was at the view's top left stays there; at the fit, the board's left edge stays at its edge.
+      const bx = (v.scrollLeft - was.mx) / was.z + was.x, by = (v.scrollTop - was.my) / was.z + was.y;
+      v.scrollLeft = zoom === "fit" && was.z !== z ? mx - EDGE : (bx - lay.x) * z + mx;
+      v.scrollTop = (by - lay.y) * z + my;
+    }
+    drawn.current = { x: lay.x, y: lay.y, z, mx, my };
+    // Shown once placed: the first scroll is set before the board is seen, so it does not jump.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!ready) setReady(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [z, lay.x, lay.y, lay.w, lay.h, mx, my, viewW]);
 
   /** Zoom to `to`, keeping the point at x, y in the view (its middle, unless given) where it is. */
-  const zoomTo = (to: number | "fit", x?: number, y?: number, keep?: Anchor) => {
-    const v = view.current;
+  const zoomTo = (to: number | "fit", x?: number, y?: number, keep?: { bx: number; by: number; sx: number; sy: number }) => {
+    const v = view.current; if (!v) return;
     const next = to === "fit" ? fit : Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, to));
-    const a = keep ?? anchorAt(x ?? (v?.clientWidth ?? 0) / 2, y ?? (v?.clientHeight ?? 0) / 2);
+    const sx = x ?? v.clientWidth / 2, sy = y ?? v.clientHeight / 2;
+    // To fit is to fit the board's width: its middle comes to the middle of the view.
+    const a = keep ?? (to === "fit" ? { bx: lay.x + lay.w / 2, by: toBoard(sx, sy).by, sx: v.clientWidth / 2, sy } : { ...toBoard(sx, sy), sx, sy });
     setZoom(to === "fit" ? "fit" : next);
-    if (Math.abs(next - zNow.current) < 1e-6) { if (keep) toAnchor(keep); return; }
+    if (Math.abs(next - zNow.current) < 1e-6) { zNow.current = next; bring(a.bx, a.by, a.sx, a.sy); return; }
     zNow.current = next;
     anchor.current = a;
   };
   const step = (dir: 1 | -1) => zoomTo(stepZoom(z, dir, ZOOM_MIN, ZOOM_MAX));
   /** A frame, whole and in the middle of the view, as big as the view holds it. */
   const zoomToFrame = (id: string) => {
-    const v = view.current;
-    const f = design.sections.flatMap((s) => s.frames).find((x) => x.id === id);
+    const v = view.current, f = boxOf.get(id);
     if (!v || !f) return;
-    const h = f.height ?? heights[f.id] ?? Math.round(f.width * 0.625);
-    const want = Math.min((v.clientWidth - 2 * FRAME_ROOM) / f.width, (v.clientHeight - 2 * FRAME_ROOM - 24) / h);
-    zoomTo(want, undefined, undefined, { frame: id, fx: 0.5, fy: 0.5, x: v.clientWidth / 2, y: v.clientHeight / 2 + 12 });
+    const want = Math.min((v.clientWidth - 2 * FRAME_ROOM) / f.w, (v.clientHeight - 2 * FRAME_ROOM - 24) / f.h);
+    zoomTo(want, undefined, undefined, { bx: f.x + f.w / 2, by: f.y + f.h / 2, sx: v.clientWidth / 2, sy: v.clientHeight / 2 + 12 });
   };
 
   // Ctrl or Cmd with the wheel, or a pinch, zooms about the pointer. Without, the board scrolls.
@@ -196,6 +300,55 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
     };
     v.addEventListener("wheel", onWheel, { passive: false });
     return () => v.removeEventListener("wheel", onWheel);
+  }, []);
+
+  // ── what is seen: drawn live, as pictures, or as outlines ──
+  const [seen, setSeen] = useState<Rect | null>(null);
+  const settle = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const look = useCallback(() => {
+    const v = view.current, d = drawn.current;
+    if (!v || !d) return;
+    const r = { x: (v.scrollLeft - d.mx) / d.z + d.x, y: (v.scrollTop - d.my) / d.z + d.y, w: v.clientWidth / d.z, h: v.clientHeight / d.z };
+    setSeen((o) => (o && Math.abs(o.x - r.x) < 1 && Math.abs(o.y - r.y) < 1 && Math.abs(o.w - r.w) < 1 && Math.abs(o.h - r.h) < 1 ? o : r));
+  }, []);
+  // Looked at a few times a second while the board moves, not at every step of a scroll or a pinch.
+  const lookSoon = useCallback(() => { if (!settle.current) settle.current = setTimeout(() => { settle.current = undefined; look(); }, 100); }, [look]);
+  useEffect(() => { if (ready) lookSoon(); }, [ready, z, lay, viewW, viewH, lookSoon]);
+  useEffect(() => () => clearTimeout(settle.current), []);
+  const modes = useMemo(() => (seen ? pickModes(lay, seen, z, selected, pics, noPic) : new Map<string, Mode>()), [seen, lay, z, selected, pics, noPic]);
+  useEffect(() => { need([...modes].filter(([, m]) => m === "live").map(([id]) => id)); }, [modes, need]);
+
+  // ── heights: measured here, and kept for the next time ──
+  const toKeep = useRef<Record<string, { rev: string; height: number }>>({});
+  const keepTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const onHeight = useCallback((id: string, rev: string, h: number, keep: boolean) => {
+    setHeights((m) => (m[id]?.rev === rev && m[id].h === h ? m : { ...m, [id]: { rev, h } }));
+    const f = metaOf.get(id);
+    // Kept for next time only as measured from the page itself, and only when it is news.
+    if (!keep || !f || f.height || rev !== frameRev(f) || f.measured === h) return;
+    toKeep.current[id] = { rev, height: h };
+    clearTimeout(keepTimer.current);
+    keepTimer.current = setTimeout(() => { const sizes = toKeep.current; toKeep.current = {}; void api.designs.sizes(design.id, sizes).catch(() => {}); }, 1500);
+  }, [metaOf, design.id]);
+  // Frames never measured are measured by the studio all at once, so the board is laid out right
+  // before they are seen; a frame's picture or live page measures it too.
+  const measuring = useRef(false);
+  const [canMeasure, setCanMeasure] = useState(true);
+  useEffect(() => {
+    if (!canMeasure || measuring.current) return;
+    const missing = design.sections.some((s) => s.frames.some((f) => !f.height && f.measured == null && heights[f.id]?.rev !== frameRev(f)));
+    if (!missing) return;
+    measuring.current = true;
+    api.designs.measure(design.id)
+      .then((got) => setHeights((m) => ({ ...m, ...Object.fromEntries(Object.entries(got).map(([id, v]) => [id, { rev: v.rev, h: v.height }])) })))
+      .catch((e) => { setCanMeasure(false); if (e instanceof ApiError && e.kind === "renderer_unavailable") setPics(false); })
+      .finally(() => { measuring.current = false; });
+  }, [design, heights, canMeasure]);
+  const swatchKey = useMemo(() => brandKey(swatch), [swatch]);
+  const picFailed = useCallback((id: string, url: string) => {
+    setNoPic((s) => (s.has(id) ? s : new Set([...s, id])));
+    // Asked why: no browser to draw with means no pictures at all, and more frames live instead.
+    void fetch(url).then((r) => { if (r.status === 503) setPics(false); }).catch(() => {});
   }, []);
 
   // ── moving about: a drag on the space between frames, the middle button, or Space or the hand ──
@@ -256,7 +409,7 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
   }, []);
 
   // The inspector starts from the frame as it is, and follows it while nothing is changed there.
-  const base = where ? draftOf(where.frame) : null;
+  const base = full ? draftOf(full) : null;
   const written = where ? drafts[where.frame.id] : undefined;
   const draft = written ?? base;
   const dirty = !!(written && base && !same(written, base));
@@ -266,7 +419,6 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
     const id = where.frame.id;
     if (same(d, base)) forget(id); else setDrafts((m) => ({ ...m, [id]: d }));
   };
-  // What is being written shows on the board a moment after the typing stops.
   useEffect(() => {
     if (!dirty || !selected || !written) return;
     const t = setTimeout(() => setPreview({ id: selected, draft: written }), 400);
@@ -277,23 +429,33 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
     setSaving("saving");
     try {
       const r = await api.designs.change(design.id, ops);
-      await refresh();
+      put(r);
       setSaving("idle");
-      if (said) toast(said, { label: "Undo", onClick: () => void api.designs.undo(design.id).then(refresh) });
+      if (said) toast(said, { label: "Undo", onClick: () => void api.designs.undo(design.id).then(put) });
       return r;
     } catch (e) { setSaving("error"); toast.problem((e as Error).message); return null; }
-  }, [design.id, refresh, toast]);
+  }, [design.id, put, toast]);
 
-  const undo = async () => { try { await api.designs.undo(design.id); await refresh(); } catch (e) { toast.problem((e as Error).message); } };
+  const undo = async () => { try { put(await api.designs.undo(design.id)); } catch (e) { toast.problem((e as Error).message); } };
   const save = async () => {
     if (!where || !draft) return;
     const r = await change([{ op: "setFrame", section: where.section.id, frameId: where.frame.id, name: draft.name, width: draft.width, height: draft.height, note: draft.note, html: draft.html, css: draft.css }]);
     if (r) { forget(where.frame.id); setPreview(null); }
   };
 
+  // A frame's handlers, the same from one drawing to the next, so a frame that has not changed is not drawn again.
+  const act = useRef({ select: (_: string) => {}, zoom: (_: string) => {}, height: onHeight, comment: (_: string, __: number, ___: number) => {}, picFailed });
+  useLayoutEffect(() => {
+    act.current.select = (id) => { setSelected(id); if (commenting) comment(false); };
+    act.current.zoom = zoomToFrame;
+    act.current.height = onHeight;
+    act.current.picFailed = picFailed;
+    act.current.comment = (id, x, y) => { const f = metaOf.get(id); cs.setDraft({ x, y, frameId: id, frameName: f?.name ?? "" }); cs.setActive(null); };
+  });
+
   const projectName = project?.name ?? "Project";
   const home = `/projects/${projectId}`;
-  const sectionMenu = (s: DesignSection, i: number) => [
+  const sectionMenu = (s: SectionMeta, i: number) => [
     { label: "Rename", icon: <Pencil size={14} />, onSelect: () => setAsking({ kind: "section", section: s }) },
     { label: "Move up", icon: <ArrowUp size={14} />, disabled: i === 0, onSelect: () => void change([{ op: "moveSection", section: s.id, to: i - 1 }]) },
     { label: "Move down", icon: <ArrowDown size={14} />, disabled: i === design.sections.length - 1, onSelect: () => void change([{ op: "moveSection", section: s.id, to: i + 1 }]) },
@@ -302,6 +464,7 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
     { label: "Download everything, with a style guide", icon: <Package size={14} />, disabled: !s.frames.length, onSelect: () => { toast(`Putting ${s.name} together. It takes a moment to draw.`); window.location.href = api.designs.bundleUrl(design.id, { section: s.id }); } },
     { label: "Delete the section", icon: <Trash2 size={14} />, danger: true, onSelect: () => (s.frames.length ? setAsking({ kind: "delete-section", section: s }) : void change([{ op: "removeSection", section: s.id }], `Deleted ${s.name}`)) },
   ];
+  const catching = commenting && cs.picking && !cs.draft;
 
   return (
     <div className="design-page">
@@ -348,37 +511,43 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
 
       <div className="design-body">
         <div className="design-view" ref={view} data-hand={handy || undefined} data-dragging={dragging || undefined}
+          onScroll={lookSoon}
           onPointerDownCapture={panDownCapture} onPointerDown={panDown} onPointerMove={panMove} onPointerUp={panUp} onPointerCancel={panUp}
           onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
           onClickCapture={(e) => { if (quiet.current) { quiet.current = false; e.stopPropagation(); e.preventDefault(); } }}
           onClick={(e) => { if (!handy && !(e.target as HTMLElement).closest(".design-frame, button, a, [role=menu]")) setSelected(null); }}
           onDoubleClick={(e) => { if (!handy && !(e.target as HTMLElement).closest(NOT_EMPTY)) zoomTo("fit"); }}>
-          <div ref={wrap}>
-            <div ref={board} className="design-board" style={{ transform: `scale(${z})`, "--z": z } as CSSProperties}>
-              {design.sections.map((s, i) => (
-                <section key={s.id} className="design-section" aria-labelledby={`sec-${s.id}`}>
-                  <header>
-                    <h2 id={`sec-${s.id}`}>{s.name}</h2>
-                    {s.note && <p title={s.note}>{s.note}</p>}
-                    <span style={{ flex: 1 }} />
-                    <IconButton label={`Add a frame to ${s.name}`} onClick={() => setAsking({ kind: "frame", section: s })}><Plus size={14} /></IconButton>
-                    <Menu trigger={<IconButton label={`Actions for ${s.name}`}><MoreHorizontal size={14} /></IconButton>} items={sectionMenu(s, i)} />
-                  </header>
-                  <div className="design-frames">
-                    {s.frames.map((f) => {
-                      const p = preview?.id === f.id && selected === f.id && drafts[f.id] ? preview.draft : null;
-                      const shown = p ? { ...f, ...p, height: p.height ?? undefined } : f;
-                      const pins = pinsOf.get(f.id) ?? [];
-                      return <FrameView key={f.id} f={shown} doc={frameDoc(shown, swatch, projectId)} height={heights[f.id]} selected={selected === f.id} mark={marks.get(f.id)} lead={leadFrame === f.id}
-                        onSelect={() => { setSelected(f.id); if (commenting) comment(false); }} onZoom={() => zoomToFrame(f.id)} onHeight={(h) => setHeights((m) => (m[f.id] === h ? m : { ...m, [f.id]: h }))}
-                        pins={(pins.length > 0 || cs.draft?.frameId === f.id) && <Pins threads={pins} draft={cs.draft?.frameId === f.id ? cs.draft : null} active={cs.active} onPick={(t) => pickComment(t.id)} />}
-                        catching={commenting && cs.picking && !cs.draft ? (x, y) => { cs.setDraft({ x, y, frameId: f.id, frameName: f.name }); cs.setActive(null); } : undefined} />;
+          <div ref={wrap} className="design-wrap" style={{ visibility: ready ? undefined : "hidden" }}>
+            <div className="design-board" data-small={z < LABELS_MIN || undefined} style={{ left: mx, top: my, width: lay.w, height: lay.h, transform: `scale(${z})`, "--z": z, "--hz": Math.max(z, HEAD_Z), "--az": Math.max(z, ADD_Z) } as CSSProperties}>
+              {design.sections.map((s, i) => {
+                const b = lay.sections[i];
+                return (
+                  <section key={s.id} className="design-section" aria-labelledby={`sec-${s.id}`} style={{ left: b.x - lay.x, top: b.y - lay.y, width: b.w, height: b.h }}>
+                    <header>
+                      <h2 id={`sec-${s.id}`}>{s.name}</h2>
+                      {s.note && <p title={s.note}>{s.note}</p>}
+                      <IconButton label={`Add a frame to ${s.name}`} onClick={() => setAsking({ kind: "frame", section: s })}><Plus size={14} /></IconButton>
+                      <Menu trigger={<IconButton label={`Actions for ${s.name}`}><MoreHorizontal size={14} /></IconButton>} items={sectionMenu(s, i)} />
+                    </header>
+                    {s.frames.map((m) => {
+                      const box = boxOf.get(m.id)!;
+                      const p = shownPreview?.id === m.id ? shownPreview.draft : null;
+                      const mode = modes.get(m.id);
+                      // Live: the draft, or the code as it is; the code it had until that comes, so a change does not flash.
+                      const c = mode === "live" ? (p ? { code: "", html: p.html, css: p.css } : codes.get(m.id)) : undefined;
+                      const f = p ? { ...m, name: p.name, width: p.width, height: p.height ?? undefined } : m;
+                      const pins = pinsOf.get(m.id) ?? [];
+                      return <FrameView key={m.id} f={f} x={box.x - b.x} y={box.y - b.y} h={box.h}
+                        rev={p ? previewRev! : frameRev(c ? { ...m, code: c.code } : m)} doc={c ? frameDoc({ ...f, html: c.html, css: c.css }, swatch, projectId) : null}
+                        pic={mode === "pic" || (mode === "live" && !c && pics && !noPic.has(m.id)) ? framePicUrl(design.id, m, swatchKey) : null}
+                        selected={selected === m.id} mark={marks.get(m.id)} lead={leadFrame === m.id} act={act}
+                        pins={(pins.length > 0 || cs.draft?.frameId === m.id) ? <Pins threads={pins} draft={cs.draft?.frameId === m.id ? cs.draft : null} active={cs.active} onPick={(t) => pickComment(t.id)} /> : null}
+                        catching={catching} />;
                     })}
-                    {!s.frames.length && <button type="button" className="design-add" onClick={() => setAsking({ kind: "frame", section: s })}><Plus aria-hidden /> Add a frame</button>}
-                  </div>
-                </section>
-              ))}
-              <button type="button" className="design-add" style={{ justifySelf: "start" }} onClick={() => setAsking({ kind: "section" })}><Plus aria-hidden /> Add a section</button>
+                    {!s.frames.length && <button type="button" className="design-add" style={{ left: BOARD.pad, top: BOARD.pad }} onClick={() => setAsking({ kind: "frame", section: s })}><Plus aria-hidden /> Add a frame</button>}
+                  </section>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -390,14 +559,22 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
               <IconButton label="Close the comments" onClick={() => comment(false)}><X size={16} /></IconButton>
             </div>
             <CommentThreads on={commentsOn} threads={threads} c={cs} refresh={refreshComments} wholeWords="sheet" hint="Click the spot on a frame that should change." heading={false}
-              onGo={(t) => { if (t.frameId && design.sections.some((s) => s.frames.some((f) => f.id === t.frameId))) zoomToFrame(t.frameId); }} />
+              onGo={(t) => { if (t.frameId && metaOf.has(t.frameId)) zoomToFrame(t.frameId); }} />
           </aside>
         )}
-        {!commenting && where && draft && (
-          <Inspector key={where.frame.id} design={design} projectId={projectId} section={where.section} frame={where.frame} draft={draft} setDraft={setDraft} dirty={dirty}
+        {!commenting && where && (draft && full ? (
+          <Inspector key={where.frame.id} design={design} projectId={projectId} section={where.section} frame={full} draft={draft} setDraft={setDraft} dirty={dirty}
             onSave={save} onDiscard={() => { forget(where.frame.id); setPreview(null); }} onClose={() => setSelected(null)}
             change={change} onSelect={setSelected} />
-        )}
+        ) : (
+          <aside className="design-inspector" aria-label={`Frame: ${where.frame.name}`} aria-busy>
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+              <h2 className="label" style={{ margin: 0, flex: 1 }}>{where.frame.name}</h2>
+              <IconButton label="Close" onClick={() => setSelected(null)}><X size={16} /></IconButton>
+            </div>
+            <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>Loading its code...</p>
+          </aside>
+        ))}
       </div>
 
       <ModelAtWork right={where || commenting ? 436 : 16} />
@@ -415,43 +592,49 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
   );
 }
 
-/** One frame on the board: its label, the frame drawn as a page, and the button that selects it. */
-function FrameView({ f, doc, height, selected, mark, lead, onSelect, onZoom, onHeight, pins, catching }: {
-  f: DesignFrame; doc: string; height?: number; selected: boolean; mark?: Mark; lead: boolean; onSelect: () => void; onZoom: () => void; onHeight: (h: number) => void;
+type Act = { select: (id: string) => void; zoom: (id: string) => void; height: (id: string, rev: string, h: number, keep: boolean) => void; comment: (id: string, x: number, y: number) => void; picFailed: (id: string, url: string) => void };
+
+/**
+ * One frame on the board: its label, the frame drawn live (`doc`), as a picture (`pic`) or as its
+ * outline, and the button that selects it. Drawn again only when something it shows changes.
+ */
+const FrameView = memo(function FrameView({ f, x, y, h, rev, doc, pic, selected, mark, lead, act, pins, catching }: {
+  f: Pick<FrameMeta, "id" | "name" | "width" | "height" | "by">; x: number; y: number; h: number; rev: string; doc: string | null; pic: string | null;
+  selected: boolean; mark?: Mark; lead: boolean; act: { current: Act };
   /** The comments pinned to it. */
   pins?: ReactNode;
-  /** While a comment is placed: where on the frame it goes, as fractions across and down. */
-  catching?: (x: number, y: number) => void;
+  /** While a comment is placed, a click on the frame places it. */
+  catching: boolean;
 }) {
   const ref = useRef<HTMLIFrameElement>(null);
-  const h = f.height ?? height ?? Math.round(f.width * 0.625);
-  const measure = async () => { if (!f.height && ref.current) { const m = await frameHeight(ref.current); if (m) onHeight(m); } };
-  // A frame in the page the server sent can finish loading before its onLoad is listened
-  // for, and would keep the guessed height: measure it now if its own page is already in.
+  const measure = async () => { if (!f.height && ref.current) { const m = await frameHeight(ref.current); if (m) act.current.height(f.id, rev, m, true); } };
+  // A frame can finish loading before its onLoad is listened for: measured now if its page is already in.
   useEffect(() => {
     const d = ref.current?.contentDocument;
     if (d?.URL === "about:srcdoc" && d.readyState === "complete") void measure();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc]);
   return (
-    <figure className="design-frame" style={{ width: f.width }}>
+    <figure className="design-frame" style={{ left: x, top: y, width: f.width }}>
       <figcaption title={`${f.name}, ${frameSize(f)}${f.by === "model" ? ", by your model" : ""}`}>{f.name}<span>{frameSize(f)}</span>{f.by === "model" && <span>by your model</span>}</figcaption>
-      <div className="design-frame-box" data-frame-box={f.id} style={{ width: f.width, height: h }}>
+      <div className="design-frame-box" data-frame-box={f.id} data-drawn={doc ? "live" : pic ? "picture" : "outline"} style={{ width: f.width, height: h }}>
         {/* Drawn and nothing more: no scripts run in it, and nothing in it can be focused or clicked. */}
-        <iframe ref={ref} title={f.name} inert sandbox="allow-same-origin" srcDoc={doc} style={{ width: f.width, height: h }}
-          onLoad={() => void measure()} />
+        {doc ? <iframe ref={ref} title={f.name} inert sandbox="allow-same-origin" srcDoc={doc} style={{ width: f.width, height: h }} onLoad={() => void measure()} />
+          : pic ? <img className="design-pic" src={pic} alt="" decoding="async" draggable={false}
+            onLoad={(e) => { const i = e.currentTarget; if (!f.height && i.naturalWidth) act.current.height(f.id, rev, Math.round(i.naturalHeight * f.width / i.naturalWidth), false); }}
+            onError={() => act.current.picFailed(f.id, pic)} /> : null}
         {/* data-pan-ok: with a frame focused, Space still drags the board about. */}
-        <button type="button" className="design-frame-hit" data-pan-ok aria-label={`${f.name}, ${frameSize(f)}`} aria-pressed={selected} onClick={onSelect} onDoubleClick={onZoom} />
+        <button type="button" className="design-frame-hit" data-pan-ok aria-label={`${f.name}, ${frameSize(f)}`} aria-pressed={selected} onClick={() => act.current.select(f.id)} onDoubleClick={() => act.current.zoom(f.id)} />
         <ModelMark mark={mark} lead={lead} />
         {pins}
-        {catching && <PinCatch label={`Place a comment on ${f.name}`} onSpot={catching} />}
+        {catching && <PinCatch label={`Place a comment on ${f.name}`} onSpot={(px, py) => act.current.comment(f.id, px, py)} />}
       </div>
     </figure>
   );
-}
+});
 
 function Inspector({ design, projectId, section, frame, draft, setDraft, dirty, onSave, onDiscard, onClose, change, onSelect }: {
-  design: Design; projectId: string; section: DesignSection; frame: DesignFrame; draft: Draft; setDraft: (d: Draft) => void; dirty: boolean;
+  design: DesignMeta; projectId: string; section: SectionMeta; frame: DesignFrame; draft: Draft; setDraft: (d: Draft) => void; dirty: boolean;
   onSave: () => void; onDiscard: () => void; onClose: () => void; change: (ops: DesignOp[], said?: string) => Promise<{ made: { frames: string[] } } | null>; onSelect: (id: string | null) => void;
 }) {
   const lint = useMemo(() => lintDesignCode(draft.html, draft.css), [draft.html, draft.css]);
@@ -507,7 +690,7 @@ function Inspector({ design, projectId, section, frame, draft, setDraft, dirty, 
   );
 }
 
-function SectionDialog({ asking, onClose, onDone }: { asking: { section?: DesignSection } | null; onClose: () => void; onDone: (name: string, note: string, s?: DesignSection) => Promise<void> }) {
+function SectionDialog({ asking, onClose, onDone }: { asking: { section?: SectionMeta } | null; onClose: () => void; onDone: (name: string, note: string, s?: SectionMeta) => Promise<void> }) {
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
   const open = !!asking;
@@ -527,7 +710,7 @@ function SectionDialog({ asking, onClose, onDone }: { asking: { section?: Design
   );
 }
 
-function FrameDialog({ asking, onClose, onDone }: { asking: { section: DesignSection } | null; onClose: () => void; onDone: (s: DesignSection, name: string, width: number) => Promise<void> }) {
+function FrameDialog({ asking, onClose, onDone }: { asking: { section: SectionMeta } | null; onClose: () => void; onDone: (s: SectionMeta, name: string, width: number) => Promise<void> }) {
   const [name, setName] = useState("");
   const [device, setDevice] = useState<DesignDevice>("desktop");
   useEffect(() => {

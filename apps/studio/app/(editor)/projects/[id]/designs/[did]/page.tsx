@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { activeSwatch, getDesign } from "@knitted/core/node";
+import { activeSwatch, getDesign, getDesignMeta } from "@knitted/core/node";
 import { DesignBoard } from "@/components/DesignBoard";
 import { store } from "@/lib/server";
 
@@ -13,7 +13,8 @@ export default async function Page({ params }: { params: Promise<{ id: string; d
   const { id, did } = await params;
   let design;
   try {
-    design = getDesign(store(), did);
+    // Without its code: the board asks for each frame's as it draws it.
+    design = getDesignMeta(store(), did);
   } catch (e) {
     if ((e as { kind?: string }).kind === "not_found") notFound();
     throw e;

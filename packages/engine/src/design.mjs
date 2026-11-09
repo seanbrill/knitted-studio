@@ -2,12 +2,13 @@
 // same browser that knits, for the person to download and for a model to look at its own
 // work; and the sheet as HTML files a developer can build from.
 
-import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import sharp from "sharp";
-import { findSection, fontFor, framePage, frameSize, tokensCss, yarnIn } from "@knitted/core";
-import { activeSwatch, getDesign, listYarn } from "@knitted/core/node";
+import { BOARD, findSection, fontFor, framePage, frameRev, frameSize, layoutDesign, tokensCss, yarnIn } from "@knitted/core";
+import { activeSwatch, codeHash, getDesign, getDesignMeta, listYarn, setFrameHeights } from "@knitted/core/node";
 import { bundledFont, fontFaceCss, fontPath } from "@knitted/fonts";
 import { openRenderer } from "./renderer.mjs";
 
@@ -45,48 +46,86 @@ function filesFor(store, projectId, swatch) {
   return { yarn, byId, families, fontFaces, yarnUrl };
 }
 
+/** Room round the board in a picture of it, for the section names above the sections. */
+const MARGIN = 96;
+
 /**
- * The board as a page: sections one under another, each with its label, frames side by side
- * with theirs. Each frame is its own page in a frame of its own, so its CSS stays its own.
+ * The board as a page: each section and frame where the board in the studio has it (layoutDesign),
+ * with its label. Each frame is its own page in a frame of its own, so its CSS stays its own.
+ * Frames are placed at a guess of their height, then again once measured (placeBoard). Without
+ * labels, frames one after another, to measure or to draw one.
  */
 export function boardPage(design, sections, { ctx, labels = true }) {
   const frames = sections.flatMap((s) => s.frames);
-  const frameHtml = (f) => `<figure class="frame">${labels ? `<figcaption>${esc(f.name)} <span>${esc(frameSize(f))}</span></figcaption>` : ""}<iframe title="${esc(f.name)}" scrolling="no" onload="window.__loaded=(window.__loaded||0)+1" style="width:${f.width}px;height:${f.height ?? 200}px" ${f.height ? `data-fixed="1"` : ""} srcdoc="${esc(framePage(f, ctx))}"></iframe></figure>`;
-  const body = labels
-    ? `<div class="board">${sections.map((s) => `<section class="section"><header><b>${esc(s.name)}</b>${s.note ? `<span>${esc(s.note)}</span>` : ""}</header><div class="frames">${s.frames.length ? s.frames.map(frameHtml).join("") : `<p class="empty">No frames yet</p>`}</div></section>`).join("")}</div>`
-    : frames.map(frameHtml).join("");
+  const frameHtml = (f, at) => `<figure class="frame" data-f="${esc(f.id)}"${at ? ` style="left:${at.x}px;top:${at.y}px"` : ""}>${labels ? `<figcaption>${esc(f.name)} <span>${esc(frameSize(f))}</span></figcaption>` : ""}<iframe title="${esc(f.name)}" data-id="${esc(f.id)}" scrolling="no" onload="window.__loaded=(window.__loaded||0)+1" style="width:${f.width}px;height:${f.height ?? 200}px" ${f.height ? `data-fixed="1"` : ""} srcdoc="${esc(framePage(f, ctx))}"></iframe></figure>`;
+  let body;
+  if (labels) {
+    const lay = layoutDesign(sections);
+    const ox = MARGIN - lay.x, oy = MARGIN - lay.y;
+    body = `<div class="board" style="width:${lay.w + 2 * MARGIN}px;height:${lay.h + 2 * MARGIN}px">${sections.map((s, i) => {
+      const b = lay.sections[i];
+      const at = new Map(b.frames.map((f) => [f.id, { x: f.x - b.x, y: f.y - b.y }]));
+      return `<section class="section" data-s="${esc(s.id)}" style="left:${b.x + ox}px;top:${b.y + oy}px;width:${b.w}px;height:${b.h}px"><header><b>${esc(s.name)}</b>${s.note ? `<span>${esc(s.note)}</span>` : ""}</header>${s.frames.length ? s.frames.map((f) => frameHtml(f, at.get(f.id))).join("") : `<p class="empty">No frames yet</p>`}</section>`;
+    }).join("")}</div>`;
+  } else body = frames.map((f) => frameHtml(f)).join("");
   return { frames: frames.length, html: `<!doctype html><html><head><meta charset="utf-8"><style>${ctx.fontFaces}
 *{box-sizing:border-box}html,body{margin:0;background:${labels ? "#ebe6de" : "transparent"};font-family:"Geist",system-ui,sans-serif;color:#17110b}
-.board{display:inline-flex;flex-direction:column;gap:80px;padding:80px}
-.section{padding:28px 56px 56px;border-radius:24px;background:rgba(255,255,255,.6);box-shadow:inset 0 0 0 1px rgba(23,17,11,.08)}
-.section>header{display:flex;align-items:baseline;gap:16px;margin:0 0 36px}
+.board{position:relative}
+.section{position:absolute;border-radius:24px;background:rgba(255,255,255,.6);box-shadow:inset 0 0 0 1px rgba(23,17,11,.08)}
+.section>header{position:absolute;left:0;bottom:100%;margin-bottom:14px;display:flex;align-items:baseline;gap:16px;white-space:nowrap}
 .section>header b{font-size:22px;font-weight:600;background:#fff;padding:8px 16px;border-radius:999px;box-shadow:0 1px 2px rgba(0,0,0,.08)}
-.section>header span{font-size:16px;color:#5e5246}
-.frames{display:flex;gap:64px;align-items:flex-start}
-.frame{margin:0}.frame figcaption{font-size:16px;font-weight:500;color:#3d342b;margin:0 0 12px}.frame figcaption span{color:#7a6e61;font-weight:400;margin-left:6px}
+.section>header span{font-size:16px;color:#5e5246;max-width:${BOARD.emptyW * 2}px;overflow:hidden;text-overflow:ellipsis}
+.section>.frame{position:absolute}
+.frame{margin:0}.frame figcaption{position:absolute;left:0;bottom:100%;margin:0 0 12px;font-size:16px;font-weight:500;color:#3d342b;white-space:nowrap}.frame figcaption span{color:#7a6e61;font-weight:400;margin-left:6px}
 .frame iframe{display:block;border:0;background:#fff;${labels ? "box-shadow:0 2px 6px rgba(0,0,0,.08),0 24px 48px -24px rgba(0,0,0,.25)" : ""}}
-.empty{font-size:16px;color:#7a6e61;margin:0;padding:40px 0}
+.empty{position:absolute;left:${BOARD.pad}px;top:${BOARD.pad}px;font-size:16px;color:#7a6e61;margin:0}
 </style></head><body>${body}</body></html>` };
 }
 
-/** Wait for every frame, its fonts and pictures, then make each as tall as what is in it. Returns the board's size. */
+/** The board's sections and frames where they go now that every frame's height is known. Returns the board's size. */
+async function placeBoard(page, sections, heights) {
+  const lay = layoutDesign(sections, (f) => heights[f.id] ?? f.height ?? Math.round(f.width * 0.625));
+  const ox = MARGIN - lay.x, oy = MARGIN - lay.y;
+  const at = { sections: lay.sections.map((b) => ({ id: b.id, x: b.x + ox, y: b.y + oy, w: b.w, h: b.h, frames: b.frames.map((f) => ({ id: f.id, x: f.x - b.x, y: f.y - b.y })) })), w: lay.w + 2 * MARGIN, h: lay.h + 2 * MARGIN };
+  await page.evaluate((a) => {
+    const board = document.querySelector(".board");
+    board.style.width = `${a.w}px`; board.style.height = `${a.h}px`;
+    for (const s of a.sections) {
+      const el = board.querySelector(`[data-s="${CSS.escape(s.id)}"]`);
+      if (!el) continue;
+      Object.assign(el.style, { left: `${s.x}px`, top: `${s.y}px`, width: `${s.w}px`, height: `${s.h}px` });
+      for (const f of s.frames) { const fe = el.querySelector(`[data-f="${CSS.escape(f.id)}"]`); if (fe) Object.assign(fe.style, { left: `${f.x}px`, top: `${f.y}px` }); }
+    }
+  }, at);
+  return { width: at.w, height: at.h };
+}
+
+/** Wait for every frame, its fonts and pictures, then make each as tall as what is in it. Returns the page's size and each frame's height. */
 async function settle(page, n) {
   await page.waitForFunction((k) => (window.__loaded ?? 0) >= k, n, { timeout: 30_000 });
   return page.evaluate(async () => {
     const frames = [...document.querySelectorAll("iframe")];
     await document.fonts.ready;
+    const heights = {};
     for (const f of frames) {
       const doc = f.contentDocument;
       await doc.fonts.ready;
       await Promise.all([...doc.images].map((i) => (i.complete ? null : new Promise((r) => { i.onload = i.onerror = r; }))));
       // Measured at one pixel tall: a page is never shorter than its window, so measured at its
       // first height, a header would keep the 200 pixels it started with.
-      if (!f.dataset.fixed) { f.style.height = "1px"; f.style.height = `${Math.max(40, doc.documentElement.scrollHeight)}px`; }
+      if (!f.dataset.fixed) { f.style.height = "1px"; const h = Math.max(40, doc.documentElement.scrollHeight); f.style.height = `${h}px`; heights[f.dataset.id] = h; }
     }
     const root = document.querySelector(".board") ?? document.body;
     const r = root.getBoundingClientRect();
-    return { width: Math.ceil(Math.max(r.width, document.documentElement.scrollWidth)), height: Math.ceil(Math.max(r.height, document.documentElement.scrollHeight)) };
+    return { heights, width: Math.ceil(Math.max(r.width, document.documentElement.scrollWidth)), height: Math.ceil(Math.max(r.height, document.documentElement.scrollHeight)) };
   });
+}
+
+/** Heights the engine measured, kept for the board, under each frame as it was drawn. */
+function keepHeights(store, designId, frames, heights) {
+  const sizes = {};
+  for (const f of frames) if (!f.height && heights[f.id]) sizes[f.id] = { rev: frameRev({ code: codeHash(f.html, f.css), width: f.width }), height: heights[f.id] };
+  try { setFrameHeights(store, designId, sizes); } catch { /* the sheet went while it was drawn */ }
 }
 
 /**
@@ -123,7 +162,8 @@ async function capture(page, size, s) {
 
 /**
  * A design, a section of it or one frame, as PNG bytes. `scale` 2 draws twice the pixels; a
- * sheet too big for the browser is drawn smaller rather than not at all.
+ * sheet too big for the browser is drawn smaller rather than not at all. The heights measured
+ * on the way are kept for the board.
  * @param {any} store
  * @param {string} designId
  * @param {{ sectionId?: string, frameId?: string, scale?: number, renderer?: any }} [opts]
@@ -131,7 +171,10 @@ async function capture(page, size, s) {
  */
 export async function renderDesign(store, designId, { sectionId, frameId, scale = 1, renderer: injected } = {}) {
   const design = getDesign(store, designId);
-  const { sections, one } = pick(design, { sectionId, frameId });
+  const picked = pick(design, { sectionId, frameId });
+  // One section is drawn on its own, from the top left, wherever it is on the board.
+  const sections = sectionId ? picked.sections.map(({ x: _x, y: _y, ...s }) => s) : picked.sections;
+  const { one } = picked;
   const swatch = activeSwatch(store, design.projectId);
   const files = filesFor(store, design.projectId, swatch);
   const ctx = { swatch, fontFaces: files.fontFaces, yarnUrl: files.yarnUrl };
@@ -145,7 +188,9 @@ export async function renderDesign(store, designId, { sectionId, frameId, scale 
     const page = await renderer.newPage({ width: one ? sections[0].frames[0].width : 1600, height: 900, scale: s });
     try {
       await page.goto(pathToFileURL(file).href);
-      const size = frames ? await settle(page, frames) : await page.evaluate(() => ({ width: document.body.scrollWidth, height: document.body.scrollHeight }));
+      let size = frames ? await settle(page, frames) : await page.evaluate(() => ({ width: document.body.scrollWidth, height: document.body.scrollHeight }));
+      if (frames) keepHeights(store, designId, sections.flatMap((x) => x.frames), size.heights);
+      if (frames && !one) size = await placeBoard(page, sections, size.heights);
       if (Math.max(size.width, size.height) * s > MAX_SIDE) return { again: MAX_SIDE / Math.max(size.width, size.height) };
       if (one) {
         const r = await page.locator("iframe").boundingBox();
@@ -158,6 +203,127 @@ export async function renderDesign(store, designId, { sectionId, frameId, scale 
     const first = await draw(scale);
     return first.png ?? (await draw(Math.floor(first.again * 100) / 100)).png;
   } finally { await rm(file, { force: true }); if (!injected) await renderer.close(); }
+}
+
+// ── the board's pictures ──────────────────────────────────────────────────────
+// A frame small on the board is shown as a picture of it, drawn here once and kept until the
+// frame, the brand or a picture in it changes; a frame big enough to read is drawn live by the
+// window. One browser stays open for them while the board asks, and closes a minute after.
+
+const sheets = (globalThis.__knittedSheetRenderer ??= { opening: null, timer: null, running: 0, waiting: [] });
+/** Run `fn` with the shared browser: two at a time, the rest in turn. */
+async function withSheetRenderer(fn) {
+  if (sheets.running >= 2) await new Promise((r) => sheets.waiting.push(r));
+  sheets.running++;
+  clearTimeout(sheets.timer);
+  try {
+    sheets.opening ??= openRenderer().catch((e) => { sheets.opening = null; throw e; });
+    const renderer = await sheets.opening;
+    try { return await fn(renderer); } catch (e) {
+      // A browser that went away is opened again next time.
+      if (/closed|crash|disconnected/i.test(String(e?.message))) { const o = sheets.opening; sheets.opening = null; o?.then((r) => r.close()).catch(() => {}); }
+      throw e;
+    }
+  } finally {
+    sheets.running--;
+    sheets.waiting.shift()?.();
+    if (!sheets.running && !sheets.waiting.length) {
+      sheets.timer = setTimeout(() => { const o = sheets.opening; sheets.opening = null; o?.then((r) => r.close()).catch(() => {}); }, 60_000);
+      sheets.timer.unref?.();
+    }
+  }
+}
+
+/** How wide a frame's picture is drawn, in pixels: sharp at the sizes it is shown as a picture. */
+const THUMB = 720;
+/** The tallest a picture is drawn, in pixels: a taller frame is drawn smaller. */
+const THUMB_TALL = 16_000;
+
+/** A frame drawn on a page of its own at `s` pixels a pixel: its picture, and how tall it is. */
+async function drawFrame(renderer, file, f, s) {
+  const page = await renderer.newPage({ width: f.width, height: 900, scale: s });
+  try {
+    await page.goto(pathToFileURL(file).href);
+    const size = await settle(page, 1);
+    const h = f.height ?? size.heights[f.id] ?? 900;
+    if (h * s > THUMB_TALL) return { again: THUMB_TALL / h, height: h };
+    return { png: await capture(page, { width: f.width, height: h }, s), height: h };
+  } finally { await page.close().catch(() => {}); }
+}
+
+/**
+ * A frame as a small picture, for the board: WebP bytes and how tall the frame is. Kept on disk
+ * under the frame as drawn, so it is drawn once until something in it changes.
+ * @returns {Promise<{ webp: Buffer, height: number }>}
+ */
+export async function designThumb(store, designId, frameId) {
+  const design = getDesign(store, designId);
+  const f = design.sections.flatMap((s) => s.frames).find((x) => x.id === frameId);
+  if (!f) throw Object.assign(new Error(`There is no frame "${frameId}" in this design.`), { kind: "not_found" });
+  const swatch = activeSwatch(store, design.projectId);
+  const files = filesFor(store, design.projectId, swatch);
+  const ctx = { swatch, fontFaces: files.fontFaces, yarnUrl: files.yarnUrl };
+  const { html } = boardPage(design, [{ id: "one", name: "", frames: [f] }], { ctx, labels: false });
+  const key = createHash("sha1").update(html).digest("hex").slice(0, 20);
+  const dir = join(store.paths.cacheDir, "sheets", designId);
+  const name = `${frameId}-${key}`;
+  try {
+    const [webp, h] = await Promise.all([readFile(join(dir, `${name}.webp`)), readFile(join(dir, `${name}.h`), "utf8")]);
+    return { webp, height: Number(h) || 0 };
+  } catch { /* not drawn yet */ }
+  const { png, height } = await withSheetRenderer(async (renderer) => {
+    const pages = join(store.paths.projectDir(design.projectId), ".pages");
+    await mkdir(pages, { recursive: true });
+    const file = join(pages, `thumb-${designId}-${frameId}-${Date.now()}.html`);
+    await writeFile(file, html, "utf8");
+    try {
+      const first = await drawFrame(renderer, file, f, Math.min(2, THUMB / f.width));
+      return first.png ? first : await drawFrame(renderer, file, f, Math.floor(first.again * 1000) / 1000);
+    } finally { await rm(file, { force: true }); }
+  });
+  if (!f.height) keepHeights(store, designId, [f], { [f.id]: height });
+  const webp = await sharp(png).webp({ quality: 82 }).toBuffer();
+  await mkdir(dir, { recursive: true });
+  // One picture a frame: the one before it, of the frame as it was, goes.
+  for (const old of await readdir(dir).catch(() => [])) if (old.startsWith(`${frameId}-`) && !old.startsWith(`${name}.`)) await rm(join(dir, old), { force: true });
+  await writeFile(join(dir, `${name}.webp`), webp);
+  await writeFile(join(dir, `${name}.h`), String(height));
+  return { webp, height };
+}
+
+/**
+ * How tall the frames of a sheet that are as tall as what is in them are, measured in the shared
+ * browser for those not measured since they last changed, and kept for the board. Returns each
+ * one measured, under the frame as it was drawn.
+ * @returns {Promise<Record<string, { rev: string, height: number }>>}
+ */
+export async function measureDesign(store, designId) {
+  const meta = getDesignMeta(store, designId);
+  const want = new Set(meta.sections.flatMap((s) => s.frames).filter((f) => !f.height && f.measured == null).map((f) => f.id));
+  if (!want.size) return {};
+  const design = getDesign(store, designId);
+  const frames = design.sections.flatMap((s) => s.frames).filter((f) => want.has(f.id));
+  const swatch = activeSwatch(store, design.projectId);
+  const files = filesFor(store, design.projectId, swatch);
+  const ctx = { swatch, fontFaces: files.fontFaces, yarnUrl: files.yarnUrl };
+  const out = {};
+  // Forty at a time: a page of hundreds of frames is slow to load and can run out of memory.
+  for (let i = 0; i < frames.length; i += 40) {
+    const some = frames.slice(i, i + 40);
+    const { html } = boardPage(design, [{ id: "measure", name: "", frames: some }], { ctx, labels: false });
+    const heights = await withSheetRenderer(async (renderer) => {
+      const pages = join(store.paths.projectDir(design.projectId), ".pages");
+      await mkdir(pages, { recursive: true });
+      const file = join(pages, `measure-${designId}-${Date.now()}-${i}.html`);
+      await writeFile(file, html, "utf8");
+      const page = await renderer.newPage({ width: 1600, height: 900, scale: 1 });
+      try { await page.goto(pathToFileURL(file).href); return (await settle(page, some.length)).heights; }
+      finally { await page.close().catch(() => {}); await rm(file, { force: true }); }
+    });
+    keepHeights(store, designId, some, heights);
+    for (const f of some) if (heights[f.id]) out[f.id] = { rev: frameRev({ code: codeHash(f.html, f.css), width: f.width }), height: heights[f.id] };
+  }
+  return out;
 }
 
 /**

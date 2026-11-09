@@ -245,7 +245,7 @@ function KnitCheck({ patternId, version, names, onPick }: { patternId: string; v
   const warnings = Array.isArray(issues) ? issues.length - errors : 0;
   return (
     <Section title="Before it knits" hint="The checks Knit runs: missing files, low contrast, text that will not fit, animation that is too busy.">
-      {issues === null ? <div className="skeleton" aria-label="Checking" style={{ height: 18, width: "70%", borderRadius: 4 }} />
+      {issues === null ? <div className="skeleton" role="status" aria-label="Checking" style={{ height: 18, width: "70%", borderRadius: 4 }} />
         : issues === "failed" ? <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>Could not check it just now. Knit checks it again.</p>
         : issues.length === 0 ? <p className="body-sm knit-ready" role="status"><Check size={14} aria-hidden /> Ready to knit. Nothing missing, and the text fits.</p>
         : (
