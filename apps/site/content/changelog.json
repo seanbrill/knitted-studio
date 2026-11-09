@@ -1,16 +1,18 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
-  "next": {
-    "title": "Keys, sorting, sizes and parts",
-    "items": [
-      "? shows every keyboard shortcut, anywhere in the studio, grouped and searchable, with this computer's keys: ⌘ on a Mac, Ctrl elsewhere. In the editor ⌘/ opens it too, and the editor's buttons show the same keys.",
-      "In Knits, Yarn and Patterns, keys act on the one in focus or on the ones picked: M moves to a folder and Delete asks first, in all three; T adds a tag in Knits and Yarn, F makes a favourite in Knits, and R renames in Patterns and Yarn. Each menu shows the key beside what it does.",
-      "Sort says which way it runs, like Name, A to Z or Last changed, newest first, and Reverse the order turns it round. Both are kept for next time.",
-      "Custom size in the editor takes any width and height, keeps the shape when asked, starts from sizes that are used, like a link preview or a YouTube thumbnail, and draws the new size over the old one before you make it.",
-      "Save as part shows the part as it will look, starts its kind from what is picked, and asks who decides each slot: each pattern, or the brand, the same in every pattern."
-    ]
-  },
   "entries": [
+    {
+      "version": "0.1.40",
+      "date": "2026-11-09",
+      "title": "Keys, sorting, sizes and parts",
+      "items": [
+        "? shows every keyboard shortcut, anywhere in the studio, grouped and searchable, with this computer's keys: ⌘ on a Mac, Ctrl elsewhere. In the editor ⌘/ opens it too, and the editor's buttons show the same keys.",
+        "In Knits, Yarn and Patterns, keys act on the one in focus or on the ones picked: M moves to a folder and Delete asks first, in all three; T adds a tag in Knits and Yarn, F makes a favourite in Knits, and R renames in Patterns and Yarn. Each menu shows the key beside what it does.",
+        "Sort says which way it runs, like Name, A to Z or Last changed, newest first, and Reverse the order turns it round. Both are kept for next time.",
+        "Custom size in the editor takes any width and height, keeps the shape when asked, starts from sizes that are used, like a link preview or a YouTube thumbnail, and draws the new size over the old one before you make it.",
+        "Save as part shows the part as it will look, starts its kind from what is picked, and asks who decides each slot: each pattern, or the brand, the same in every pattern."
+      ]
+    },
     {
       "version": "0.1.39",
       "date": "2026-11-09",
