@@ -1,19 +1,21 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
-  "next": {
-    "title": "One card per knit, with its versions and formats",
-    "items": [
-      "Knits shows each knit once. Ask your model for a change, or knit a pattern again after changing it, and the new one takes the old one's place, in the same folder, with its caption, tags and star. The old one is kept under the knit's Versions, to look at, bring back or delete.",
-      "The same picture as a JPEG, at 2x or at 60 frames a second is a format of one knit, not another card. A knit's Formats tab lists its files, downloads any of them, and knits another one.",
-      "Knits made before this version are sorted into versions and formats once, the first time the studio opens. Nothing is deleted.",
-      "Opening a knit shows it large, with its post, versions, formats, comments and details in tabs beside it. Step to the knit before or after with the arrows, or with ← and →.",
-      "Every version, in the Knits filters, lists every file again, each saying which version it is.",
-      "A knit's caption shows how it fits each network as you write, hashtags included. Make it shorter, longer, more playful or for LinkedIn in one press, or say what to change. Captions written over are kept under Earlier captions, to use again.",
-      "Post shows what is going and where, and checks the caption against each network you pick. With nothing connected yet, it shows where to connect, and how to post it yourself.",
-      "A file renamed with a slash in its name, like Slide 1/5, keeps its whole name."
-    ]
-  },
   "entries": [
+    {
+      "version": "0.1.38",
+      "date": "2026-11-09",
+      "title": "One card per knit, with its versions and formats",
+      "items": [
+        "Knits shows each knit once. Ask your model for a change, or knit a pattern again after changing it, and the new one takes the old one's place, in the same folder, with its caption, tags and star. The old one is kept under the knit's Versions, to look at, bring back or delete.",
+        "The same picture as a JPEG, at 2x or at 60 frames a second is a format of one knit, not another card. A knit's Formats tab lists its files, downloads any of them, and knits another one.",
+        "Knits made before this version are sorted into versions and formats once, the first time the studio opens. Nothing is deleted.",
+        "Opening a knit shows it large, with its post, versions, formats, comments and details in tabs beside it. Step to the knit before or after with the arrows, or with ← and →.",
+        "Every version, in the Knits filters, lists every file again, each saying which version it is.",
+        "A knit's caption shows how it fits each network as you write, hashtags included. Make it shorter, longer, more playful or for LinkedIn in one press, or say what to change. Captions written over are kept under Earlier captions, to use again.",
+        "Post shows what is going and where, and checks the caption against each network you pick. With nothing connected yet, it shows where to connect, and how to post it yourself.",
+        "A file renamed with a slash in its name, like Slide 1/5, keeps its whole name."
+      ]
+    },
     {
       "version": "0.1.37",
       "date": "2026-11-09",
