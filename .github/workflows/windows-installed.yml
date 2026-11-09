@@ -42,7 +42,7 @@ jobs:
           $dir = Split-Path $exe
           "INSTALL_DIR=$dir" >> $env:GITHUB_ENV
           $files = Get-ChildItem -Recurse -File $dir
-          "Installed in $dir: $($files.Count) files, $([math]::Round(($files | Measure-Object Length -Sum).Sum / 1MB)) MB"
+          "Installed in ${dir}: $($files.Count) files, $([math]::Round(($files | Measure-Object Length -Sum).Sum / 1MB)) MB"
           $long = $files | Sort-Object { $_.FullName.Length } -Descending | Select-Object -First 1
           "Longest path: $($long.FullName.Length) characters"
           $res = Join-Path $dir "resources"
