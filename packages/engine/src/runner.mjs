@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import sharp from "sharp";
 import { applyCommand, fontFor, hasErrors, overflowIssues, postflight, preflight, resolveStyle, safeZoneIssues, SIZES, videoFps } from "@knitted/core";
-import { activeSwatch, findKnitByHash, getPart, insertKnit, knitPath, listYarn } from "@knitted/core/node";
+import { activeSwatch, chooseKnit, findKnitByHash, getPart, insertKnit, knitPath, listYarn, unitKey } from "@knitted/core/node";
 import { fontFaceCss, fontPath, manifest as fontManifest } from "@knitted/fonts";
 import { familiesUsed, pageFor } from "@knitted/render";
 import { FPS, frameTimes, run } from "./knit.mjs";
@@ -74,13 +74,21 @@ function unitsFor(pattern, params, yarn) {
   return units;
 }
 
-/** Everything that can change the bytes, hashed. */
-function hashFor(store, unit, swatch, yarnMap, format, scale, fps = FPS) {
+/** What the picture is made from: everything that can change it but the file type, the scale and the frame rate. */
+function madeFrom(store, unit, swatch, yarnMap) {
   const used = unit.pattern.stitches.map((s) => s.yarnId).filter(Boolean).sort().map((id) => [id, yarnMap[id]?.hash]);
   const { id, version, updatedAt, projectId, ...pat } = unit.pattern; void id; void version; void updatedAt; void projectId;
   const parts = unit.pattern.stitches.filter((s) => s.partId).map((s) => { try { const p = getPart(store, s.partId); return [p.id, p.version]; } catch { return [s.partId, null]; } });
-  return sha({ engine: ENGINE_VERSION, pat, sw: { c: swatch.colors, f: swatch.fonts, r: swatch.rules }, used, parts, format, scale, ...(fps !== FPS ? { fps } : {}) });
+  return { engine: ENGINE_VERSION, pat, sw: { c: swatch.colors, f: swatch.fonts, r: swatch.rules }, used, parts };
 }
+/** Everything that can change the bytes, hashed. */
+function hashFor(store, unit, swatch, yarnMap, format, scale, fps = FPS) {
+  return sha({ ...madeFrom(store, unit, swatch, yarnMap), format, scale, ...(fps !== FPS ? { fps } : {}) });
+}
+/** Which version of its knit a file is: the same for the same picture as any type, at any scale. */
+const lookFor = (store, unit, swatch, yarnMap) => sha(madeFrom(store, unit, swatch, yarnMap));
+/** Which knit a file is: this pattern at this size, and this row of a batch. */
+const unitOf = (patternId, pattern, unit) => unitKey(patternId, pattern.name, unit.size.name ?? "", unit.size.w, unit.size.h, unit.row ? unit.rowIndex + 1 : null);
 
 /**
  * Each text box as it is when everything has landed: does its text fit, and where do its lines
@@ -287,8 +295,9 @@ export async function runKnit(store, { jobId, projectId, patternId, params = {},
         // for fast motion when asked: smoother, and about twice the frames to draw.
         const fps = motion ? videoFps(unit.pattern, yarnMap, params.fps) : FPS;
         const hash = hashFor(store, unit, swatch, yarnMap, fmt, scale, fps);
-        const prior = params.reuse === false ? null : findKnitByHash(store, projectId, hash);
-        if (prior && (await stat(knitPath(store, prior)).then(() => true, () => false))) { entry.status = "reused"; entry.knitId = prior.id; results.push(prior); continue; }
+        const prior = params.reuse === false ? null : findKnitByHash(store, projectId, hash, unitOf(patternId, pattern, unit));
+        // Knitting it again is choosing it: an earlier version made again is the current one again.
+        if (prior && (await stat(knitPath(store, prior)).then(() => true, () => false))) { const again = chooseKnit(store, prior.id); entry.status = "reused"; entry.knitId = again.id; results.push(again); continue; }
 
         const ctx = renderContext(store, projectId, unit.pattern, swatch, yarn, yarnMap);
         if (motion) {
@@ -379,6 +388,7 @@ export async function runKnit(store, { jobId, projectId, patternId, params = {},
           projectId, patternId, patternName: pattern.name, jobId, batchId, label: unit.label, file: `${day}/${outFile.split("/").pop()}`,
           kind: motion ? "video" : "image", format: fmt, width: unit.size.w * scale, height: unit.size.h * scale, bytes: st.size,
           durationMs: motion ? unit.pattern.durationMs : null, hash, report,
+          unit: unitOf(patternId, pattern, unit), look: lookFor(store, unit, swatch, yarnMap), scale,
         });
         entry.status = "done"; entry.knitId = rec.id; entry.issues = issues;
         results.push(rec);

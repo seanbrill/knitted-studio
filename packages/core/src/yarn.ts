@@ -68,6 +68,11 @@ function displayName(raw: string): string {
   const base = basename(raw).replace(extname(raw), "").replace(/[\u0000-\u001f]/g, "").replace(/\s+/g, " ").trim();
   return (base || "Untitled").slice(0, 120);
 }
+/** A name a person or a model gives, which is not a path: "Slide 1/5" keeps its "1/". */
+function givenName(raw: string): string {
+  const name = raw.replace(/[\u0000-\u001f]/g, "").replace(/\s+/g, " ").trim();
+  return (name || "Untitled").slice(0, 120);
+}
 
 export function yarnPath(store: Store, y: Pick<Yarn, "projectId" | "file">): string {
   return join(store.paths.yarnDir(y.projectId), y.file);
@@ -206,7 +211,7 @@ export async function setYarnScope(store: Store, id: string, to: string): Promis
 // ── writes ───────────────────────────────────────────────────────────────────
 export function updateYarn(store: Store, id: string, patch: { name?: string; tags?: string[] }): Yarn {
   const y = getYarn(store, id);
-  const name = patch.name !== undefined ? displayName(patch.name + ".x") : y.name;
+  const name = patch.name !== undefined ? givenName(patch.name) : y.name;
   const tags = patch.tags !== undefined ? cleanTags(patch.tags) : y.tags;
   store.write(() => store.db.prepare("update yarn set name = ?, tags = ?, updated_at = ? where id = ?").run(name, JSON.stringify(tags), new Date().toISOString(), id));
   return getYarn(store, id);
@@ -461,7 +466,7 @@ export async function importYarn(store: Store, projectId: string, tmpPath: strin
     try { await rename(tmpPath, final); } catch { await copyFile(tmpPath, final); await rm(tmpPath, { force: true }); }
 
     const now = new Date().toISOString();
-    const name = opts.name ? displayName(opts.name + ".x") : displayName(originalName);
+    const name = opts.name ? givenName(opts.name) : displayName(originalName);
     const tags = cleanTags(opts.tags ?? []);
     store.write(() => {
       if (opts.replaceId) {

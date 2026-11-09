@@ -137,16 +137,18 @@ test("the gallery opens a knit, offers download and delete, and delete removes t
   await page.getByRole("button", { name: /^Open Launch story/ }).first().click();
   const dlg = page.getByRole("dialog");
   await dlg.getByRole("link", { name: "Download" }).waitFor();
-  await dlg.getByRole("button", { name: "Delete" }).click();
-  await page.getByRole("button", { name: "Delete file" }).click();
+  await dlg.getByRole("button", { name: "More for this knit" }).click();
+  await page.getByRole("menuitem", { name: "Delete this knit" }).click();
+  await page.getByRole("dialog", { name: /^Delete Launch story/ }).getByRole("button", { name: "Delete the file" }).click();
   await serverHas(studio, `/api/projects/${projectId}/knits`, (k) => k.length === 3);
+  await page.getByRole("dialog").waitFor({ state: "detached" });
 });
 
 test("a knit made before its pattern was last changed says so, so an out-of-date file is not posted by mistake", async () => {
   await j("POST", `/api/patterns/${patternId}/commands`, { command: { type: "addStitch", stitch: { id: "late", kind: "shape", x: 0.9, y: 0.9, w: 0.05, h: 0.05, locked: false, style: { background: "#ff0000" } } } });
   await page.goto(`${studio.url}/projects/${projectId}/knits`);
   await page.getByRole("button", { name: /^Open Launch story.*its pattern changed since/ }).first().waitFor();
-  await page.getByText("· pattern changed").first().waitFor();
+  await page.getByText("pattern changed since").first().waitFor();
 });
 
 test("a pattern with missing Yarn cannot be knitted, and the dialog says what to fix", async () => {
@@ -193,6 +195,52 @@ test("a star marks a favourite, and Knits shows only the favourites, or only one
   await serverHas(studio, `/api/projects/${projectId}/knits`, (k) => k.every((x) => !x.favorite));
   await page.keyboard.press("Escape");
   await page.getByText("No favourites yet").waitFor();
+});
+
+test("a pattern knitted again after a change is one knit with two versions; Formats knits a 2x of it, and Versions brings the old one back", async () => {
+  const every = () => j("GET", `/api/projects/${projectId}/knits?every=1`).then((r) => r.body);
+  const shown = () => j("GET", `/api/projects/${projectId}/knits`).then((r) => r.body);
+  const post = (await j("GET", `/api/projects/${projectId}/patterns`)).body.find((p) => p.size.name === "Post");
+  const had = (await shown()).length, files = (await every()).length;
+  await j("POST", `/api/patterns/${post.id}/commands`, { command: { type: "addStitch", stitch: { id: "v2dot", kind: "shape", x: 0.05, y: 0.05, w: 0.1, h: 0.1, locked: false, style: { background: "#00aa55" } } } });
+  await j("POST", `/api/patterns/${post.id}/knit`, { params: {} });
+  await serverHas(studio, `/api/projects/${projectId}/knits?every=1`, (k) => k.length === files + 1, { timeout: 90000 });
+  assert.equal((await shown()).length, had, "still one knit, at its new version");
+
+  await page.goto(`${studio.url}/projects/${projectId}/knits`);
+  await page.getByRole("button", { name: /^Open Launch post.*, a new version, 2 versions/ }).click();
+  const dlg = page.getByRole("dialog");
+
+  // Another format of the version shown: the same picture at twice the size.
+  await dlg.getByRole("tab", { name: "Formats" }).click();
+  await dlg.getByRole("radiogroup", { name: "Type" }).getByRole("radio", { name: "PNG" }).click();
+  await dlg.getByRole("radio", { name: "2x" }).click();
+  await dlg.getByText("2160 × 2700, sharp on big screens.").waitFor();
+  await dlg.getByRole("button", { name: "Knit it" }).click();
+  const v2files = dlg.getByRole("list", { name: "The files of version 2" });
+  await v2files.getByText("PNG 2x").waitFor({ timeout: 90000 });
+  assert.equal((await shown()).length, had, "a format is not another knit");
+  assert.deepEqual((await shown()).find((k) => k.patternId === post.id).formats.map((f) => f.scale), [1, 2]);
+  await dlg.getByRole("button", { name: "Use this one" }).click();
+  await serverHas(studio, `/api/projects/${projectId}/knits`, (k) => k.find((x) => x.patternId === post.id)?.width === 2160);
+
+  // The version before, looked at, then picked again.
+  await dlg.getByRole("tab", { name: /^Versions/ }).click();
+  const list = dlg.getByRole("list", { name: "Versions, newest first" });
+  assert.equal(await list.getByRole("listitem").count(), 2);
+  await list.getByRole("button", { name: /^Version 1/ }).click();
+  await dlg.getByText(/^Version 1 of 2, knitted .* Knits shows version 2\.$/).waitFor();
+  assert.deepEqual(await axeProblems(page), []);
+  await dlg.getByRole("status").getByRole("button", { name: "Use this one" }).click();
+  await serverHas(studio, `/api/projects/${projectId}/knits`, (k) => k.find((x) => x.patternId === post.id)?.versionNo === 1);
+
+  // Version 2 and both its files go; version 1 stays, and is the knit.
+  await dlg.getByRole("button", { name: "Delete the other versions" }).click();
+  await page.getByRole("dialog", { name: "Delete the other version?" }).getByRole("button", { name: "Delete them" }).click();
+  await serverHas(studio, `/api/projects/${projectId}/knits?every=1`, (k) => k.length === files);
+  await dlg.getByText("Ask your model for a change, or change the pattern and knit it again", { exact: false }).waitFor();
+  assert.equal((await shown()).length, had);
+  await page.keyboard.press("Escape");
 });
 
 for (const theme of ["day", "night"]) {

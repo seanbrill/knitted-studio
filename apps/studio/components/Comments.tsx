@@ -54,7 +54,7 @@ export function fixPrompt(on: CommentsOn, threads: CommentThread[]): string {
   const what = on.kind === "knit" ? `the knit "${on.label}" (${on.knitId})` : `the design sheet "${on.name}" (${on.designId})`;
   const how = on.kind === "knit"
     ? on.patternId
-      ? `A knit is a finished file: change the pattern it was knitted from (${on.patternId}), check it with check_pattern, and knit it again with knit_pattern at the same size and format. Leave the old knit where it is.`
+      ? `A knit is a finished file: change the pattern it was knitted from (${on.patternId}), check it with check_pattern, and knit it again with knit_pattern at the same size and format. That makes the next version of this knit, shown in its place, and the old one stays under its Versions.`
       : "The pattern it was knitted from is gone: make the change in the closest pattern and knit a new version."
     : "Read get_guide designing first. Change the frame with set_design_frame, and look again with view_design.";
   const list = threads.map((t) => `comment ${t.n} (${t.id})${t.frameName ? ` on the frame ${t.frameName}` : ""}${t.timeMs != null ? ` at ${clock(t.timeMs)}` : ""}: "${t.text}"`).join("; ");

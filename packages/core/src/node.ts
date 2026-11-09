@@ -12,6 +12,7 @@ export * from "./brief.ts";
 export * from "./web.ts";
 export * from "./crawl.ts";
 export * from "./knits.ts";
+export * from "./knit-versions.ts";
 export * from "./parts.ts";
 export * from "./folders.ts";
 export { BUILTIN_PARTS } from "./builtin-parts.ts";

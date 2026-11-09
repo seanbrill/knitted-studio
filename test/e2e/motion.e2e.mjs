@@ -116,9 +116,12 @@ test("at 60 frames a second the same video knits again, with twice the frames", 
   await dlg.getByText("Fast motion looks smoother.", { exact: false }).waitFor();
   await dlg.getByRole("button", { name: /^Knit 1 file/ }).click();
   await dlg.getByText(/1 file ready/).waitFor({ timeout: 120000 });
-  const [sixty, thirty] = (await j("GET", `/api/projects/${projectId}/knits`)).body;
+  const [sixty, thirty] = (await j("GET", `/api/projects/${projectId}/knits?every=1`)).body;
   assert.notEqual(sixty.id, thirty.id, "not the 30 fps file again");
   assert.equal(sixty.report.frames, thirty.report.frames * 2);
+  // The same picture at another frame rate is another format of the same knit, not another knit.
+  const shown = (await j("GET", `/api/projects/${projectId}/knits`)).body;
+  assert.deepEqual([shown.length, shown[0].versions, shown[0].formats.map((f) => f.fps ?? 30).sort()], [1, 1, [30, 60]]);
 });
 
 test("Change scene, at the playhead: what is on screen goes out, all gone by then, and what comes next comes in from then", async () => {

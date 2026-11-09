@@ -6,7 +6,7 @@
 import type { Actor, AgentState, Brief, ColorRole, CommentThread, CropBox, Part, Pattern, Project, Refusal, Shelf, Size, Swatch, Yarn } from "./types.ts";
 import type { FolderSection } from "./folders-pure.ts";
 import type { SiteProposal } from "./site.ts";
-import type { KnitIssue, KnitRecord } from "./knits.ts";
+import type { KnitFormat, KnitIssue, KnitRecord } from "./knits.ts";
 import type { Command } from "./commands.ts";
 import type { SpendLimits, UsageSummary } from "./usage.ts";
 import type { PostChange, SocialAccount, SocialPost } from "./social.ts";
@@ -28,8 +28,8 @@ export class ApiError extends Error {
   constructor(status: number, kind: string, message: string, detail?: unknown) { super(message); this.status = status; this.kind = kind; this.detail = detail; }
 }
 
-async function call<T>(method: string, url: string, body?: unknown): Promise<T> {
-  const res = await fetch(url, { method, headers: body !== undefined ? { "content-type": "application/json" } : undefined, body: body !== undefined ? JSON.stringify(body) : undefined });
+async function call<T>(method: string, url: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(url, { method, signal, headers: body !== undefined ? { "content-type": "application/json" } : undefined, body: body !== undefined ? JSON.stringify(body) : undefined });
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) throw new ApiError(res.status, data?.error?.kind ?? "error", data?.error?.message ?? "Something went wrong. Try again.", data?.error);
@@ -163,15 +163,21 @@ export const api = {
     /** What is knitting or waiting to, in one project or in all of them. */
     active: (projectId?: string) => call<JobItem[]>("GET", `/api/jobs?kind=knit&active=1${projectId ? `&project=${projectId}` : ""}`),
     cancel: (id: string) => call<JobItem>("DELETE", `/api/jobs/${id}`),
-    list: (projectId: string, q: { pattern?: string; batch?: string } = {}) => call<KnitRecord[]>("GET", `/api/projects/${projectId}/knits?${new URLSearchParams(Object.entries(q).filter(([, v]) => v) as [string, string][])}`),
-    remove: (id: string) => call<{ ok: true }>("DELETE", `/api/knits/${id}`),
+    /** Each knit once, as the file shown for it, with its versions and formats counted; `every` lists every file. */
+    list: (projectId: string, q: { pattern?: string; batch?: string; every?: boolean } = {}) => call<KnitRecord[]>("GET", `/api/projects/${projectId}/knits?${new URLSearchParams(Object.entries({ ...q, every: q.every ? "1" : undefined }).filter(([, v]) => v) as [string, string][])}`),
+    /** `file`: this file; `version`: its version, every format; `earlier`: every version but the current one; `all`: the whole knit. */
+    remove: (id: string, what: "file" | "version" | "earlier" | "all" = "file") => call<{ ok: true; deleted: number; bytes: number }>("DELETE", `/api/knits/${id}${what === "file" ? "" : `?what=${what}`}`),
+    /** A knit's versions, oldest first, each with its files, the one shown first. */
+    versions: (id: string) => call<KnitVersions>("GET", `/api/knits/${id}/versions`),
+    /** Show this file for its knit: its version current, and it the file posted. */
+    choose: (id: string) => call<KnitRecord>("POST", `/api/knits/${id}/versions`, {}),
     tag: (id: string, tags: string[]) => call<KnitRecord>("PATCH", `/api/knits/${id}`, { tags }),
     /** The person has looked at it: its New badge goes. */
     seen: (id: string) => call<KnitRecord>("PATCH", `/api/knits/${id}`, { seen: true }),
     /** One the person likes, to find again with the Favourites filter; or not any more. */
     favorite: (id: string, favorite: boolean) => call<KnitRecord>("PATCH", `/api/knits/${id}`, { favorite }),
     allSeen: (projectId: string) => call<{ marked: number }>("POST", `/api/projects/${projectId}/knits/seen`, {}),
-    writePost: (id: string, ask?: string) => call<KnitRecord>("POST", `/api/knits/${id}/post`, ask ? { ask } : {}),
+    writePost: (id: string, ask?: string, signal?: AbortSignal) => call<KnitRecord>("POST", `/api/knits/${id}/post`, ask ? { ask } : {}, signal),
     setPost: (id: string, post: { caption?: string; hashtags?: string[]; audioId?: string | null }) => call<KnitRecord>("PUT", `/api/knits/${id}/post`, post),
   },
   agent: {
@@ -358,7 +364,8 @@ export interface JobItem {
   result: { knitIds: string[]; failed: number } | null; createdAt: string; finishedAt: string | null;
 }
 export const knitFileUrl = (k: { id: string }, download = false) => `/api/knits/${k.id}/file${download ? "?download=1" : ""}`;
-export type { KnitRecord, KnitIssue };
+export type { KnitRecord, KnitIssue, KnitFormat };
+export interface KnitVersions { size: Size; row: number | null; current: number; versions: { no: number; look: string; createdAt: string; files: KnitRecord[] }[] }
 export type { SpendLimits, UsageSummary };
 
 export type { SocialAccount, SocialPost, PostChange, Platform, Insights };

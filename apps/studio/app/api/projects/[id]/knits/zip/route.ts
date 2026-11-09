@@ -10,7 +10,7 @@ const safe = (name: string) => name.replace(/[\\:*?"<>|]/g, "-");
 
 /**
  * `?ids=a,b` or `?batch=bt_...` or `?folder=Spring` (that folder and the folders inside
- * it) or none (everything). A whole folder, or everything, keeps its folders in the zip.
+ * it) or none (everything): the file shown for each knit, or with `?every=1` every file. A whole folder, or everything, keeps its folders in the zip.
  * Streams, so a big batch never sits in memory.
  */
 export const GET = route(async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
@@ -19,7 +19,7 @@ export const GET = route(async (req: Request, { params }: { params: Promise<{ id
   const ids = q.get("ids")?.split(",").filter(Boolean);
   const batchId = q.get("batch") ?? undefined;
   const folder = folderNamed(s, id, "knits", q.get("folder"));
-  const knits = ids ? ids.map((k) => getKnit(s, k)).filter((k) => k.projectId === id) : listKnits(s, id, { batchId, folder });
+  const knits = ids ? ids.map((k) => getKnit(s, k)).filter((k) => k.projectId === id) : listKnits(s, id, { batchId, folder, every: q.get("every") === "1", limit: 5000 });
   if (!knits.length) return fail(404, "not_found", folder ? "There is nothing in that folder to download yet." : "There is nothing to download yet. Knit something first.");
   const tree = !ids && !batchId;
   const dirOf = (folderOfKnit: string) => (tree && folderOfKnit && isInside(folderOfKnit, folder) ? folderOfKnit.slice(folder ? folder.length + 1 : 0) : "").split("/").filter(Boolean).map(safe).join("/");

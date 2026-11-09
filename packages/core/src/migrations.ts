@@ -434,4 +434,22 @@ export const MIGRATIONS: Migration[] = [
       create index comments_parent on comments (parent_id);
     `,
   },
+  {
+    version: 20,
+    name: "knit versions and formats",
+    // A knit is one pattern at one size (and one row of a batch): its unit. Each look of it is
+    // a version; the same look as another file type or scale is a format of that version.
+    // chosen_at: when the person picked the file, or knitted it again. head: the one file
+    // Knits shows for the knit. Older rows get unit and look when the library is opened
+    // (knit-versions.ts), since that reads their labels and the pattern's history.
+    sql: `
+      alter table knits add column unit text;
+      alter table knits add column look text;
+      alter table knits add column scale integer not null default 1;
+      alter table knits add column chosen_at text;
+      alter table knits add column head integer not null default 1;
+      create index knits_unit on knits (project_id, unit);
+      create index knits_head on knits (project_id, head, created_at);
+    `,
+  },
 ];

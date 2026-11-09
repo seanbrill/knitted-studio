@@ -28,7 +28,7 @@ export function aboutKnit(k: KnitRecord): About {
   return {
     projectId: k.projectId, patternId: k.patternId ?? undefined, name: k.label, what: "this knit",
     context: k.patternId
-      ? `This is about the knit "${k.label}" (${k.id}), a ${size}, knitted from the pattern "${k.patternName}" (${k.patternId}). A knit is a finished file: to change it, change its pattern. Look at the pattern with get_pattern and preview_pattern, make the change, check it with check_pattern, then knit it again with knit_pattern at the same size and format. Leave the old knit where it is. Say what you changed.`
+      ? `This is about the knit "${k.label}" (${k.id}), a ${size}, knitted from the pattern "${k.patternName}" (${k.patternId}). A knit is a finished file: to change it, change its pattern. Look at the pattern with get_pattern and preview_pattern, make the change, check it with check_pattern, then knit it again with knit_pattern at the same size and format. That makes the next version of this knit, shown in its place, and the old one stays under its Versions. Say what you changed.`
       : `This is about the knit "${k.label}" (${k.id}), a ${size}. The pattern it was knitted from, "${k.patternName}", is gone, so it cannot be knitted again as it was. Find the closest pattern in the project with list_patterns, or make one, and knit a new version from that.`,
     ideas: k.kind === "video"
       ? ["Make the text come in more smoothly", "Shorter, punchier words", "Slow it down a little", "Try different music"]

@@ -57,7 +57,8 @@ export function listFolders(store: Store, projectId: string, section: FolderSect
 /** How many things each folder holds itself, not counting the folders inside it. Deleted Yarn does not count. */
 export function folderCounts(store: Store, projectId: string, section: FolderSection): Map<string, number> {
   const s = sectionOf(section);
-  const live = s.table === "yarn" ? " and deleted_at is null" : "";
+  // A knit counts once, as the file shown for it.
+  const live = s.table === "yarn" ? " and deleted_at is null" : s.table === "knits" ? " and head = 1" : "";
   const rows = store.db.prepare(`select folder, count(*) as n from ${s.table} where ${s.scope}${live} group by folder`).all(projectId) as { folder: string; n: number }[];
   return new Map(rows.map((r) => [r.folder, Number(r.n)]));
 }
@@ -146,7 +147,12 @@ export function moveAllToFolder(store: Store, projectId: string, groups: Partial
         ? store.db.prepare(`update yarn set folder = ?, shelf = '${s.shelf}' where id = ? and (folder != ? or shelf != '${s.shelf}')`)
         : store.db.prepare(`update ${s.table} set folder = ? where id = ? and folder != ?`);
       let moved = 0;
-      for (const id of ids) moved += Number(set.run(folder, id, folder).changes);
+      // A knit is filed whole: every version and format of it goes with the one moved.
+      const whole = section === "knits" ? store.db.prepare("update knits set folder = ? where project_id = ? and unit = (select unit from knits where id = ?) and id != ? and folder != ?") : null;
+      for (const id of ids) {
+        const n = Number(set.run(folder, id, folder).changes);
+        moved += whole ? Math.min(1, n + Number(whole.run(folder, projectId, id, id, folder).changes)) : n;
+      }
       if (actor !== "human" && moved) store.logRow(projectId, actor, "folder.filed", `${count(moved, s)} ${folder ? `into ${folder}` : `to the top of ${s.name}`}`, { section, folder, ids });
       out[section as FolderSection] = { folder, moved };
     }

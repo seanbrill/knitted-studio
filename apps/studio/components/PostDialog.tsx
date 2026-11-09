@@ -2,16 +2,24 @@
 
 // Post one knit, or several as a carousel, to the person's accounts: now, at a time, or as a
 // draft. Each platform's limits are checked here, as the person writes, so nothing is
-// scheduled that the platform would refuse at its time with nobody there to fix it.
+// scheduled that the platform would refuse at its time with nobody there to fix it. What is
+// posted stays in sight beside it, and with no account connected yet it is not a dead end:
+// connect one, or post it yourself, with the caption copied and the file downloaded.
 
 import Link from "next/link";
 import { useState } from "react";
-import { PLATFORMS, captionLength, checkPost, fullCaption, type Platform } from "@knitted/core";
-import { api, type KnitRecord, type SocialAccount, type TikTokCreator } from "@knitted/core/client";
-import { Button, Dialog, Field, Input, SegmentedControl, Select, Switch, Textarea, icons, useToast } from "@knitted/ui";
-import { useLive } from "@/lib/hooks";
+import { PLATFORMS, PLATFORM_IDS, captionLength, checkPost, fullCaption, type Platform } from "@knitted/core";
+import { api, knitFileUrl, type KnitRecord, type SocialAccount, type TikTokCreator } from "@knitted/core/client";
+import { Button, Dialog, Field, Input, SegmentedControl, Select, Skeleton, Switch, Textarea, icons, useToast } from "@knitted/ui";
+import { formatBytes, useLive } from "@/lib/hooks";
+import { formatName } from "./KnitView";
 
-const { AlertTriangle, Send, CalendarClock } = icons;
+const { AlertTriangle, Send, CalendarClock, Copy, Download, Check } = icons;
+/** A network's mark: its letters on its colour. Not its logo. */
+const MARK: Record<Platform, string> = { instagram: "IG", tiktok: "TT", linkedin: "in", threads: "@", x: "X", youtube: "YT" };
+export function PlatformMark({ p, small }: { p: Platform; small?: boolean }) {
+  return <span className="pf" data-p={p} data-small={small || undefined} aria-hidden>{MARK[p]}</span>;
+}
 type When = "now" | "at" | "draft";
 
 /** Tomorrow at nine, as a datetime-local input writes it. */
@@ -52,6 +60,11 @@ export function PostDialog({ projectId, knits, open, onOpenChange }: { projectId
   if (when !== "draft" && tiktok && !opt("tiktok").privacy) problems.push("TikTok: pick who can see it.");
   const notes = platforms.flatMap((p) => checks[p].notes.map((x) => `${PLATFORMS[p].name}: ${x}`));
 
+  const copyCaption = async () => { await navigator.clipboard.writeText(caption); toast("Caption and hashtags copied."); };
+  const download = knits.length === 1 ? knitFileUrl(first!, true) : `/api/projects/${projectId}/knits/zip?ids=${knits.map((k) => k.id).join(",")}`;
+  const blocked = !picked.length ? "Pick where it goes first." : when !== "draft" && problems.length > 0 ? `${problems.length === 1 ? "One thing" : `${problems.length} things`} to fix first, above.` : null;
+  const n = picked.length;
+
   const submit = async () => {
     setBusy(true);
     try {
@@ -66,27 +79,63 @@ export function PostDialog({ projectId, knits, open, onOpenChange }: { projectId
   };
 
   const none = accounts && accounts.length === 0;
+  const what = (
+    <aside className="post-what" aria-label="What is posted">
+      <div className="post-what-pics" data-many={knits.length > 1 || undefined}>
+        {knits.slice(0, 4).map((k) => k.kind === "image" ? <img key={k.id} src={knitFileUrl(k)} alt={k.label} /> : <video key={k.id} src={knitFileUrl(k)} muted preload="metadata" aria-label={k.label} />)}
+      </div>
+      <p className="post-meta">
+        {knits.length === 1 ? (first!.kind === "video" ? `1 video, ${Math.round((first!.durationMs ?? 0) / 1000)} seconds` : "1 picture") : `${knits.length} ${knits.every((k) => k.kind === "image") ? "pictures" : "files"}, as a carousel`}
+        <br />{formatName(first!)}, {first!.width} × {first!.height}{knits.length === 1 ? `, ${formatBytes(first!.bytes)}` : ""}
+      </p>
+    </aside>
+  );
   return (
     <Dialog open={open} onOpenChange={onOpenChange} wide title={knits.length > 1 ? `Post ${knits.length} knits together` : `Post ${first?.label ?? "this knit"}`}
-      actions={!none && <>
+      actions={none ? <Button onClick={() => onOpenChange(false)}>Close</Button> : <>
+        <span className="dialog-actions-note" role="status">{picked.length && blocked ? <span style={{ color: "var(--danger)" }}>{blocked}</span> : <>{picked.length ? "Or post it yourself" : "Pick where it goes, or post it yourself"}: <button type="button" className="link" onClick={() => void copyCaption()}>Copy caption</button> · <a className="link" href={download}>Download</a></>}</span>
         <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-        <Button variant="primary" busy={busy} disabled={!picked.length || (when !== "draft" && problems.length > 0)} onClick={submit}>
-          {when === "now" ? <><Send size={14} aria-hidden /> Post now</> : when === "at" ? <><CalendarClock size={14} aria-hidden /> Schedule</> : "Save draft"}
+        <Button variant="primary" busy={busy} disabled={!!blocked} tip={blocked ?? undefined} onClick={submit}>
+          {when === "now" ? <><Send size={14} aria-hidden /> {n > 1 ? `Post to ${n} accounts` : "Post now"}</> : when === "at" ? <><CalendarClock size={14} aria-hidden /> {n > 1 ? `Schedule for ${n} accounts` : "Schedule"}</> : n > 1 ? `Save ${n} drafts` : "Save draft"}
         </Button>
       </>}>
-      {none ? (
-        <p className="body">No accounts are connected yet. <Link className="link" href="/settings?tab=social">Connect one in Settings, Social</Link>.</p>
-      ) : (
-        <div style={{ display: "grid", gap: "var(--space-4)" }}>
-          <fieldset style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 6 }}>
-            <legend className="label" style={{ marginBottom: 6 }}>Post to</legend>
-            {(accounts ?? []).map((a) => <AccountRow key={a.id} a={a} on={picked.includes(a.id)} why={checkPost(a.platform, media, caption, "t").problems.find((x) => !/caption|title|description|hashtags/i.test(x))}
-              toggle={(on) => setPicked((p) => (on ? [...p, a.id] : p.filter((x) => x !== a.id)))} />)}
+      <div className="post-dialog">
+        {what}
+        {none ? (
+          <div className="post-form">
+            <section className="post-card" aria-label="Connect where you post">
+              <p className="label" style={{ margin: 0 }}>Connect where you post</p>
+              <p className="body-sm muted" style={{ margin: 0 }}>Each one once, and knitted posts for you: now, at a time, or as a draft to finish in the app.</p>
+              <ul className="post-nets">{PLATFORM_IDS.map((p) => <li key={p}><PlatformMark p={p} small />{PLATFORMS[p].name}</li>)}</ul>
+              <Link className="btn btn-secondary" href="/settings?tab=social" style={{ justifySelf: "start" }}>Connect accounts in Settings</Link>
+            </section>
+            <section className="post-card" aria-label="Or post it yourself">
+              <p className="label" style={{ margin: 0 }}>Or post it yourself</p>
+              <ol className="post-steps">
+                <li><span className="post-step-n">1</span><span><b>Copy the caption and hashtags</b><small>{caption ? `${[...caption].length.toLocaleString()} characters, ready to paste` : "No caption yet: write one in the knit's Post tab"}</small></span>
+                  <Button size="sm" disabled={!caption} onClick={() => void copyCaption()}><Copy size={13} aria-hidden /> Copy</Button></li>
+                <li><span className="post-step-n">2</span><span><b>Download {knits.length === 1 ? (first!.kind === "video" ? "the video" : "the picture") : `the ${knits.length} files`}</b><small>{knits.length === 1 ? `${formatName(first!)}, ${first!.width} × ${first!.height}, ${formatBytes(first!.bytes)}` : "In one zip, in order"}</small></span>
+                  <a className="btn btn-secondary btn-sm" href={download}><Download size={13} aria-hidden /> Download</a></li>
+                <li><span className="post-step-n">3</span><span><b>Post it in the app</b><small>Paste the caption, and add the {knits.length === 1 ? "file" : "files"}.</small></span></li>
+              </ol>
+            </section>
+          </div>
+        ) : (
+        <div className="post-form">
+          <fieldset style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 6, minWidth: 0 }}>
+            <legend className="label" style={{ marginBottom: 6 }}>Where</legend>
+            {!accounts ? [0, 1, 2].map((i) => <div key={i} className="acc-row" aria-hidden><Skeleton width={16} height={16} /><Skeleton width={30} height={30} /><span style={{ display: "grid", gap: 6 }}><Skeleton width="40%" height={12} /><Skeleton width="60%" height={10} /></span></div>)
+              : accounts.map((a) => <AccountRow key={a.id} a={a} on={picked.includes(a.id)} why={checkPost(a.platform, media, caption, "t").problems.find((x) => !/caption|title|description|hashtags/i.test(x))}
+                toggle={(on) => setPicked((p) => (on ? [...p, a.id] : p.filter((x) => x !== a.id)))} />)}
           </fieldset>
 
-          <Field label="Caption" htmlFor="post-caption" hint={platforms.length ? platforms.map((p) => `${PLATFORMS[p].name} ${captionLength(p, textFor(p))} of ${PLATFORMS[p].caption}`).join(" · ") : "Pick an account to see each one's limit."}>
-            <Textarea id="post-caption" rows={5} value={caption} onChange={(e) => setCaption(e.target.value)} />
-          </Field>
+          <div style={{ display: "grid", gap: 6 }}>
+            <label className="label" htmlFor="post-caption">Caption <span className="post-meta" style={{ fontWeight: 400 }}>{first?.post?.caption ? "from the knit" : ""}</span></label>
+            <Textarea id="post-caption" rows={6} value={caption} onChange={(e) => setCaption(e.target.value)} />
+            {platforms.length
+              ? <ul className="fit-chips" aria-label="How it fits each network">{platforms.map((p) => { const len = captionLength(p, textFor(p)), max = PLATFORMS[p].caption; return <li key={p} data-over={len > max || undefined}>{PLATFORMS[p].name} {len.toLocaleString()} of {max.toLocaleString()}{len <= max && <Check size={11} aria-hidden />}</li>; })}</ul>
+              : <p className="post-meta">Pick where it goes to see each one&apos;s limit.</p>}
+          </div>
           {platforms.filter((p) => own[p] !== undefined || captionLength(p, caption) > PLATFORMS[p].caption).map((p) => (
             <Field key={p} label={`Caption for ${PLATFORMS[p].name}`} htmlFor={`post-caption-${p}`} hint={`${captionLength(p, textFor(p))} of ${PLATFORMS[p].caption}${p === "x" ? ", a link counting as 23" : ""}.`}>
               <Textarea id={`post-caption-${p}`} rows={3} value={textFor(p)} onChange={(e) => setOwn((o) => ({ ...o, [p]: e.target.value }))} />
@@ -132,7 +181,8 @@ export function PostDialog({ projectId, knits, open, onOpenChange }: { projectId
           {when !== "draft" && problems.length > 0 && <ul aria-label="What to fix first" style={{ margin: 0, paddingLeft: 18 }}>{problems.map((p) => <li key={p} className="body-sm" style={{ color: "var(--danger)" }}>{p}</li>)}</ul>}
           {notes.length > 0 && <ul aria-label="Good to know" style={{ margin: 0, paddingLeft: 18 }}>{notes.map((p) => <li key={p} className="body-sm" style={{ color: "var(--ink-muted)" }}>{p}</li>)}</ul>}
         </div>
-      )}
+        )}
+      </div>
     </Dialog>
   );
 }
@@ -141,11 +191,13 @@ function AccountRow({ a, on, why, toggle }: { a: SocialAccount; on: boolean; why
   const label = `${PLATFORMS[a.platform].name}${a.handle ? `, @${a.handle}` : a.name ? `, ${a.name}` : ""}`;
   const off = !!why || a.status === "reconnect";
   return (
-    <label className="body-sm" style={{ display: "flex", gap: 10, alignItems: "center", opacity: off ? 0.6 : 1 }}>
+    <label className="acc-row" data-on={(on && !off) || undefined} data-off={off || undefined}>
       <input type="checkbox" checked={on && !off} disabled={off} onChange={(e) => toggle(e.target.checked)} aria-label={label} />
-      <span><strong>{PLATFORMS[a.platform].name}</strong> {a.handle ? `@${a.handle}` : a.name}</span>
-      {a.status === "reconnect" && <span style={{ color: "var(--danger)" }}>Connect it again in Settings first.</span>}
-      {why && a.status !== "reconnect" && <span style={{ color: "var(--ink-muted)" }}>{why}</span>}
+      <PlatformMark p={a.platform} />
+      <span className="acc-text">
+        <b>{PLATFORMS[a.platform].name}</b>
+        <small>{a.handle ? `@${a.handle}` : a.name}{a.status === "reconnect" ? " · connect it again in Settings first" : why ? ` · ${why}` : ""}</small>
+      </span>
     </label>
   );
 }

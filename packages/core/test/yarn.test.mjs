@@ -182,6 +182,9 @@ test("rename and tags change the record, never the file", async () => {
   assert.deepEqual(readFileSync(yarnPath(store, y)), before);
   assert.equal(listYarn(store, project.id, { tag: "brand" }).length, 1);
   assert.ok(listYarn(store, project.id, { q: "better" }).some((x) => x.id === y.id));
+  assert.equal(updateYarn(store, y.id, { name: "Slide 1/5 · Hook" }).name, "Slide 1/5 · Hook", "a name is not a path");
+  const named = await imp("named.png", await png(64, 64, { r: 9, g: 99, b: 9 }), { name: "Zero to deployed 2/5" });
+  assert.equal(named.result.yarn.name, "Zero to deployed 2/5");
 });
 
 test("replacing a file keeps the id, so every use updates", async () => {

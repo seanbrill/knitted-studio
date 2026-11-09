@@ -21,6 +21,7 @@ import { blankPattern, socialStarterPack } from "./starters.ts";
 import { paths as defaultPaths, type KnittedPaths } from "./paths.ts";
 import { SWATCH_TEMPLATES, insertSwatch } from "./swatch.ts";
 import { cleanFolder, fileInto } from "./folders.ts";
+import { backfillKnitVersions } from "./knit-versions.ts";
 
 export class ValidationError extends Error { readonly kind = "validation"; }
 export class NotFoundError extends Error { readonly kind = "not_found"; }
@@ -88,7 +89,8 @@ export class Store {
   private count(table: string, projectId: string, unseen = false): number {
     if (!this.has(table)) return 0;
     // A project's Yarn is what is on its Yarn shelf: the Brief's reference is counted apart.
-    const live = table === "yarn" ? " and deleted_at is null and shelf = 'yarn'" : table === "knits" && unseen ? " and seen_at is null" : table === "patterns" ? " and part_id is null" : "";
+    // A knit counts once, however many versions and formats it has.
+    const live = table === "yarn" ? " and deleted_at is null and shelf = 'yarn'" : table === "knits" ? ` and head = 1${unseen ? " and seen_at is null" : ""}` : table === "patterns" ? " and part_id is null" : "";
     return Number((this.db.prepare(`select count(*) as n from ${table} where project_id = ?${live}`).get(projectId) as { n: number }).n);
   }
 
@@ -471,14 +473,20 @@ export function getStore(p: KnittedPaths = defaultPaths()): Store {
   const stores = (g.__knittedStores ??= new Map());
   let s = stores.get(p.db);
   if (!s) {
-    s = new Store(openDb(p.db), p);
+    s = sorted(new Store(openDb(p.db), p));
     s.interruptStaleJobs();
     stores.set(p.db, s);
   }
   return s;
 }
 
+/** Knits made before versions, given theirs, once. Should it fail, each file still shows as a knit of its own. */
+function sorted(store: Store): Store {
+  try { backfillKnitVersions(store); } catch (e) { console.error(`Could not sort older knits into versions: ${(e as Error).message}`); }
+  return store;
+}
+
 export function openStore(file: string, p?: Partial<KnittedPaths>): Store {
   const base = defaultPaths({ KNITTED_HOME: file === ":memory:" ? undefined : file.replace(/[/\\][^/\\]+$/, "") });
-  return new Store(openDb(file), { ...base, ...p });
+  return sorted(new Store(openDb(file), { ...base, ...p }));
 }

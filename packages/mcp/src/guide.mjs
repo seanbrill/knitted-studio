@@ -195,7 +195,7 @@ knit_pattern makes PNG, JPEG, WebP or MP4 files through the same job and checks 
 - wait: false returns a jobId at once: check it with get_job, cancel with cancel_job. The person sees its progress in the studio.
 - A knit with the same inputs as one already made is not made twice.
 - Fix check_pattern's errors first: a knit with an error does not run.
-- list_knits shows what has been made. A knit is a finished file: to change one, change its pattern and knit again.
+- list_knits shows what has been made. A knit is a finished file: to change one, change its pattern and knit again. A pattern at one size is one knit however often it is knitted: knitting it again after a change makes its next version, which Knits shows in the old one's place, and the old one stays under its Versions for the person to go back to or delete. Never delete or hide the old one yourself. The same picture as another type or at 2x is another format of the same version, not another knit.
 - A comment on a knit (list_comments, view_comment) says what to change at a spot, and in a video at a moment. view_comment names the stitch under the pin. Change that stitch in the pattern, knit it again at the same size, and reply_comment on the comment with what you did.`,
 
   brief: `# The Brief

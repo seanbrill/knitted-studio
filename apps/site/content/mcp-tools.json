@@ -1509,7 +1509,7 @@
   },
   {
     "name": "list_knits",
-    "summary": "What has been knitted in a project, newest first, a page at a time: total says how many there are, so page on with offset. A knit with patternChangedSince was made before its pattern was last saved, so it may not show the pattern as it is now: knit it again before it is posted.",
+    "summary": "What has been knitted in a project, newest first, a page at a time: total says how many there are, so page on with offset. Each knit (a pattern at one size) is listed once, as the file the person sees for it in Knits: knitting it again after a change makes a new version of it, not another knit, and versions says how many it has; otherFormats are the same picture as another file type or scale. everyVersion lists every file instead. A knit with patternChangedSince was made before its pattern was last saved, so it may not show the pattern as it is now: knit it again before it is posted.",
     "params": [
       {
         "name": "projectId",
@@ -1558,6 +1558,12 @@
         "type": "integer",
         "required": false,
         "description": "How many of the newest to skip"
+      },
+      {
+        "name": "everyVersion",
+        "type": "boolean",
+        "required": false,
+        "description": "Every file: each version and format of each knit, not only the one shown for it"
       }
     ]
   },

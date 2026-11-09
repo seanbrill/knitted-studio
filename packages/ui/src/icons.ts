@@ -24,3 +24,5 @@ export { Star, Hand } from "lucide-react";
 export { Volume2, VolumeX } from "lucide-react";
 // Design sheets: sections moved up and down the board.
 export { ArrowUp, ArrowDown } from "lucide-react";
+// Stopping what a model is writing.
+export { Square } from "lucide-react";

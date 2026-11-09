@@ -435,6 +435,7 @@ test("a comment is pinned to a spot on a knit, answered, and done by the model, 
   await page.goto(`${studio.url}/projects/${projectId}/knits`);
   await page.getByRole("button", { name: `Open ${knit.label}, new` }).click();
   const dlg = page.getByRole("dialog");
+  await dlg.getByRole("tab", { name: "Comments" }).click();
   await dlg.getByText("None yet").waitFor();
 
   // Placed where it is clicked: a quarter across and two fifths down the picture.

@@ -74,6 +74,38 @@ export function Dialog({ open, onOpenChange, title, description, children, wide,
 }
 
 /**
+ * A big window for looking at one thing and working on it: its own header (`lead` before the
+ * title, `trail` after it), a body that keeps its parts in view as they scroll on their own,
+ * and a footer that stays put, so its buttons are never scrolled away or under a toast.
+ */
+export function Viewer({ open, onOpenChange, title, sub, lead, trail, footer, children }: {
+  open: boolean; onOpenChange: (o: boolean) => void; title: string; sub?: React.ReactNode;
+  lead?: React.ReactNode; trail?: React.ReactNode; footer?: React.ReactNode; children?: React.ReactNode;
+}) {
+  return (
+    <D.Root open={open} onOpenChange={onOpenChange}>
+      <D.Portal>
+        <D.Overlay className="overlay" />
+        {/* It takes the focus itself, not its first button: a button focused shows its tooltip, and Esc would close that, not the window. */}
+        <D.Content className="viewer" aria-describedby={undefined} onOpenAutoFocus={(e) => { e.preventDefault(); (e.currentTarget as HTMLElement | null)?.focus(); }}>
+          <header className="viewer-head">
+            {lead}
+            <div className="viewer-name">
+              <D.Title className="viewer-title">{title}</D.Title>
+              {sub && <p className="viewer-sub">{sub}</p>}
+            </div>
+            {trail}
+            <D.Close asChild><button className="icon-btn" aria-label="Close"><X size={16} /></button></D.Close>
+          </header>
+          <div className="viewer-body">{children}</div>
+          {footer && <footer className="viewer-foot">{footer}</footer>}
+        </D.Content>
+      </D.Portal>
+    </D.Root>
+  );
+}
+
+/**
  * A destructive confirmation. `requireText` makes the user type a name before
  * the button works, for things that cannot be undone (a project with files).
  */

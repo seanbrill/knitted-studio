@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
-import { activeSwatch, importYarn, knitPath, listKnits, openStore, updateSwatch, uploadTempPath, getKnit, yarnPath } from "@knitted/core/node";
+import { activeSwatch, importYarn, knitPath, knitVersions, listKnits, openStore, updateSwatch, uploadTempPath, getKnit, yarnPath } from "@knitted/core/node";
 import { postflight, preflight, SIZES } from "@knitted/core";
 import { openRenderer, runKnit, previewKnit, applyRow } from "@knitted/engine";
 
@@ -62,6 +62,21 @@ test("2x scale doubles the pixels", async () => {
   const k = (await knit(story.id, { scale: 2, reuse: false })).knits[0];
   const m = await sharp(knitPath(store, k)).metadata();
   assert.deepEqual([m.width, m.height], [2160, 3840]);
+});
+
+test("VERSIONS: the same pattern at 2x is another format of its knit, and changed, a new version shown in its place", async () => {
+  const p = store.duplicatePattern(story.id);
+  const one = (await knit(p.id)).knits[0];
+  const two = (await knit(p.id, { scale: 2 })).knits[0];
+  let v = knitVersions(store, one.id);
+  assert.deepEqual([v.versions.length, v.versions[0].files.map((f) => f.id), two.scale], [1, [one.id, two.id], 2], "one version, two formats, the first shown");
+  assert.deepEqual(listKnits(store, project.id, { patternId: p.id }).map((k) => k.id), [one.id]);
+  store.apply(p.id, { type: "fillSlot", slot: "headline", content: "Version two" }, "human");
+  const changed = (await knit(p.id)).knits[0];
+  v = knitVersions(store, one.id);
+  assert.deepEqual([v.versions.length, v.current], [2, 2]);
+  assert.deepEqual(listKnits(store, project.id, { patternId: p.id }).map((k) => k.id), [changed.id], "Knits shows the new version, once");
+  assert.equal(listKnits(store, project.id, { patternId: p.id, every: true }).length, 3);
 });
 
 test("one pattern knits to several sizes in one go, each at its own dimensions", async () => {

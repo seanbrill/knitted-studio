@@ -6,16 +6,20 @@
 
 import { readFile } from "node:fs/promises";
 import { getBrief, getKnit, knitPath, listYarn, setKnitPost, ValidationError } from "@knitted/core/node";
+import { PLATFORMS } from "@knitted/core";
 import { untrusted } from "@knitted/mcp/tools";
 import { AgentError, API_VERSION, DEFAULT_MODEL, failure, mayAsk, spend } from "./index.mjs";
 import { concrete } from "./auto.mjs";
 import { readMessage, StreamError } from "./stream.mjs";
 
+// Each network's caption limit, from the same table the Post dialog checks against.
+const LIMITS = ["x", "threads", "instagram", "tiktok", "linkedin", "youtube"].map((p, i) => `${p === "youtube" ? "a YouTube description" : PLATFORMS[p].name} ${PLATFORMS[p].caption.toLocaleString("en-US")}${i === 0 ? " characters" : ""}`).join(", ");
+
 export const POST_SYSTEM = `You write what goes with a social post for knitted.studio, an app where a business makes its posts: the caption, the hashtags, and which track from the business's own music to put under it.
 
 Write as the business, in its voice as the profile describes it, to the people it is for. Say what the post is about in the first line, since that is all most people see. Keep it short unless the person asks otherwise: a line or two, and at most one call to do something. No hashtags in the caption; they go in their own list. Use emoji only if the profile's voice does.
 
-When the person says where it is going, write for that network, and keep within what it takes, hashtags included: X 280 characters, Threads 500, Instagram 2,200, TikTok 4,000, LinkedIn 3,000, a YouTube description 5,000. A longer caption is paragraphs with a blank line between them, the first line still saying what it is about.
+When the person says where it is going, write for that network, and keep within what it takes, hashtags included: ${LIMITS}. A longer caption is paragraphs with a blank line between them, the first line still saying what it is about.
 
 Hashtags: 3 to 8, the ones people who would want this actually follow or search. Mix one or two broad ones with specific ones (the place, the thing, the business's own tag if it has one). No made-up tags nobody uses.
 
