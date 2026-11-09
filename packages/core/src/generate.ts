@@ -91,13 +91,13 @@ export async function planGeneration(store: Store, input: GenInput, deps: GenDep
     if (chosen) ({ provider, model } = { provider: chosen.provider, model: model ?? chosen.model });
     else for (const p of (["google", "openai"] as GenProvider[]).filter((p) => GEN_SOURCES[p].kinds.includes(kind))) if (await key(p).catch(() => null)) { provider = p; break; }
   }
-  if (!provider) throw new ValidationError(kind === "video" ? "Making video needs a Google Gemini key. Add one in Settings, Generate." : "Making photos needs an OpenAI or Google Gemini key. Add one in Settings, Generate.");
+  if (!provider) throw new ValidationError(kind === "video" ? "Making video needs a Google Gemini key. Add one in Settings, Photos and video." : "Making photos needs an OpenAI or Google Gemini key. Add one in Settings, Photos and video.");
   const src = GEN_SOURCES[provider];
   if (!src) throw new ValidationError(`knitted cannot make anything with ${provider}.`);
   if (!src.kinds.includes(kind)) throw new ValidationError(`${src.name} does not make ${KIND_WORD[kind]}s here. ${kind === "video" ? "Google Gemini does." : ""}`.trim());
   model = model ?? DEFAULT_MODEL[provider][kind]!;
-  if (!src.models.some((m) => m.id === model && m.kind === kind)) throw new ValidationError(`${src.name} has no ${KIND_WORD[kind]} model called ${model}. Choose one in Settings, Generate.`);
-  if (!(await key(provider).catch(() => null))) throw new ValidationError(`${src.name} needs your key first. Add it in Settings, Generate.`);
+  if (!src.models.some((m) => m.id === model && m.kind === kind)) throw new ValidationError(`${src.name} has no ${KIND_WORD[kind]} model called ${model}. Choose one in Settings, Photos and video.`);
+  if (!(await key(provider).catch(() => null))) throw new ValidationError(`${src.name} needs your key first. Add it in Settings, Photos and video.`);
 
   const aspect = input.aspect ?? (kind === "video" ? "9:16" : "1:1");
   if (!(kind === "video" ? VIDEO_ASPECTS : GEN_ASPECTS).includes(aspect)) throw new ValidationError(kind === "video" ? "A video is 9:16 or 16:9." : `A photo is one of ${GEN_ASPECTS.join(", ")}.`);
@@ -146,7 +146,7 @@ async function ask(deps: GenDeps, name: string, url: string, init: RequestInit, 
   if (res.ok) return body;
   const err = (body as { error?: { message?: string; code?: string | number; type?: string; status?: string } } | null)?.error;
   const said = String(err?.message ?? "").replace(/\s+/g, " ").slice(0, 300);
-  if (res.status === 401 || (res.status === 403 && !/verif/i.test(said))) throw new GenError(`${name} did not take the key. Check it in Settings, Generate.`);
+  if (res.status === 401 || (res.status === 403 && !/verif/i.test(said))) throw new GenError(`${name} did not take the key. Check it in Settings, Photos and video.`);
   if (/verif/i.test(said)) throw new GenError(`${name} asks you to verify your organization before it makes pictures for your key: platform.openai.com/settings/organization/general. Then try again.`);
   if (res.status === 429) throw new GenError(`${name} says too many requests for now, or the key is out of credit. Wait a minute, or check its billing.`);
   if (err?.code === "moderation_blocked" || /safety|policy|moderation|blocked/i.test(said)) throw new GenError(`${name} would not make that: it says it goes against its rules. Say it another way, without real people's likenesses or brands that are not yours.`);
@@ -241,7 +241,7 @@ export async function runGeneration(store: Store, projectId: string, plan: GenPl
     const from = (input.from ?? []).map((id) => getYarn(store, id));
     const refs = await Promise.all(from.map((y) => referenceOf(store, y)));
     const key = await keyFor(store, deps)(plan.provider);
-    if (!key) throw new GenError(`${GEN_SOURCES[plan.provider].name} needs your key first. Add it in Settings, Generate.`);
+    if (!key) throw new GenError(`${GEN_SOURCES[plan.provider].name} needs your key first. Add it in Settings, Photos and video.`);
     const prompt = String(input.prompt).trim();
     const answer = plan.provider === "openai"
       ? await openaiImages(key, plan, prompt, refs, !!input.transparent, deps)

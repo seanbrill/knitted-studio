@@ -73,7 +73,7 @@ async function connectX() {
 }
 
 test("Settings, Social: an X app is set up from what the card says, and its secret never comes back", async () => {
-  await page.goto(`${studio.url}/settings?tab=social`);
+  await page.goto(`${studio.url}/settings?tab=social&network=x`);
   const card = page.getByRole("region", { name: "X" });
   await card.getByText("Not set up").waitFor();
   await card.getByText("https://knitted.filefreak.page/oauth/").waitFor();
@@ -89,7 +89,7 @@ test("Settings, Social: an X app is set up from what the card says, and its secr
 });
 
 test("connecting: the browser comes back with the code and the account is there; a made-up sign-in is refused", async () => {
-  await page.goto(`${studio.url}/settings?tab=social`);
+  await page.goto(`${studio.url}/settings?tab=social&network=x`);
   const url = await connectX();
   assert.equal(url.host, "x.com");
   assert.equal(url.searchParams.get("redirect_uri"), "https://knitted.filefreak.page/oauth/");
@@ -108,7 +108,7 @@ test("connecting: the browser comes back with the code and the account is there;
 });
 
 test("connecting by pasting the code the site's page shows", async () => {
-  await page.goto(`${studio.url}/settings?tab=social`);
+  await page.goto(`${studio.url}/settings?tab=social&network=x`);
   const state = (await connectX()).searchParams.get("state");
   const card = page.getByRole("region", { name: "X" });
   await card.getByLabel("Code from X's sign-in").fill(`https://knitted.filefreak.page/oauth/?code=pasted&state=${state}`);

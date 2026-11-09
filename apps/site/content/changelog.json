@@ -1,5 +1,15 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
+  "next": {
+    "title": "Settings, one list",
+    "items": [
+      "Settings is one list in four groups, Studio, Your model, Making and Posting, and each line says how that part stands: a key saved, what is spent this month, how many accounts are connected. The address keeps the part you are on, so Back goes to the one before.",
+      "Every part is made of cards of rows: what a setting does on the left, its control on the right. A key is asked for the same way everywhere: where it is kept, then Save, Test and Remove in one row.",
+      "Social shows the six networks as rows, each saying what it posts and how it stands. One opens at a time, as three steps: register the redirect, give knitted your app, and connect an account.",
+      "A main button that cannot be pressed yet is grey and flat, not a faded orange. Every page sits on the same edge, and Projects is headed Projects.",
+      "Settings, Generate is now Settings, Photos and video, in the studio, your model's tools and the docs."
+    ]
+  },
   "entries": [
     {
       "version": "0.1.41",

@@ -105,7 +105,7 @@ export function MakeDialog({ projectId, folder, start, onClose, onMade }: { proj
   };
 
   const aspects = kind === "video" ? VIDEO_ASPECTS : GEN_ASPECTS;
-  const noKey = why && /Settings, Generate/.test(why);
+  const noKey = why && /Settings, Photos and video/.test(why);
   const n = Number(count);
   const what = kind === "video" ? "a video" : COUNT_WORDS[n - 1]!;
   // The price of each choice that changes it, so the one made is never a surprise.

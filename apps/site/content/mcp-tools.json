@@ -281,7 +281,7 @@
   },
   {
     "name": "generate_image",
-    "summary": "MAKE photos with the person's own image provider (OpenAI or Google, set in Settings, Generate), and keep them in Yarn: a product on a new background, a scene for a post, a lifestyle shot. from: pictures in Yarn to work from, like the product or the mascot, so it is theirs and not an invented one. It COSTS the person money: estimate: true says the price without making anything; say it, and ask before spending more than a dollar in a go. It waits until they are made (a minute or two) and shows them to you. Read get_guide making first. For an icon or a flat drawing, draw_svg is free and sharper. For a real photo of something common, search_stock is free.",
+    "summary": "MAKE photos with the person's own image provider (OpenAI or Google, set in Settings, Photos and video), and keep them in Yarn: a product on a new background, a scene for a post, a lifestyle shot. from: pictures in Yarn to work from, like the product or the mascot, so it is theirs and not an invented one. It COSTS the person money: estimate: true says the price without making anything; say it, and ask before spending more than a dollar in a go. It waits until they are made (a minute or two) and shows them to you. Read get_guide making first. For an icon or a flat drawing, draw_svg is free and sharper. For a real photo of something common, search_stock is free.",
     "params": [
       {
         "name": "projectId",
@@ -365,7 +365,7 @@
   },
   {
     "name": "generate_video",
-    "summary": "MAKE a short video clip, 3 to 15 seconds, with the person's Google Gemini key (set in Settings, Generate), and keep it in Yarn: the mascot waving, the product turning, a scene to open a reel. It always has sound, steered in the prompt. from: one picture to start from (or two: the first frame and the last). It COSTS the person money, about 7 cents a second at good quality: ALWAYS run it with estimate: true first, tell the person the price, and make it only when they agree. It waits up to five minutes, then shows you frames of it. Read get_guide making first.",
+    "summary": "MAKE a short video clip, 3 to 15 seconds, with the person's Google Gemini key (set in Settings, Photos and video), and keep it in Yarn: the mascot waving, the product turning, a scene to open a reel. It always has sound, steered in the prompt. from: one picture to start from (or two: the first frame and the last). It COSTS the person money, about 7 cents a second at good quality: ALWAYS run it with estimate: true first, tell the person the price, and make it only when they agree. It waits up to five minutes, then shows you frames of it. Read get_guide making first.",
     "params": [
       {
         "name": "projectId",

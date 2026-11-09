@@ -6,7 +6,8 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { Field, Switch, useToast } from "@knitted/ui";
+import { Switch, useToast } from "@knitted/ui";
+import { SetCard, SetRow } from "./SettingsParts";
 import { chatOnScreen, useAgent } from "@/lib/agent";
 
 const APP_KEY = "knitted.done.app";
@@ -67,14 +68,13 @@ export function DoneSettings() {
     setApp(read(APP_KEY)); setSystem(read(SYSTEM_KEY));
   }, []);
   return (
-    <fieldset style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: "var(--space-3)" }}>
-      <legend className="label" style={{ marginBottom: "var(--space-2)" }}>When your model finishes</legend>
-      <Field label="Say so in the app, on any page" htmlFor="done-app" hint="With what it said last, and a way to its chat.">
+    <SetCard title="When your model finishes">
+      <SetRow label="Say so in the app, on any page" hint="With what it said last, and a way to its chat." htmlFor="done-app">
         <Switch id="done-app" label="Say so in the app, on any page" checked={app} onCheckedChange={(on) => { setApp(on); write(APP_KEY, on); }} />
-      </Field>
-      <Field label="Send a notification while knitted is in the background" htmlFor="done-system" hint="From your computer, so you can work in another app meanwhile.">
+      </SetRow>
+      <SetRow label="Send a notification while knitted is in the background" hint="From your computer, so you can work in another app meanwhile." htmlFor="done-system">
         <Switch id="done-system" label="Send a notification while knitted is in the background" checked={system} onCheckedChange={(on) => { setSystem(on); write(SYSTEM_KEY, on); if (on) askToNotify(); }} />
-      </Field>
-    </fieldset>
+      </SetRow>
+    </SetCard>
   );
 }

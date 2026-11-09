@@ -29,7 +29,7 @@ export function InsightsView() {
   const { data: projects } = useLive(() => api.projects.list(), []);
   const names = new Map((projects ?? []).map((p) => [p.id, p.name]));
   return (
-    <div style={{ padding: "var(--space-8)", maxWidth: 1080 }}>
+    <div className="page">
       <PageHeader eyebrow="Insights" title="What works">
         <div style={{ minWidth: 220 }}>
           <Select aria-label="Project" value={projectId || "all"} onValueChange={(v) => router.replace(v === "all" ? "/insights" : `/insights?project=${encodeURIComponent(v)}`)}

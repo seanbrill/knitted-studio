@@ -90,7 +90,7 @@ test("settings: the key is reported as present but never returned", async () => 
 
 test("Settings, Model gives Claude Code a command with an address that works, and a new address shuts the old", async () => {
   await page.goto(`${studio.url}/settings`);
-  await page.getByRole("tab", { name: "Model" }).click();
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: /^Model\b/ }).click();
   const address = page.getByLabel("The address, for other MCP apps");
   await page.waitForFunction(() => document.querySelector("#mcp-url")?.value);
   const url = await address.inputValue();
@@ -107,10 +107,10 @@ test("Settings, Model gives Claude Code a command with an address that works, an
   assert.equal((await list(await address.inputValue())).status, 200);
 });
 
-test("Settings opens on the tab the address names, where Add a key leads", async () => {
+test("Settings opens on the part the address names, where Add a key leads", async () => {
   await page.goto(`${studio.url}/settings?tab=model`);
   await page.getByLabel("The address, for other MCP apps").waitFor();
-  assert.equal(await page.getByRole("tab", { name: "Model" }).getAttribute("aria-selected"), "true");
+  assert.equal(await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: /^Model\b/ }).getAttribute("aria-current"), "page");
 });
 
 test("asking from the editor edits the pattern, and Undo all puts it back", async () => {

@@ -1,5 +1,5 @@
 // Making photos and video, through the studio as a person and their model use it: a Google
-// key added and tested in Settings, Generate; two photos made from the Make dialog, with the
+// key added and tested in Settings, Photos and video; two photos made from the Make dialog, with the
 // price shown first; the details of one; a video made by the model over MCP, priced first.
 // Google and OpenAI here are stand-ins on this computer (KNITTED_GENERATE_API) that check what
 // they are sent; nothing reaches a real provider, and the key goes to the test's own folder.
@@ -75,7 +75,7 @@ test("with no key, Make says which key to add, and where", async () => {
   await page.waitForURL(/settings\?tab=generate/);
 });
 
-test("Settings, Generate: a Google key is saved and tested, and never comes back", async () => {
+test("Settings, Photos and video: a Google key is saved and tested, and never comes back", async () => {
   await page.getByRole("heading", { name: "Make photos and video" }).waitFor();
   const g = page.getByRole("region", { name: /^Google Gemini/ });
   await g.getByText(/no free tier/).waitFor();
@@ -151,7 +151,7 @@ test("the model prices a video first, then makes it, and sees frames of it", asy
 });
 
 for (const theme of ["day", "night"]) {
-  test(`no serious accessibility problems on Settings, Generate and the Make dialog in ${theme}`, async () => {
+  test(`no serious accessibility problems on Settings, Photos and video and the Make dialog in ${theme}`, async () => {
     await page.goto(`${studio.url}/settings?tab=generate`);
     await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
     await page.getByRole("region", { name: /^Google Gemini/ }).waitFor();

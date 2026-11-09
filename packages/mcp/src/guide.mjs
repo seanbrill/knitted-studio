@@ -136,7 +136,7 @@ The person sees each drawing marked as drawn by their model, with what they aske
 
   making: `# Making photos and video
 
-generate_image and generate_video make new photos and clips with the person's own provider key, set in Settings, Generate. They cost the person real money, so choose the cheapest way that serves the post:
+generate_image and generate_video make new photos and clips with the person's own provider key, set in Settings, Photos and video. They cost the person real money, so choose the cheapest way that serves the post:
 - An icon, a badge, a flat illustration, a mascot in a new pose: draw_svg. It is free, and stays sharp.
 - A real photo of something common (coffee, a beach, hands typing): search_stock. It is free.
 - The brand's own product, mascot or place in a new scene, or something no stock has: generate_image, from their pictures.

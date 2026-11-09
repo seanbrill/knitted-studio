@@ -85,8 +85,10 @@ export function Switch({ checked, onCheckedChange, label, id }: { checked: boole
 }
 
 /** The slider from the reference images: 2px track, ember fill, 14px thumb, value in a sunken box. */
-export function Slider({ label, value, onChange, onCommit, min = 0, max = 100, step = 1, unit }: {
+export function Slider({ label, value, onChange, onCommit, min = 0, max = 100, step = 1, unit, bare }: {
   label: string; value: number;
+  /** Track and value only, in a row: for where its name is said beside it already. */
+  bare?: boolean;
   /** Each move, to preview. Without it the slider still moves, and `onCommit` saves where it ends. */
   onChange?: (v: number) => void;
   /** Fires once when the drag ends. Use it to save, and `onChange` to preview. */
@@ -98,16 +100,21 @@ export function Slider({ label, value, onChange, onCommit, min = 0, max = 100, s
   // not jump back meanwhile. A new value, saved or previewed, is what it shows from then on.
   const [moved, setMoved] = React.useState<{ from: number; to: number } | null>(null);
   const shown = moved?.from === value ? moved.to : value;
+  const root = (
+    <SL.Root className="slider" value={[shown]} min={min} max={max} step={step} onValueChange={([v]) => { setMoved({ from: value, to: v }); onChange?.(v); }} onValueCommit={onCommit ? ([v]) => onCommit(v) : undefined} aria-label={label}>
+      <SL.Track className="slider-track"><SL.Range className="slider-range" /></SL.Track>
+      <SL.Thumb className="slider-thumb" aria-label={label} />
+    </SL.Root>
+  );
+  const shownValue = <span className="slider-value">{Math.round(shown * 100) / 100}{unit}</span>;
+  if (bare) return <div className="slider-bare">{root}{shownValue}</div>;
   return (
     <div style={{ display: "grid", gap: "var(--space-2)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span className="body-sm">{label}</span>
-        <span className="slider-value">{Math.round(shown * 100) / 100}{unit}</span>
+        {shownValue}
       </div>
-      <SL.Root className="slider" value={[shown]} min={min} max={max} step={step} onValueChange={([v]) => { setMoved({ from: value, to: v }); onChange?.(v); }} onValueCommit={onCommit ? ([v]) => onCommit(v) : undefined} aria-label={label}>
-        <SL.Track className="slider-track"><SL.Range className="slider-range" /></SL.Track>
-        <SL.Thumb className="slider-thumb" aria-label={label} />
-      </SL.Root>
+      {root}
     </div>
   );
 }

@@ -64,7 +64,7 @@ test("the download starts when the app does, and one that cannot connect says wh
   const first = await serverHas(studio, "/api/renderer", (r) => r.install?.state === "failed", { timeout: 90_000 });
   assert.deepEqual(first, { ready: false, install: { state: "failed", progress: null, error: REFUSED } }, "nothing asked for it: the server started it");
   await page.goto(`${studio.url}/settings`);
-  await page.getByRole("tab", { name: "About" }).click();
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: /^About\b/ }).click();
   await page.getByText(`Version ${version}`, { exact: true }).waitFor();
   const card = page.getByRole("region", { name: "Browser for knitting" });
   await card.getByText(/Knitting, which makes the files you post/).waitFor();

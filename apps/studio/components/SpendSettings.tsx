@@ -5,8 +5,9 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@knitted/core/client";
-import { Button, Field, Input, Tip, icons, useToast } from "@knitted/ui";
+import { Button, Input, Tip, icons, useToast } from "@knitted/ui";
 import { useLive } from "@/lib/hooks";
+import { SetRow, settingsChanged } from "./SettingsParts";
 
 const { AlertTriangle } = icons;
 
@@ -31,7 +32,7 @@ export function SpendSettings() {
     const read = (s: string) => (s.trim() === "" ? null : Number(s.replace(/^\$/, "")));
     const m = read(monthly), r = read(perRun);
     if ((m !== null && !(m >= 0)) || (r !== null && !(r >= 0))) { setErr("Give a limit in dollars, like 20, or leave it empty for none."); return; }
-    try { await api.agent.setLimits({ monthly: m, perRun: r }); setErr(undefined); await refresh(); toast("Limits saved."); } catch (e) { setErr((e as Error).message); }
+    try { await api.agent.setLimits({ monthly: m, perRun: r }); setErr(undefined); await refresh(); settingsChanged(); toast("Limits saved."); } catch (e) { setErr((e as Error).message); }
   };
 
   const limit = data?.limits.monthly ?? null;
@@ -41,13 +42,8 @@ export function SpendSettings() {
   const top = Math.max(0.01, ...(data?.days ?? []).map((d) => d.cost));
 
   return (
-    <section className="panel" aria-labelledby="spend-h" style={{ padding: "var(--space-6)", display: "grid", gap: "var(--space-5)" }}>
-      <div>
-        <h2 id="spend-h" className="h3" style={{ marginBottom: 4 }}>Spending</h2>
-        <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>What your Anthropic key has spent through knitted: every answer from your model, priced as it comes in. A limit stops your model before it spends more. Work done from Claude Code is billed to Claude Code, and not counted here.</p>
-      </div>
-
-      {data && <>
+    <>
+      {data && <section className="set-card set-card-pad" aria-label="This month" style={{ display: "grid", gap: "var(--space-5)" }}>
         <div style={{ display: "flex", gap: "var(--space-8)", flexWrap: "wrap", alignItems: "flex-end" }}>
           <div>
             <p className="eyebrow" style={{ margin: 0 }}>This month</p>
@@ -98,17 +94,18 @@ export function SpendSettings() {
           </table>
         )}
         {data.kinds.length > 1 && <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>{data.kinds.map((k) => `${KIND[k.kind] ?? k.kind}: ${money(k.cost)}`).join(" · ")}</p>}
-      </>}
+      </section>}
 
-      <form onSubmit={(e) => { e.preventDefault(); void save(); }} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "var(--space-4)", alignItems: "end" }}>
-        <Field label="Monthly limit, in dollars" htmlFor="spend-month" hint="Empty for none. At the limit, your model waits until next month." error={err}>
-          <Input id="spend-month" inputMode="decimal" placeholder="No limit" value={monthly} onChange={(e) => setMonthly(e.target.value)} />
-        </Field>
-        <Field label="Limit for one answer, in dollars" htmlFor="spend-run" hint="One message's whole answer, with every step it takes. Empty for none.">
-          <Input id="spend-run" inputMode="decimal" placeholder="No limit" value={perRun} onChange={(e) => setPerRun(e.target.value)} />
-        </Field>
-        <div><Button type="submit" variant="primary">Save limits</Button></div>
+      <form className="set-card" aria-label="Limits" onSubmit={(e) => { e.preventDefault(); void save(); }}>
+        <div className="set-card-head"><h3 className="set-card-title">Limits</h3><div className="set-card-actions"><Button type="submit" size="sm" variant="primary">Save limits</Button></div></div>
+        <SetRow label="Monthly limit, in dollars" htmlFor="spend-month" hint="Empty for none. At the limit, your model waits until next month.">
+          <Input id="spend-month" className="set-narrow" inputMode="decimal" placeholder="No limit" value={monthly} onChange={(e) => setMonthly(e.target.value)} />
+        </SetRow>
+        <SetRow label="Limit for one answer, in dollars" htmlFor="spend-run" hint="One message's whole answer, with every step it takes. Empty for none.">
+          <Input id="spend-run" className="set-narrow" inputMode="decimal" placeholder="No limit" value={perRun} onChange={(e) => setPerRun(e.target.value)} />
+        </SetRow>
+        {err && <p className="field-error set-error" role="alert"><AlertTriangle size={14} aria-hidden /> {err}</p>}
       </form>
-    </section>
+    </>
   );
 }

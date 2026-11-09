@@ -40,8 +40,8 @@ export function RendererCard({ missingOnly = false, onReady }: { missingOnly?: b
     await load();
   };
   return (
-    <section style={{ marginTop: missingOnly ? 0 : "var(--space-6)", display: "grid", gap: 8, maxWidth: 520 }} aria-label="Browser for knitting">
-      <h2 className="h3" style={{ margin: 0 }}>Browser for knitting</h2>
+    <section style={{ display: "grid", gap: 8, maxWidth: missingOnly ? 520 : undefined }} aria-label="Browser for knitting">
+      {missingOnly ? <h2 className="h3" style={{ margin: 0 }}>Browser for knitting</h2> : <h3 className="set-card-title">Browser for knitting</h3>}
       <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>
         Everything you see in the studio draws in this window, without it. Knitting, which makes the files you post, draws each frame in a separate browser, so every copy comes out the same. Your model uses it to see a Pattern, too.
       </p>

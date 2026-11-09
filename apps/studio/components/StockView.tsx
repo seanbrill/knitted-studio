@@ -81,7 +81,7 @@ export function StockView() {
   const noKey = found?.sources.filter((s) => s.state === "no-key" && !STOCK_SOURCES[s.provider].note) ?? [];
 
   return (
-    <div style={{ padding: "var(--space-8)", maxWidth: 1240 }}>
+    <div className="page">
       <PageHeader eyebrow="Stock" title="Free photos, video and sound">
         <div style={{ minWidth: 240 }}>
           <Select aria-label="Add to" value={to} onValueChange={(v) => { setTo(v); try { localStorage.setItem(TO_KEY, v); } catch {} }}

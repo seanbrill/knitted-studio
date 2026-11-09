@@ -65,7 +65,7 @@ export function ProjectShell({ id, children }: { id: string; children: React.Rea
 
   return (
     <TrailContext.Provider value={setTrail}>
-      <div style={{ padding: "var(--space-8)", maxWidth: 1200 }}>
+      <div className="page">
         <Breadcrumbs items={trail} linkAs={Link} navigate={(h) => router.push(h)} keep={5} style={{ marginBottom: "var(--space-4)" }} />
         <header style={{ display: "flex", alignItems: "center", gap: "var(--space-4)", flexWrap: "wrap", minHeight: 40, marginBottom: "var(--space-6)" }}>
           {project ? (

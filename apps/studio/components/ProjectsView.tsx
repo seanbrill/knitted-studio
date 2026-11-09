@@ -131,9 +131,9 @@ function ProjectsInner() {
   ];
 
   return (
-    <div style={{ padding: "var(--space-8)", maxWidth: 1200 }}>
+    <div className="page">
       {data && show === "active" && data.every((p) => p.example) && <Welcome onNew={() => setCreating(true)} />}
-      <PageHeader eyebrow="Library" title="Projects">
+      <PageHeader eyebrow="Projects" title="Every brand you make for">
         <Button variant="primary" onClick={() => setCreating(true)}><Plus size={16} /> New project</Button>
       </PageHeader>
 

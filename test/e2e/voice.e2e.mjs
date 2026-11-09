@@ -43,9 +43,9 @@ test("settings: an unreachable voice server gives a one-line fix, not a stack tr
   assert.match((await res.json()).error.message, /Could not reach 127\.0\.0\.1:1\. Is your voice server running\?/);
 });
 
-test("the Settings Voice tab speaks a test sentence", { skip: !mac }, async () => {
+test("Settings, Voice speaks a test sentence", { skip: !mac }, async () => {
   await page.goto(`${studio.url}/settings`);
-  await page.getByRole("tab", { name: "Voice" }).click();
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: /^Voice\b/ }).click();
   await page.getByRole("button", { name: "Hear it" }).click();
   await page.getByText(/Worked, \d\.\ds/).waitFor({ timeout: 30000 });
 });
@@ -140,7 +140,7 @@ for (const theme of ["day", "night"]) {
   test(`no serious accessibility violations on the Voice panel and the Voice settings in ${theme}`, async () => {
     await page.goto(`${studio.url}/settings`);
     await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
-    await page.getByRole("tab", { name: "Voice" }).click();
+    await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: /^Voice\b/ }).click();
     await page.getByRole("button", { name: "Hear it" }).waitFor();
     await page.waitForTimeout(400);
     assert.deepEqual(await axeProblems(page), []);

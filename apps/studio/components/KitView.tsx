@@ -29,7 +29,7 @@ export function KitView() {
   const [hex, setHex] = useState("#DF5A0F");
   const [pressed, setPressed] = useState(false);
   return (
-    <div style={{ padding: "var(--space-8)", maxWidth: 980 }}>
+    <div className="page" style={{ maxWidth: 1040 }}>
       <h1 className="h1" style={{ marginBottom: "var(--space-8)" }}>Kit</h1>
 
       <Section title="Buttons">

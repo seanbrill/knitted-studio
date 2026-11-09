@@ -76,7 +76,7 @@ Your model uses `draw_svg` and `view_sheet` for this. Drawing makes SVG only; fo
 
 With a key of your own from OpenAI or Google, you and your model can make photos and short videos from a description and your own pictures. Each one is charged to your key.
 
-- Add a key in **Settings**, **Generate**. OpenAI makes photos. Google Gemini makes photos and video, and needs a key on its paid tier. When both have keys, you choose which makes what.
+- Add a key in **Settings**, **Photos and video**. OpenAI makes photos. Google Gemini makes photos and video, and needs a key on its paid tier. When both have keys, you choose which makes what.
 - Choose **Make** on a project's Yarn page. Say what to make, then choose its shape (square, 4:5 for a feed, 9:16 for a story, 16:9 wide), how many and the quality. The price shows before you make it.
 - To work from your own pictures, like your product or your mascot, open one and choose **Make a photo from this**. A video can start from one picture, and end on a second.
 - It is made while you carry on, and lands in Yarn tagged *made*. Its details say who made it, from what, what you asked for and what it cost.
