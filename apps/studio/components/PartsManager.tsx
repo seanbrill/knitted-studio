@@ -25,7 +25,7 @@ export function PartsManager({ projectId }: { projectId: string }) {
   const { data: project } = useLive(() => api.projects.get(projectId), [projectId]);
   const swatch = swatches?.find((s) => s.id === project?.swatchId) ?? swatches?.[0];
   // What a model is changing or looking at, outlined on its card.
-  const marks = useMarks((w) => w.partId);
+  const marks = useMarks((w) => [w.partId, ...(w.thingIds ?? [])]);
   const lead = leadOf(marks);
   const [creating, setCreating] = useState(false);
   const [coding, setCoding] = useState<Part | null>(null);

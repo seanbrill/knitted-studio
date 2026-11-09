@@ -4,6 +4,7 @@
 //
 // Nothing here may break a call: a lookup that fails only makes the words plainer.
 
+import { folderNames, parentOf } from "@knitted/core";
 import { getDesign, getPart, getYarn } from "@knitted/core/node";
 
 const safe = (f) => { try { return f(); } catch { return undefined; } };
@@ -61,7 +62,7 @@ const SAY = {
   view_sheet: (a) => `Looking at ${Array.isArray(a.yarnIds) ? `${a.yarnIds.length} pictures` : a.folder ? `the pictures in ${quote(a.folder)}` : a.tag ? `the pictures tagged ${a.tag}` : "pictures"} side by side`,
   share_yarn: (a, c) => `Moving ${c.yarn ? quote(c.yarn) : "a file"} ${a.library ? "into the Library, for every project" : "out of the Library"}`,
   tag_yarn: (a, c) => `Tagging ${c.yarn ? quote(c.yarn) : "a file"}${Array.isArray(a.tags) && a.tags.length ? ` ${a.tags.join(", ")}` : ""}`,
-  rename: (a, c) => `Renaming ${a.folder ? `the folder ${quote(a.folder)}` : c.pattern ? c.pattern.name : c.yarn ? quote(c.yarn) : "something"} to ${quote(a.name)}`,
+  rename: (a, c) => `Renaming ${a.folder ? `the folder ${quote(a.folder)}` : c.pattern ? c.pattern.name : c.yarn ? quote(c.yarn) : "something"} to ${quote(String(a.name ?? "").replace(/^\/+/, ""))}${a.folder && String(a.name ?? "").startsWith("/") ? ", at the top" : ""}`,
   get_brand_guidelines: (a, c) => `Reading ${possessive(c.project, "the")} brand`,
   propose_swatch: (a) => (a.url ? `Reading the brand from ${host(a.url)}` : "Proposing a swatch"),
   get_brief: (a, c) => `Reading ${possessive(c.project, "the")} brief`,
@@ -142,7 +143,12 @@ export function describeCall(name, a, store) {
   const section = (name === "move_to_folder" ? moving(a)[0]?.[0] : undefined) ?? ((name === "move_to_folder" || name === "list_folders" || (name === "rename" && a.folder)) && HOLDS[a.section] ? a.section : undefined)
     ?? (BRIEF_TOOLS.has(name) || (a.reference && (name === "list_yarn" || name.startsWith("import_yarn"))) || yarn?.shelf === "reference" ? "reference" : undefined);
   const frameIds = design ? framesOf(name, a) : [];
-  const where = Object.fromEntries(Object.entries({ projectId, patternId: p?.id, stitchIds: stitchIds.length ? stitchIds : undefined, yarnId: yarn?.id, partId: a.partId, designId: design?.id, frameIds: frameIds.length ? frameIds : undefined, jobId: a.jobId, section }).filter(([, v]) => v !== undefined));
+  // Filing or renaming, the folder it works on, the one to open to watch it, and what it moves.
+  const path = typeof a.folder === "string" ? safe(() => folderNames(a.folder).join("/")) : undefined;
+  const folders = (name === "move_to_folder" && path) || (name === "rename" && a.folder && path) ? [path] : undefined;
+  const folder = name === "move_to_folder" && path !== undefined ? path : name === "rename" && a.folder && path ? parentOf(path) : undefined;
+  const thingIds = name === "move_to_folder" ? Object.keys(IDS_OF).flatMap((k) => (Array.isArray(a[k]) ? a[k] : [])) : [];
+  const where = Object.fromEntries(Object.entries({ projectId, patternId: p?.id, stitchIds: stitchIds.length ? stitchIds : undefined, yarnId: yarn?.id, partId: a.partId, designId: design?.id, frameIds: frameIds.length ? frameIds : undefined, jobId: a.jobId, section, folders, folder, thingIds: thingIds.length ? thingIds : undefined }).filter(([, v]) => v !== undefined));
   return { summary, where };
 }
 
@@ -163,6 +169,11 @@ export function endOf(name, a, out, store) {
   if (name === "arrange_design" && Array.isArray(out?.made?.frames) && out.made.frames.length) where.frameIds = [...new Set([...framesOf(name, a), ...out.made.frames])];
   if (name === "insert_part" && out?.inserted) { const id = stitchIdFor(safe(() => store.getPattern(a.patternId)), out.inserted); if (id) where.stitchIds = [id]; }
   if ((name === "knit_pattern" || name === "synthesize_voiceover" || name === "capture_website") && out?.jobId) where.jobId = out.jobId;
+  // Where a folder is now: renamed, it has its new name; filed into, the folder as it is spelled.
+  if (name === "rename" && a.folder && typeof out?.folder === "string") { where.folders = [out.folder]; where.folder = parentOf(out.folder); }
+  // A folder made empty is shown from the one it is in, where its tile is.
+  if (name === "move_to_folder" && !out?.moved && typeof out?.folder === "string" && out.folder) { where.folders = [out.folder]; where.folder = parentOf(out.folder); }
+  if (name === "move_to_folder" && out?.moved) { const into = Object.values(out.moved).map((m) => m?.folder).find((f) => typeof f === "string"); if (into !== undefined) { where.folders = into ? [into] : undefined; where.folder = into; } }
   const note = refused.length ? refused.map((r) => `${r.slot ? `${r.slot}: ` : ""}${r.why}`).join("; ") : undefined;
   if (!refused.length) return { state: "done", note, where };
   // Partly refused, a call still did the rest: it is done, with the refusal said, and the

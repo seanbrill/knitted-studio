@@ -13,6 +13,9 @@ import { api } from "@knitted/core/client";
 import { folderNames, folderProblem, foldersIn, isInside, joinFolder, nameOf, parentOf, type FolderSection } from "@knitted/core";
 import { Button, ConfirmDialog, ContextMenu, Dialog, Field, IconButton, Input, Menu, icons, useToast, type Crumb, type MenuItems } from "@knitted/ui";
 import { useLive } from "@/lib/hooks";
+import { endedAt, leadOf, RECENT_MS, useAgent, useMarks, useNow, type Mark } from "@/lib/agent";
+import { useFollow } from "@/lib/follow";
+import { ModelMark } from "./ModelMark";
 import { RenameDialog } from "./ProjectsView";
 import { useTrail } from "./Trail";
 
@@ -90,6 +93,22 @@ export function useFolders(projectId: string, section: FolderSection, things: Fi
   }, [attempt, changed, projectId, section, toast]);
 
   const countIn = useCallback((path: string) => (things ?? []).filter((t) => isInside(t.folder, path)).length, [things]);
+
+  // Following a model that sorts this section, open the folder it works in, so what it files
+  // or renames is in view. Once for each call, and only to a folder that is there.
+  const agent = useAgent();
+  const following = useFollow((f) => f.on);
+  const now = useNow((t) => (agent?.calls ?? []).some((c) => c.state === "running" || t - endedAt(c) < RECENT_MS));
+  const watch = following && inAddress ? [...(agent?.calls ?? [])].reverse().find((c) => c.where.projectId === projectId && c.where.section === section && c.where.folder !== undefined && (c.state === "running" || now - endedAt(c) < RECENT_MS)) : undefined;
+  const watchKey = watch ? `${watch.id}|${watch.state}|${watch.where.folder}` : "";
+  const opened = useRef("");
+  useEffect(() => {
+    if (!watch || opened.current === watchKey) return;
+    const to = watch.where.folder!;
+    if (to && !(folders ?? []).includes(to)) return; // not made yet: the call's end says where it is
+    opened.current = watchKey;
+    if (to !== here) router.push(hrefFor(to), { scroll: false }); // following is only ever in the address
+  }, [watchKey, folders]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Things dragged from this section, onto a folder or a crumb, are filed in it.
   const dragThings = useCallback((ids: string[]) => (e: React.DragEvent) => { e.dataTransfer.setData(DRAG, JSON.stringify({ section, ids })); e.dataTransfer.effectAllowed = "move"; }, [section]);
@@ -187,17 +206,26 @@ export function FolderList({ kit, compact }: { kit: FolderKit; compact?: boolean
       </p>
     );
   }
+  return <Tiles kit={kit} compact={compact} />;
+}
+
+function Tiles({ kit, compact }: { kit: FolderKit; compact?: boolean }) {
+  // A model filing things or renaming a folder: the folder it works on is outlined, or the one here it is inside.
+  const worked = useMarks((w) => (w.projectId === kit.projectId && w.section === kit.section ? w.folders : null));
   const list = kit.folders ? foldersIn(kit.folders, kit.here) : [];
   if (!list.length) return null;
+  const marks = new Map<string, Mark>();
+  for (const f of list) for (const [path, m] of worked) if (isInside(path, f) && (!marks.has(f) || marks.get(f)!.at < m.at)) marks.set(f, m);
+  const lead = leadOf(marks);
   return (
     <ul aria-label={`Folders in ${nameIn(kit.here, kit.section)}`}
       style={{ listStyle: "none", margin: "0 0 var(--space-4)", padding: 0, display: "grid", gap: compact ? 6 : "var(--space-3)", gridTemplateColumns: compact ? "1fr" : "repeat(auto-fill, minmax(210px, 1fr))" }}>
-      {list.map((f) => <FolderTile key={f} kit={kit} path={f} />)}
+      {list.map((f) => <FolderTile key={f} kit={kit} path={f} mark={marks.get(f)} lead={lead === f} />)}
     </ul>
   );
 }
 
-function FolderTile({ kit, path }: { kit: FolderKit; path: string }) {
+function FolderTile({ kit, path, mark, lead }: { kit: FolderKit; path: string; mark?: Mark; lead?: boolean }) {
   const n = kit.countIn(path);
   const inside = foldersIn(kit.folders ?? [], path).length;
   const facts = n || inside ? [inside && `${inside} folder${inside === 1 ? "" : "s"}`, n && counted(n, kit.section)].filter(Boolean).join(", ") : "Empty";
@@ -219,6 +247,7 @@ function FolderTile({ kit, path }: { kit: FolderKit; path: string }) {
           <span style={{ position: "relative", zIndex: 2 }}>
             <Menu trigger={<IconButton label={`Actions for the folder ${nameOf(path)}`}><MoreHorizontal size={16} /></IconButton>} items={items} />
           </span>
+          <ModelMark mark={mark} lead={lead} />
         </div>
       </ContextMenu>
     </li>

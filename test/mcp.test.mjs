@@ -376,6 +376,24 @@ test("a call on a design sheet says which frames it works on, so the board outli
   assert.deepEqual(endOf("set_design_frame", { designId: d.id }, { frameId: "f9" }, store).where.frameIds, ["f9"]);
 });
 
+test("filing and renaming say which folder, and what moves, so the studio outlines them and Follow opens the folder", async () => {
+  const pt = (await tools.list_patterns({ projectId: project.id }))[0];
+  await tools.move_to_folder({ projectId: project.id, folder: "Spring/Week 1", patternIds: [pt.id] });
+  assert.deepEqual(lastCall().where, { projectId: project.id, section: "patterns", folders: ["Spring/Week 1"], folder: "Spring/Week 1", thingIds: [pt.id] });
+  // Renamed, the folder is outlined by its new name, seen from the folder it is in.
+  await tools.rename({ projectId: project.id, section: "patterns", folder: "Spring/Week 1", name: "Week one" });
+  assert.equal(lastCall().summary, 'Renaming the folder "Spring/Week 1" to "Week one"');
+  assert.deepEqual([lastCall().where.folders, lastCall().where.folder], [["Spring/Week one"], "Spring"]);
+  await tools.rename({ projectId: project.id, section: "patterns", folder: "Spring/Week one", name: "/Week one" });
+  assert.equal(lastCall().summary, 'Renaming the folder "Spring/Week one" to "Week one", at the top');
+  assert.deepEqual([lastCall().where.folders, lastCall().where.folder], [["Week one"], ""]);
+  // A folder made empty is shown from the one it is in.
+  await tools.move_to_folder({ projectId: project.id, folder: "Summer/Ideas", section: "patterns" });
+  assert.deepEqual([lastCall().where.folders, lastCall().where.folder, lastCall().where.thingIds], [["Summer/Ideas"], "Summer", undefined]);
+  await tools.move_to_folder({ projectId: project.id, folder: "", patternIds: [pt.id] });
+  assert.deepEqual([lastCall().where.folders, lastCall().where.folder], [undefined, ""], "the top is no folder to outline, but is where to look");
+});
+
 test("the studio names a model by what its client said it is", async () => {
   const { clientLabel } = await import("@knitted/mcp/context");
   assert.equal(clientLabel("claude-code"), "Claude Code");
@@ -395,7 +413,7 @@ test("a model files things into folders, and filing one changes nothing else abo
   assert.deepEqual(r.moved, { yarn: { folder: "Royalty free music/Lo-fi", moved: 1 }, patterns: { folder: "Royalty free music/Lo-fi", moved: 1 } });
   const after = store.getPattern(photos.id);
   assert.deepEqual([after.folder, after.version, after.stitches], ["Royalty free music/Lo-fi", before.version, before.stitches], "the pattern is the same, only filed");
-  assert.deepEqual([lastCall().summary, lastCall().where], ["Filing 2 things into \"Royalty free music/Lo-fi\"", { projectId: project.id, section: "yarn" }]);
+  assert.deepEqual([lastCall().summary, lastCall().where], ["Filing 2 things into \"Royalty free music/Lo-fi\"", { projectId: project.id, section: "yarn", folders: ["Royalty free music/Lo-fi"], folder: "Royalty free music/Lo-fi", thingIds: [hero.id, photos.id] }]);
   assert.ok(store.activity(project.id).some((a) => a.actor === "model" && a.action === "folder.filed" && a.subject === "1 file into Royalty free music/Lo-fi"), "the person can see what the model sorted");
 
   // The lists say where each thing is; a folder's path is found whatever its case.
@@ -460,7 +478,7 @@ test("a model brings a piece of copy up to date by its id, instead of saving ano
 test("move_to_folder with no ids makes the folder, empty, in the section it is given", async () => {
   const at = { projectId: project.id };
   assert.deepEqual(await tools.move_to_folder({ ...at, folder: "Landing page/Reference", section: "yarn" }), { folder: "Landing page/Reference", section: "yarn" });
-  assert.deepEqual([lastCall().summary, lastCall().where], ["Making the folder \"Landing page/Reference\"", { projectId: project.id, section: "yarn" }]);
+  assert.deepEqual([lastCall().summary, lastCall().where], ["Making the folder \"Landing page/Reference\"", { projectId: project.id, section: "yarn", folders: ["Landing page/Reference"], folder: "Landing page" }]);
   assert.deepEqual((await tools.list_folders({ ...at, section: "yarn" })).folders.filter((f) => f.path.startsWith("Landing page")), [{ path: "Landing page", items: 0 }, { path: "Landing page/Reference", items: 0 }]);
   assert.equal((await tools.move_to_folder({ ...at, folder: "landing PAGE/reference", section: "yarn" })).folder, "Landing page/Reference", "one that is there is the one returned");
   assert.equal(store.activity(project.id).filter((a) => a.action === "folder.created" && a.subject === "Landing page/Reference").length, 1, "made once, and said once");

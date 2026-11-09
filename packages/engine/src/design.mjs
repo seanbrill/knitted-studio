@@ -34,7 +34,8 @@ function pick(design, { sectionId, frameId } = {}) {
 /** The brand's fonts and the project's own, as file:// faces, and where each Yarn file is. */
 function filesFor(store, projectId, swatch) {
   const yarn = listYarn(store, projectId);
-  const byId = new Map(yarn.map((y) => [y.id, y]));
+  // A frame may show the Brief's reference too: the page as it is, beside a new design of it.
+  const byId = new Map([...yarn, ...listYarn(store, projectId, { shelf: "reference" })].map((y) => [y.id, y]));
   const families = [...new Set([fontFor(swatch, "display"), fontFor(swatch, "body"), fontFor(swatch, "mono"), "Geist"])];
   const fontFaces = [
     fontFaceCss(families, (f) => pathToFileURL(fontPath(f)).href),

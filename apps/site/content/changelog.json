@@ -1,5 +1,14 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
+  "next": {
+    "title": "Follow your model as it sorts folders",
+    "items": [
+      "Following your model while it files things or renames a folder, the studio opens that folder, and outlines it in red with what your model is doing.",
+      "Each Pattern, Yarn file, Part or knit it moves is outlined too, where it goes. Knits are outlined like everything else now.",
+      "A design frame that shows a picture from the Brief's reference, like a page of your site as it is today, now shows it when your model looks at the frame, not a grey placeholder.",
+      "Making photos, the note that they are in Yarn shows once, even on a busy computer."
+    ]
+  },
   "entries": [
     {
       "version": "0.1.32",

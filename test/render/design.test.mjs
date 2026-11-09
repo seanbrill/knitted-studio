@@ -49,3 +49,21 @@ test("a sheet bigger than the browser draws is drawn in tiles, every frame to th
   }
   counts.forEach((n, k) => assert.ok(n > each * 0.9, `Frame ${k + 1} shows ${Math.round((100 * n) / each)}% of itself`));
 });
+
+test("a frame shows a picture from the Brief's reference as well as from Yarn: the page as it is, beside a new design of it", async () => {
+  const { importYarn } = await import("@knitted/core/node");
+  const dir = mkdtempSync(join(tmpdir(), "knitted-designref-"));
+  const pic = async (name, rgb) => { const f = join(dir, `${name}.png`); await sharp({ create: { width: 200, height: 100, channels: 3, background: { r: rgb[0], g: rgb[1], b: rgb[2] } } }).png().toFile(f); return f; };
+  const ref = (await importYarn(store, project.id, await pic("today", [20, 160, 60]), "today.png", { shelf: "reference" })).yarn;
+  const own = (await importYarn(store, project.id, await pic("photo", [30, 60, 200]), "photo.png")).yarn;
+  assert.equal(ref.shelf, "reference");
+  const d = createDesign(store, project.id, { name: "Pictures", start: "blank", ops: [{ op: "setFrame", section: "Pages", name: "Both", width: 400, height: 200,
+    html: `<img src="yarn:${ref.id}" alt="today"><img src="yarn:${own.id}" alt="a photo">`, css: "html,body{margin:0;display:flex}img{display:block;width:200px;height:200px}" }] });
+  const frameId = d.sections[0].frames[0].id;
+  const png = await renderDesign(store, d.id, { frameId, renderer });
+  const { data, info } = await sharp(png).raw().toBuffer({ resolveWithObject: true });
+  const at = (x, y) => { const i = (Math.round(y * info.height) * info.width + Math.round(x * info.width)) * info.channels; return [data[i], data[i + 1], data[i + 2]]; };
+  const [left, right] = [at(0.25, 0.5), at(0.75, 0.5)];
+  assert.ok(left[1] > 130 && left[0] < 60 && left[2] < 90, `the reference picture, green, not the grey stand-in: ${left}`);
+  assert.ok(right[2] > 170 && right[0] < 70, `the Yarn picture, blue: ${right}`);
+});

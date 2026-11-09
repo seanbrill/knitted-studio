@@ -5,7 +5,7 @@
 // made as a job; the person keeps working, and hears when it is in Yarn.
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, type GenPlanView, type GenRequest } from "@knitted/core/client";
 import { GEN_ASPECTS, VIDEO_ASPECTS, type GenAspect, type GenKind, type GenQuality, type Yarn } from "@knitted/core";
 import { Button, Chip, Dialog, Field, SegmentedControl, Select, Textarea, icons, useToast } from "@knitted/ui";
@@ -50,20 +50,29 @@ export function MakeDialog({ projectId, folder, start, onClose, onMade }: { proj
     return () => { live = false; };
   }, [open, projectId, key]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Each job, followed until it ends.
+  // Each job, followed until it ends, and told once: on a slow machine one look can still be
+  // waiting when the next starts, and both would see it done.
+  const told = useRef(new Set<string>());
+  const looking = useRef(false);
   useEffect(() => {
     if (!jobs.length) return;
     const t = setInterval(async () => {
-      for (const j of jobs) {
-        const now = await api.generate.job(j.id).catch(() => null);
-        if (!now || !["done", "failed", "cancelled", "interrupted"].includes(now.status)) continue;
-        setJobs((js) => js.filter((x) => x.id !== j.id));
-        if (now.status === "done" && now.result) {
-          const n = now.result.yarn.length;
-          toast(`${n === 1 ? now.result.yarn[0].name : `${n} new files`} ${n === 1 ? "is" : "are"} in Yarn. It cost $${now.result.cost.toFixed(2)}.`);
-          onMade();
-        } else toast(now.error ?? "It could not be made.");
-      }
+      if (looking.current) return;
+      looking.current = true;
+      try {
+        for (const j of jobs) {
+          if (told.current.has(j.id)) continue;
+          const now = await api.generate.job(j.id).catch(() => null);
+          if (!now || !["done", "failed", "cancelled", "interrupted"].includes(now.status) || told.current.has(j.id)) continue;
+          told.current.add(j.id);
+          setJobs((js) => js.filter((x) => x.id !== j.id));
+          if (now.status === "done" && now.result) {
+            const n = now.result.yarn.length;
+            toast(`${n === 1 ? now.result.yarn[0].name : `${n} new files`} ${n === 1 ? "is" : "are"} in Yarn. It cost $${now.result.cost.toFixed(2)}.`);
+            onMade();
+          } else toast(now.error ?? "It could not be made.");
+        }
+      } finally { looking.current = false; }
     }, 2000);
     return () => clearInterval(t);
   }, [jobs, toast, onMade]);

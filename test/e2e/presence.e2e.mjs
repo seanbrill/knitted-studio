@@ -139,3 +139,24 @@ test("Follow goes where the model works and keeps up as it moves, until the pers
   await panel().getByRole("button", { name: "Follow" }).waitFor();
   assert.deepEqual(await problems(), []);
 });
+
+test("following a model that sorts things, the folder it files into opens, and the folder and what it files are outlined", async () => {
+  await call("move_to_folder", { projectId, folder: "Launch", patternIds: [story.id] });
+  await page.goto(`${studio.url}/projects/${projectId}`);
+  await page.getByRole("button", { name: /^Claude Code:/ }).click();
+  await panel().getByRole("button", { name: "Follow" }).click();
+  await page.keyboard.press("Escape");
+  // Filing into a folder it makes: that folder opens, and what it filed is outlined there, with what it is doing.
+  await call("move_to_folder", { projectId, folder: "Launch/Week 1", patternIds: [post.id] });
+  await page.waitForURL(/folder=Launch%2FWeek\+1/);
+  const filed = page.getByTestId("model-on").filter({ hasText: /Filing 1 pattern into "Launch\/Week 1"/ });
+  await filed.waitFor();
+  assert.equal(await page.getByTestId("model-on").count(), 1);
+  // Renaming it: the folder it is in opens, and the folder is outlined by its new name.
+  await call("rename", { projectId, section: "patterns", folder: "Launch/Week 1", name: "Week one" });
+  await page.waitForURL(/folder=Launch(&|$)/);
+  const tile = page.getByRole("listitem").filter({ has: page.getByRole("link", { name: /^Week one, folder/ }) });
+  await tile.getByTestId("model-on").filter({ hasText: /Renaming the folder "Launch\/Week 1" to "Week one"/ }).waitFor();
+  await page.getByRole("button", { name: /^Claude Code:/ }).click();
+  await panel().getByRole("button", { name: "Stop following" }).click();
+});

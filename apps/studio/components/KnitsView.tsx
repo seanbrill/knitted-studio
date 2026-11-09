@@ -14,6 +14,8 @@ import { AskModelButton, aboutKnit } from "./AskModel";
 import { PickBox, SelectionBar, TagDialog, picking, useSelection } from "./Selection";
 import { PostDialog } from "./PostDialog";
 import { KnitWithComments } from "./Comments";
+import { ModelMark } from "./ModelMark";
+import { leadOf, useMarks } from "@/lib/agent";
 
 const KNIT_SORTS: SortBy<KnitRecord>[] = [
   { value: "newest", label: "Newest first", key: (k) => k.createdAt, desc: true },
@@ -95,6 +97,9 @@ export function KnitsView({ projectId }: { projectId: string }) {
     else groups.push({ key: batch ?? `after-${last?.batch ?? "top"}`, batch, knits: [k] });
   }
   const sel = useSelection(here);
+  // Knits a model is filing: outlined here as they go, and where they land.
+  const marks = useMarks((w) => w.thingIds);
+  const lead = leadOf(marks);
   const [tagging, setTagging] = useState(false);
   const [bulkDelete, setBulkDelete] = useState(false);
   // What is being posted: the open knit, or the picked ones together.
@@ -174,6 +179,7 @@ export function KnitsView({ projectId }: { projectId: string }) {
                           <p className="eyebrow" style={{ margin: "2px 0 0", display: "flex", gap: 6, alignItems: "center" }}>{k.format} · {k.width}x{k.height} · {formatBytes(k.bytes)}{warn > 0 && <span title={`${warn} to review`} style={{ color: "var(--danger)" }}><AlertTriangle size={12} aria-hidden /></span>}{noted(k.id) > 0 && <span className="comment-count" title={`${noted(k.id)} open comment${noted(k.id) === 1 ? "" : "s"}`}><MessageSquare size={12} aria-hidden />{noted(k.id)}</span>}{k.patternChangedSince && <span title="Its pattern was changed after this was knitted. Knit it again to bring it up to date." style={{ textTransform: "none", letterSpacing: 0 }}>· pattern changed</span>}</p>
                         </div>
                         <span className="body-sm" style={{ color: "var(--ink-muted)", whiteSpace: "nowrap", display: "flex", gap: 8, alignItems: "center", position: "relative", zIndex: 2 }}><span aria-hidden style={{ display: "contents" }}>{!k.seenAt && <span className="new-badge in-row">New</span>}{timeAgo(k.createdAt)}</span><FavoriteStar k={k} onToggle={favorite} inRow /></span>
+                        <ModelMark mark={marks.get(k.id)} lead={lead === k.id} />
                       </div>
                     </li>
                   );
@@ -192,6 +198,7 @@ export function KnitsView({ projectId }: { projectId: string }) {
                         <p className="label" aria-hidden style={{ margin: "var(--space-2) 0 0", paddingRight: 30, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{k.label}</p>
                         <p className="eyebrow" aria-hidden style={{ margin: "2px 0 0", display: "flex", gap: 6, alignItems: "center" }}>{k.format} · {k.width}x{k.height} · {formatBytes(k.bytes)}{warn > 0 && <span title={`${warn} to review`} style={{ color: "var(--danger)" }}><AlertTriangle size={12} aria-hidden /></span>}{noted(k.id) > 0 && <span className="comment-count" title={`${noted(k.id)} open comment${noted(k.id) === 1 ? "" : "s"}`}><MessageSquare size={12} aria-hidden />{noted(k.id)}</span>}{k.patternChangedSince && <span title="Its pattern was changed after this was knitted. Knit it again to bring it up to date." style={{ textTransform: "none", letterSpacing: 0 }}>· pattern changed</span>}</p>
                         <FavoriteStar k={k} onToggle={favorite} />
+                        <ModelMark mark={marks.get(k.id)} lead={lead === k.id} />
                       </div>
                     </li>
                   );

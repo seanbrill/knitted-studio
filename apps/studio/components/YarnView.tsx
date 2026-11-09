@@ -152,7 +152,7 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
   const shown = useMemo(() => view.sorted((data ?? []).filter((y) => (filtering ? isInside(y.folder, kit.here) : y.folder === kit.here))), [data, filtering, kit.here, view]);
   // What is selected and still in sight: moving it away, or opening another folder, lets it go.
   const sel = useSelection(shown);
-  const marks = useMarks((w) => w.yarnId);
+  const marks = useMarks((w) => [w.yarnId, ...(w.thingIds ?? [])]);
   const lead = leadOf(marks);
   const picked = sel.picked;
 

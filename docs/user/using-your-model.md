@@ -67,10 +67,11 @@ Whatever it is working on is outlined in red, with its name and what it is doing
 - in a project, the Pattern, Yarn, Part, Swatch or design sheet in its list, and the tab it is under, such as **Patterns**
 - on a design sheet, each frame it designs or looks at
 - in the knitting queue, the batch it started
+- sorting things into folders, the folder it files into or renames, and each thing it moves
 
 In the editor, a small bubble over the canvas shows what your model is thinking and doing as it happens, even with the chat closed. Shrink it to a dot, or close it for the rest of that run.
 
-- **Follow** takes you where it is working, and keeps up as it moves from one Pattern to the next, or from frame to frame on a design sheet, bringing each into view. It stops when you go somewhere yourself or make a change of your own.
+- **Follow** takes you where it is working, and keeps up as it moves from one Pattern to the next, or from frame to frame on a design sheet, bringing each into view. Sorting things, it opens the folder your model files into, or the one holding a folder it renames. It stops when you go somewhere yourself or make a change of your own.
 - **Pause** holds it. Until you press **Resume**, every change it tries is refused and it is told to wait for you. It can still read, check and preview.
 
 You and your model can work on the same Pattern at once. Its changes appear on your canvas as it makes them, and **Undo** only takes back your own. If you were changing something when its change arrived, yours is kept too, unless you both changed the very same thing at the same moment. Then its change stays, and the studio tells you yours was not kept.

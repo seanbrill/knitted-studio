@@ -338,6 +338,12 @@ export interface AgentWhere {
   /** The frames of that design it works on, by id. */
   frameIds?: string[];
   jobId?: string; section?: FolderSection;
+  /** The folders of that section it works on: one it files things into, or one it renames, as it is called now. */
+  folders?: string[];
+  /** The folder to open to watch it: where it files things, or the one a folder it renames is in. "" is the top. */
+  folder?: string;
+  /** The things it moves, by id, of any section: each view outlines its own. */
+  thingIds?: string[];
 }
 /** One call a model made, as the studio shows it: who, what, where, and how it ended. */
 export interface AgentCall {

@@ -100,7 +100,7 @@ export function PatternsView({ projectId }: { projectId: string }) {
   const here = view.sorted((patterns ?? []).filter((p) => (filtering ? isInside(p.folder, kit.here) && p.name.toLowerCase().includes(q.trim().toLowerCase()) && (size === "all" || p.size.name === size) : p.folder === kit.here)));
   const sel = useSelection(here);
   // What a model is changing or looking at, outlined on its card.
-  const marks = useMarks((w) => w.patternId);
+  const marks = useMarks((w) => [w.patternId, ...(w.thingIds ?? [])]);
   const lead = leadOf(marks);
   const [asking, setAsking] = useState<Pattern | null>(null);
   const [bulkDelete, setBulkDelete] = useState(false);
