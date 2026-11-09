@@ -87,9 +87,12 @@ async function checkSite(dir, { expectH1, warnings = [] }) {
 // address outside the app it is given throws, as Windows throws.
 const ELSEWHERE = `const url = require("node:url"), { resolve, sep } = require("node:path");
 const inside = resolve(process.env.KNITTED_VERIFY_APP) + sep, real = url.fileURLToPath;
+const elsewhere = (what) => Object.assign(new TypeError("File URL path must be absolute (" + what + " is on the computer that built this, not here)"), { code: "ERR_INVALID_FILE_URL_PATH" });
 url.fileURLToPath = function (u, ...rest) {
-  const p = real.call(this, u, ...rest);
-  if (!p.startsWith(inside)) throw Object.assign(new TypeError("File URL path must be absolute (" + p + " is on the computer that built this, not here)"), { code: "ERR_INVALID_FILE_URL_PATH" });
+  let p;
+  // On Windows a path from a Mac or Linux has no drive, and Node refuses it before this can look.
+  try { p = real.call(this, u, ...rest); } catch { throw elsewhere(String(u && u.href ? u.href : u)); }
+  if (!p.startsWith(inside)) throw elsewhere(p);
   return p;
 };
 require("node:module").syncBuiltinESMExports();
