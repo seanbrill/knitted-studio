@@ -1,14 +1,16 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
-  "next": {
-    "title": "Past chats without a key, and a Download page that is never behind",
-    "items": [
-      "A chat had with your model stays there to read when no key is set. In place of the box to write in, it says how to write in it again: add your Anthropic key, or connect Claude Code.",
-      "A new chat with no key still says what you could ask and the two ways in.",
-      "The Download page shows a new version, or a Mac's disk image, the moment it is up. It reads the release folder in your browser, so it no longer waits for the site to be built again. With no connection it shows the list it was built with."
-    ]
-  },
   "entries": [
+    {
+      "version": "0.1.46",
+      "date": "2026-11-09",
+      "title": "Past chats without a key, and a Download page that is never behind",
+      "items": [
+        "A chat had with your model stays there to read when no key is set. In place of the box to write in, it says how to write in it again: add your Anthropic key, or connect Claude Code.",
+        "A new chat with no key still says what you could ask and the two ways in.",
+        "The Download page shows a new version, or a Mac's disk image, the moment it is up. It reads the release folder in your browser, so it no longer waits for the site to be built again. With no connection it shows the list it was built with."
+      ]
+    },
     {
       "version": "0.1.45",
       "date": "2026-11-09",
