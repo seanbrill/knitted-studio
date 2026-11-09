@@ -1,20 +1,22 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
-  "next": {
-    "title": "Dialogs and menus, one shape everywhere",
-    "items": [
-      "Every dialog has one shape: what it does as its title, where it lands under that, a body that scrolls on its own, and its buttons in a footer that stays put.",
-      "New project asks for the website first and reads it as the project fills in, with the swatch, the profile and the page pictures each to tick. The starter pack and Blank are cards, each showing what it makes.",
-      "New pattern shows each size as its shape, with where it goes: Stories, Reels, TikTok and Shorts; Instagram and LinkedIn feeds; YouTube, X and websites. Custom asks for the width and height in place.",
-      "New folder shows the folders it makes as you type, the new ones lit. A name that is taken says so, with a way to the one there.",
-      "Move is a tree you can search, with what each folder holds and where things are now. A folder made in it goes in the one lit and is picked.",
-      "Tag works on many at once. A tag all of them have comes off with its x, one some have goes on the rest with its +, and the project's own tags are offered first, the most used at the top.",
-      "A knit has a menu of its own, from its ... button or a right-click: open, post, copy the caption, ask your model, move, tag, favourite, download and delete. A Yarn file has one too, with cutting out a part and making a photo or video from it. With several picked, the menu acts on all of them and says so.",
-      "Every menu has the same order. A folder's menu makes a folder in it, and in Knits downloads it as a zip. Deleting a folder says nothing in it goes; deleting a project shows what it holds.",
-      "Esc that closes a menu or a dialog closes only that: what is picked stays picked."
-    ]
-  },
   "entries": [
+    {
+      "version": "0.1.39",
+      "date": "2026-11-09",
+      "title": "Dialogs and menus, one shape everywhere",
+      "items": [
+        "Every dialog has one shape: what it does as its title, where it lands under that, a body that scrolls on its own, and its buttons in a footer that stays put.",
+        "New project asks for the website first and reads it as the project fills in, with the swatch, the profile and the page pictures each to tick. The starter pack and Blank are cards, each showing what it makes.",
+        "New pattern shows each size as its shape, with where it goes: Stories, Reels, TikTok and Shorts; Instagram and LinkedIn feeds; YouTube, X and websites. Custom asks for the width and height in place.",
+        "New folder shows the folders it makes as you type, the new ones lit. A name that is taken says so, with a way to the one there.",
+        "Move is a tree you can search, with what each folder holds and where things are now. A folder made in it goes in the one lit and is picked.",
+        "Tag works on many at once. A tag all of them have comes off with its x, one some have goes on the rest with its +, and the project's own tags are offered first, the most used at the top.",
+        "A knit has a menu of its own, from its ... button or a right-click: open, post, copy the caption, ask your model, move, tag, favourite, download and delete. A Yarn file has one too, with cutting out a part and making a photo or video from it. With several picked, the menu acts on all of them and says so.",
+        "Every menu has the same order. A folder's menu makes a folder in it, and in Knits downloads it as a zip. Deleting a folder says nothing in it goes; deleting a project shows what it holds.",
+        "Esc that closes a menu or a dialog closes only that: what is picked stays picked."
+      ]
+    },
     {
       "version": "0.1.38",
       "date": "2026-11-09",
