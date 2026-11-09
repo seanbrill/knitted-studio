@@ -1,0 +1,109 @@
+name: windows-installed
+
+# The Windows installer people download, installed and started on Windows as a person would.
+# CI's own smoke test runs a build made on Windows; the installers are built by the pipeline
+# on Linux, and only this runs one of those. 0.1.43's started on CI and on no one's PC: its
+# server read a path from the computer that built it, which on Windows is not a path.
+#
+#   gh workflow run windows-installed                    the newest version on the site
+#   gh workflow run windows-installed -f version=0.1.44  one version
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to check (empty: the newest)"
+        required: false
+
+jobs:
+  installed:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Download the installer from the site
+        shell: pwsh
+        run: |
+          $feed = Invoke-RestMethod https://knitted.filefreak.page/releases.json
+          $want = "${{ github.event.inputs.version }}"
+          $r = if ($want) { $feed.releases | Where-Object { $_.version -eq $want } } else { $feed.releases[0] }
+          if (-not $r) { throw "The site lists no version $want" }
+          $f = $r.files | Where-Object { $_.system -eq "Windows" }
+          "Version $($r.version): $($f.name), $($f.size)"
+          Invoke-WebRequest $f.url -OutFile installer.exe
+          $h = (Get-FileHash installer.exe -Algorithm SHA256).Hash.ToLower()
+          if ($h -ne $f.sha256) { throw "The download's sha256 is $h; the feed says $($f.sha256)" }
+
+      - name: Install it without the questions
+        shell: pwsh
+        run: |
+          Start-Process -Wait -FilePath .\installer.exe -ArgumentList "/S"
+          $exe = @("$env:LOCALAPPDATA\Programs\knitted\knitted.exe", "$env:ProgramFiles\knitted\knitted.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $exe) { throw "knitted.exe is in neither install folder" }
+          $dir = Split-Path $exe
+          "INSTALL_DIR=$dir" >> $env:GITHUB_ENV
+          $files = Get-ChildItem -Recurse -File $dir
+          "Installed in $dir: $($files.Count) files, $([math]::Round(($files | Measure-Object Length -Sum).Sum / 1MB)) MB"
+          $long = $files | Sort-Object { $_.FullName.Length } -Descending | Select-Object -First 1
+          "Longest path: $($long.FullName.Length) characters"
+          $res = Join-Path $dir "resources"
+          $missing = @("app.asar", "bin\ffmpeg.exe", "bin\ffprobe.exe", "app-server\apps\studio\server.js", "app-server\node_modules\next\package.json", "app-server\node_modules\@img\sharp-win32-x64\package.json") | Where-Object { -not (Test-Path (Join-Path $res $_)) }
+          if ($missing) { throw "Missing: $($missing -join ', ')" }
+
+      - name: The app's own smoke test
+        shell: pwsh
+        run: |
+          $env:KNITTED_HOME = "$env:RUNNER_TEMP\library-smoke"
+          $p = Start-Process -FilePath "$env:INSTALL_DIR\knitted.exe" -ArgumentList "--smoke", "--user-data-dir=$env:RUNNER_TEMP\smoke-data" -RedirectStandardOutput smoke.out -RedirectStandardError smoke.err -PassThru
+          if (-not $p.WaitForExit(180000)) { Stop-Process $p -Force; throw "Still running after three minutes" }
+          Get-Content smoke.out; Get-Content smoke.err
+          if ($p.ExitCode -ne 0 -or -not (Select-String -Quiet '"smoke":"ok"' smoke.out)) { throw "The smoke test failed (exit $($p.ExitCode))" }
+
+      - name: The server on its own, with nothing failing as it starts
+        if: always()
+        shell: pwsh
+        run: |
+          $res = "$env:INSTALL_DIR\resources"
+          $env:ELECTRON_RUN_AS_NODE = "1"; $env:PORT = "4321"; $env:HOSTNAME = "127.0.0.1"; $env:KNITTED_HOME = "$env:RUNNER_TEMP\library-server"
+          $s = Start-Process -FilePath "$env:INSTALL_DIR\knitted.exe" -ArgumentList "`"$res\app-server\apps\studio\server.js`"" -WorkingDirectory "$res\app-server\apps\studio" -RedirectStandardOutput server.out -RedirectStandardError server.err -PassThru
+          $ok = $false
+          for ($i = 0; $i -lt 90 -and -not $ok; $i++) {
+            Start-Sleep 1
+            if ($s.HasExited) { break }
+            try { $r = Invoke-WebRequest http://127.0.0.1:4321/api/health -UseBasicParsing -TimeoutSec 2; "After $i s: $($r.Content)"; $ok = $true } catch {}
+          }
+          Start-Sleep 3
+          if (-not $s.HasExited) { Stop-Process $s -Force }
+          Get-Content server.out; Get-Content server.err
+          if (-not $ok) { throw "The server did not answer" }
+          if (Select-String -Quiet "did not start|could not|File URL path" server.err) { throw "Something failed as the server started" }
+
+      - name: Started as a person starts it
+        if: always()
+        shell: pwsh
+        run: |
+          Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
+          $p = Start-Process -FilePath "$env:INSTALL_DIR\knitted.exe" -PassThru
+          $title = ""
+          for ($i = 0; $i -lt 90 -and $title -notmatch "knitted\.studio"; $i++) {
+            Start-Sleep 1
+            $title = (Get-Process knitted -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle } | Select-Object -First 1).MainWindowTitle
+          }
+          "The window: '$title' after $i s"
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+          [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+          $bmp.Save("$pwd\screen.png")
+          Get-Process knitted -ErrorAction SilentlyContinue | Stop-Process -Force
+          Copy-Item "$env:APPDATA\knitted-studio\logs\knitted.log" . -ErrorAction SilentlyContinue
+          if ($title -notmatch "knitted\.studio") { throw "No studio window opened" }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-installed
+          path: |
+            screen.png
+            knitted.log
+            *.out
+            *.err

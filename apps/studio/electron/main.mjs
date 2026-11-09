@@ -18,7 +18,7 @@
 import { app, BrowserWindow, dialog, Menu, nativeImage, net, Notification, session, shell, Tray } from "electron";
 import { randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { createWriteStream, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -76,6 +76,29 @@ async function serverPort() {
   return port;
 }
 
+// What happened at each launch, kept in a file: a desktop app has no console to read, so on
+// Windows a server that failed to start left nothing behind but a missing window. The launch
+// before stays as knitted.old.log. Opened once this copy knows it is the only one.
+let logFile = "", logStream, logged = 0;
+function startLog() {
+  try {
+    app.setAppLogsPath(join(app.getPath("userData"), "logs")); // beside the library, on every system
+    logFile = join(app.getPath("logs"), "knitted.log");
+    mkdirSync(dirname(logFile), { recursive: true });
+    try { renameSync(logFile, logFile.replace(/\.log$/, ".old.log")); } catch { /* the first launch */ }
+    logStream = createWriteStream(logFile, { flags: "w" });
+    logStream.on("error", () => { logStream = undefined; });
+  } catch { /* nowhere to write: run without it */ }
+}
+/** A line, or the server's own output, into the log, up to 5 MB a launch. */
+function log(text) {
+  if (!logStream || logged > 5 * 1024 ** 2) return;
+  const s = String(text);
+  logged += s.length;
+  logStream.write(s.endsWith("\n") ? s : `${s}\n`);
+  if (logged > 5 * 1024 ** 2) logStream.write("(The log stops here: 5 MB is enough to find what went wrong.)\n");
+}
+
 // Where the server and its tools live: inside the installed app, or in the repo.
 const serverDir = packaged ? join(process.resourcesPath, "app-server/apps/studio") : join(repo, "dist/app/apps/studio");
 const binDir = packaged ? join(process.resourcesPath, "bin") : join(repo, "build/bin");
@@ -97,25 +120,38 @@ function startServer(port) {
     env,
     stdio: ["ignore", "pipe", "pipe"],
   });
-  let log = "";
-  const keep = (d) => { log = (log + d).slice(-4000); };
+  let tail = "";
+  const keep = (d) => { tail = (tail + d).slice(-4000); log(d); };
   child.stdout.on("data", keep);
   child.stderr.on("data", keep);
-  child.tail = () => log;
+  child.tail = () => tail;
   return child;
 }
 
-async function waitFor(url, child, ms = 60_000) {
+/** Waits for the server to answer. A first start on Windows can be slow while it checks every file. */
+async function waitFor(url, child, ms = 120_000) {
   const deadline = Date.now() + ms;
+  const fail = (say, detail) => Object.assign(new Error(`${detail}\n${child.tail()}`), { say });
   while (Date.now() < deadline) {
-    if (child.exitCode !== null) throw new Error(`server exited (${child.exitCode})\n${child.tail()}`);
+    if (child.exitCode !== null) throw fail("The part of knitted that does the work stopped as it started.", `server exited (${child.exitCode})`);
     try {
       if ((await fetch(url, { headers: { "x-knitted-token": token } })).ok) return;
     } catch {}
     await new Promise((r) => setTimeout(r, 250));
   }
-  throw new Error(`server did not answer at ${url} within ${ms}ms\n${child.tail()}`);
+  throw fail(`The part of knitted that does the work did not answer within ${ms / 1000} seconds.`, `server did not answer at ${url} within ${ms}ms`);
 }
+
+// What the window shows while the server starts, so a launch is never only a wait with nothing on screen.
+const STARTING = `data:text/html;charset=utf-8,${encodeURIComponent(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>knitted</title><style>
+html,body{height:100%;margin:0;background:#faf7f2;color:#17110b;font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+body{display:grid;place-content:center;justify-items:center;gap:14px;-webkit-user-select:none;user-select:none;cursor:default}
+b{font-size:28px;font-weight:800;letter-spacing:-.02em}p{margin:0;color:#6a5d50}
+i{display:block;width:120px;height:3px;border-radius:2px;background:#ebdfd2;overflow:hidden}
+i::after{content:"";display:block;width:40%;height:100%;border-radius:2px;background:#df5a0f;animation:go 1.2s cubic-bezier(.2,0,0,1) infinite}
+@keyframes go{from{transform:translateX(-100%)}to{transform:translateX(250%)}}
+@media (prefers-reduced-motion:reduce){i::after{animation:none;width:100%;opacity:.5}}
+</style></head><body><b>knitted</b><i></i><p>Starting</p></body></html>`)}`;
 
 let server, background, openWindow;
 const quit = (code = 0) => {
@@ -135,30 +171,16 @@ const trayIcon = () => {
 };
 
 app.whenReady().then(async () => {
+  let win;
+  startLog();
+  log(`knitted ${app.getVersion()} on ${process.platform}-${process.arch}, Electron ${process.versions.electron}, started ${new Date().toString()}`);
   try {
     const port = await serverPort();
-    server = startServer(port);
     const origin = `http://127.0.0.1:${port}`;
-    await waitFor(`${origin}/api/health`, server);
+    log(`The server: ${serverDir}, on ${origin}. The library: ${process.env.KNITTED_HOME}`);
 
-    // The window gets the token as a cookie nothing else on the machine has.
-    await session.defaultSession.cookies.set({ url: origin, name: "knitted_token", value: token, httpOnly: true, sameSite: "strict" });
-    // Nothing the app does needs a camera, a microphone or a location. A notification says the
-    // person's model is done while knitted is behind another window (ModelDone.tsx).
-    session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(permission === "clipboard-sanitized-write" || permission === "fullscreen" || permission === "notifications"));
-    // Check for Updates goes where each system keeps it: the app menu on a Mac, Help elsewhere.
-    const mac = process.platform === "darwin";
-    const sep = { type: "separator" };
-    Menu.setApplicationMenu(Menu.buildFromTemplate([
-      ...(mac ? [{ role: "appMenu", submenu: [{ role: "about" }, sep, ...updater.menu(), sep, { role: "services" }, sep, { role: "hide" }, { role: "hideOthers" }, { role: "unhide" }, sep, { role: "quit" }] }] : []),
-      { role: "fileMenu" }, { role: "editMenu" }, { role: "viewMenu" }, { role: "windowMenu" },
-      { role: "help", submenu: [{ label: "Reveal my library", click: () => shell.openPath(process.env.KNITTED_HOME) }, { label: "knitted.studio on GitHub", click: () => shell.openExternal("https://github.com/seanbrill/knitted-studio") }, ...(mac ? [] : [sep, ...updater.menu()])] },
-    ]));
-
-    const dbg = (...a) => process.env.KNITTED_DEBUG && console.error("[main]", ...a);
-    openWindow = async () => {
-      const open = BrowserWindow.getAllWindows()[0];
-      if (open) { open.show(); open.focus(); return open; }
+    const dbg = (...a) => { log(a.join(" ")); if (process.env.KNITTED_DEBUG) console.error("[main]", ...a); };
+    const makeWindow = () => {
       const win = new BrowserWindow({
         width: 1440,
         height: 900,
@@ -181,13 +203,40 @@ app.whenReady().then(async () => {
         if (!url.startsWith(origin)) { e.preventDefault(); if (/^https?:/.test(url)) shell.openExternal(url); }
       });
       win.webContents.on("did-fail-load", (_e, code, desc) => dbg("did-fail-load", code, desc));
-      background?.shown();
-      dbg("loading", origin);
-      await win.loadURL(origin);
-      dbg("loaded");
       return win;
     };
-    const win = await openWindow();
+    const load = async (w) => { dbg("loading", origin); await w.loadURL(origin); dbg("loaded"); };
+    openWindow = async () => {
+      const open = BrowserWindow.getAllWindows()[0];
+      if (open) { open.show(); open.focus(); return open; }
+      const w = makeWindow();
+      background?.shown();
+      await load(w);
+      return w;
+    };
+
+    // The window first, saying it is starting; a second launch meanwhile brings it forward.
+    win = makeWindow();
+    if (!smoke) void win.loadURL(STARTING);
+    server = startServer(port);
+    await waitFor(`${origin}/api/health`, server);
+    log("The server answered.");
+
+    // The window gets the token as a cookie nothing else on the machine has.
+    await session.defaultSession.cookies.set({ url: origin, name: "knitted_token", value: token, httpOnly: true, sameSite: "strict" });
+    // Nothing the app does needs a camera, a microphone or a location. A notification says the
+    // person's model is done while knitted is behind another window (ModelDone.tsx).
+    session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(permission === "clipboard-sanitized-write" || permission === "fullscreen" || permission === "notifications"));
+    // Check for Updates goes where each system keeps it: the app menu on a Mac, Help elsewhere.
+    const mac = process.platform === "darwin";
+    const sep = { type: "separator" };
+    Menu.setApplicationMenu(Menu.buildFromTemplate([
+      ...(mac ? [{ role: "appMenu", submenu: [{ role: "about" }, sep, ...updater.menu(), sep, { role: "services" }, sep, { role: "hide" }, { role: "hideOthers" }, { role: "unhide" }, sep, { role: "quit" }] }] : []),
+      { role: "fileMenu" }, { role: "editMenu" }, { role: "viewMenu" }, { role: "windowMenu" },
+      { role: "help", submenu: [{ label: "Reveal my library", click: () => shell.openPath(process.env.KNITTED_HOME) }, ...(logFile ? [{ label: "Show the log", click: () => shell.showItemInFolder(logFile) }] : []), { label: "knitted.studio on GitHub", click: () => shell.openExternal("https://github.com/seanbrill/knitted-studio") }, ...(mac ? [] : [sep, ...updater.menu()])] },
+    ]));
+    await load(win);
+
     background = createBackground({ app, Tray, Menu, nativeImage, Notification, dialog, BrowserWindow }, { origin, token, openWindow, quit, icon: trayIcon });
     if (!smoke) background.start();
 
@@ -202,6 +251,16 @@ app.whenReady().then(async () => {
     }
   } catch (e) {
     console.error(String(e?.stack ?? e));
+    log(`knitted could not start: ${e?.stack ?? e}`);
+    // Said, not only logged: a desktop app's console is nowhere a person looks.
+    if (!smoke) {
+      const { response } = await dialog.showMessageBox(win && !win.isDestroyed() ? win : undefined, {
+        type: "error", title: "knitted", message: "knitted could not start",
+        detail: `${e?.say ?? "Something went wrong as it started."}${logStream ? `\n\nWhat happened is in its log, ${logFile}. If it happens again, send that file with your report.` : ""}`,
+        buttons: logStream ? ["Open the log", "Quit"] : ["Quit"], defaultId: 0, cancelId: logStream ? 1 : 0, noLink: true,
+      }).catch(() => ({ response: 1 }));
+      if (logStream && response === 0) await shell.openPath(logFile);
+    }
     quit(1);
   }
 });

@@ -12,9 +12,12 @@ export { manifest };
 // In the studio's server, the bundler writes in the path this file had on the computer that
 // BUILT it, and on anyone else's that path is not there: every font failed in the desktop app.
 // So the folder is looked for from where the server runs as well, apps/studio, which in the
-// app and from source has packages/fonts two folders up.
-const built = join(dirname(fileURLToPath(import.meta.url)), "..", "files");
-export const fontsDir = existsSync(built) ? built : join(process.cwd(), "..", "..", "packages", "fonts", "files");
+// app and from source has packages/fonts two folders up. On Windows, a path written in on a
+// Mac is not a path at all (it has no drive), and reading it threw as the server started:
+// the Windows app never opened its window. So it is only ever a guess here.
+const here = (() => { try { return dirname(fileURLToPath(import.meta.url)); } catch { return undefined; } })();
+const built = here && join(here, "..", "files");
+export const fontsDir = built && existsSync(built) ? built : join(process.cwd(), "..", "..", "packages", "fonts", "files");
 
 export const fontPath = (file) => join(fontsDir, file);
 export const bundledFont = (family) => manifest.find((f) => f.family === family);

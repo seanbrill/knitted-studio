@@ -11,7 +11,7 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import sharp from "sharp";
 import { applyCommand, fontFor, hasErrors, overflowIssues, postflight, preflight, resolveStyle, safeZoneIssues, SIZES, videoFps } from "@knitted/core";
@@ -410,7 +410,7 @@ export async function runKnit(store, { jobId, projectId, patternId, params = {},
 
         const st = await stat(outFile);
         const rec = insertKnit(store, {
-          projectId, patternId, patternName: pattern.name, jobId, batchId, label: unit.label, file: `${day}/${outFile.split("/").pop()}`,
+          projectId, patternId, patternName: pattern.name, jobId, batchId, label: unit.label, file: `${day}/${basename(outFile)}`,
           kind: motion ? "video" : "image", format: fmt, width: unit.size.w * scale, height: unit.size.h * scale, bytes: st.size,
           durationMs: motion ? unit.pattern.durationMs : null, hash, report,
           unit: unitOf(patternId, pattern, unit), look: lookFor(store, unit, swatch, yarnMap), scale,

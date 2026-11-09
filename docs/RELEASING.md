@@ -15,6 +15,8 @@
 
 The site is static: its Download page and `/releases.json` list the release folder as it was when the site was built. A visitor's browser cannot read the folder itself. FileFreak refuses a key sent from a web page, and its public answers (`/api/public/files/...`, which need no key) send no `Access-Control-Allow-Origin`, so a page on another site may not read them. If they did, as FileFreak's `/v1` API does, the Download page could read the folder live, as the apps do.
 
+After a release, check the Windows installer on Windows: `gh workflow run windows-installed` (`.github/workflows/windows-installed.yml`) downloads the newest one from the site, installs it, runs its smoke test, starts its server on its own and then the app as a person would, and fails if no studio window opens. CI's Windows smoke test runs a build made on Windows, so it cannot see what goes wrong only in the pipeline's build: 0.1.43's server read a path from the Linux computer that built it, which on Windows is not a path, and its window never opened. `npm run verify:builds` now runs the server as if on another computer, so that one is caught before a push.
+
 Each installer carries its own system's ffmpeg, ffprobe and sharp, fetched once into `node_modules/.cache` by `scripts/desktop-binaries.mjs` and checked to be built for that system. This machine's copies, the ones npm installed, fit no other system.
 
 Local build without uploading: `npm run desktop:dist` builds the installers for this machine's system, in `dist/desktop`. For a quick check without an installer, `npm run desktop:pack` and open the app in `dist/desktop/<platform>`.

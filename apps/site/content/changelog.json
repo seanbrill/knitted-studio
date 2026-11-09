@@ -1,5 +1,14 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
+  "next": {
+    "title": "The Windows app opens",
+    "items": [
+      "The Windows app opens. As its server started, it read a folder named by the computer that built it, which on Windows is not a folder at all, and the window never came. Reading a PDF on Windows had the same fault, and so did the scheduler that sends posts out at their time.",
+      "knitted shows its window as soon as it starts, saying it is starting. If it cannot start, it says so, with a way to open what happened, instead of showing nothing.",
+      "Each launch keeps a log beside the library, and the launch before it too. Help, Show the log finds it.",
+      "Knits made on Windows are filed under their own name, not the whole path to them."
+    ]
+  },
   "entries": [
     {
       "version": "0.1.43",

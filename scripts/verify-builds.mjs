@@ -80,11 +80,28 @@ async function checkSite(dir, { expectH1, warnings = [] }) {
   return problems;
 }
 
+// The bundler writes in where each file was on the computer that BUILT the server. Anywhere
+// else that path is not there, and on Windows, from a Mac's build, it is not even a path:
+// turning it into one throws. That threw as the server started, and the Windows app never
+// opened (0.1.43). So the server runs here as if it were on another computer: a file
+// address outside the app it is given throws, as Windows throws.
+const ELSEWHERE = `const url = require("node:url"), { resolve, sep } = require("node:path");
+const inside = resolve(process.env.KNITTED_VERIFY_APP) + sep, real = url.fileURLToPath;
+url.fileURLToPath = function (u, ...rest) {
+  const p = real.call(this, u, ...rest);
+  if (!p.startsWith(inside)) throw Object.assign(new TypeError("File URL path must be absolute (" + p + " is on the computer that built this, not here)"), { code: "ERR_INVALID_FILE_URL_PATH" });
+  return p;
+};
+require("node:module").syncBuiltinESMExports();
+`;
+
 async function checkApp(dir) {
   const entry = join(dir, "apps/studio/server.js");
   if (!(await exists(entry))) return [`${entry} is missing`];
   const port = 4300 + Math.floor(Math.random() * 500);
-  const child = spawn("node", [entry], { env: { ...process.env, PORT: String(port), HOSTNAME: "127.0.0.1" }, stdio: ["ignore", "pipe", "pipe"] });
+  const preload = join(await mkdtemp(join(tmpdir(), "knitted-elsewhere-")), "elsewhere.cjs");
+  await writeFile(preload, ELSEWHERE);
+  const child = spawn("node", ["--require", preload, entry], { env: { ...process.env, PORT: String(port), HOSTNAME: "127.0.0.1", KNITTED_VERIFY_APP: dir }, stdio: ["ignore", "pipe", "pipe"] });
   let log = "";
   child.stdout.on("data", (d) => (log += d));
   child.stderr.on("data", (d) => (log += d));
@@ -118,6 +135,8 @@ async function checkApp(dir) {
       }
       if (/fonts\.(googleapis|gstatic)\.com/.test(sheet)) problems.push("stylesheet still references Google Fonts");
     }
+    // Caught or not: caught, it still stopped something (0.1.43's social scheduler never started on Windows).
+    for (const line of new Set(log.split("\n").filter((l) => l.includes("is on the computer that built this")))) problems.push(`read a path from the computer that built it: ${line.trim()}`);
   } finally { child.kill("SIGKILL"); }
   return problems;
 }
@@ -137,12 +156,19 @@ if (process.argv.includes("--self-test")) {
   await writeFile(join(withServer, "index.html"), "<!doctype html><body><h1>Make it knitted.</h1></body>");
   await writeFile(join(withServer, "server.js"), "// a static site must not ship this");
   const emptyApp = join(tmp, "app"); await mkdir(emptyApp);
+  // A server that answers, but reads where a file was on the computer that built it as it starts.
+  const builtElsewhere = join(tmp, "elsewhere"); await mkdir(join(builtElsewhere, "apps/studio"), { recursive: true });
+  await writeFile(join(builtElsewhere, "apps/studio/server.js"), `const { fileURLToPath } = require("node:url");
+try { fileURLToPath("file:///build-machine/packages/fonts/src/index.mjs"); } catch (e) { console.error("The social scheduler did not start:", e.message); }
+require("node:http").createServer((q, r) => r.end("<h1>knitted</h1>")).listen(Number(process.env.PORT), process.env.HOSTNAME);
+`);
 
   let ok = true;
   for (const [name, fn] of [
     ["site missing its h1 is rejected", () => checkSite(noH1, { expectH1: "Make it knitted." })],
     ["site carrying server.js is rejected", () => checkSite(withServer, { expectH1: "Make it knitted." })],
     ["app dir without a server is rejected", () => checkApp(emptyApp)],
+    ["app reading the build computer's paths as it starts is rejected", async () => (await checkApp(builtElsewhere)).filter((p) => p.startsWith("read a path from the computer that built it"))],
   ]) {
     const problems = await fn();
     if (problems.length === 0) { console.error(`SELF-TEST FAIL: ${name} (the check accepted a broken build)`); ok = false; }

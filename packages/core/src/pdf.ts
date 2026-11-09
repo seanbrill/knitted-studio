@@ -18,10 +18,13 @@ export const PDF_MAX_SIDE = 3200;
 // Where pdfium.wasm is. In the studio's server import.meta.url is where this file was when the
 // server was BUILT (the bundler writes that in), so the server's own node_modules is looked
 // in too, from where it runs: apps/studio, two folders below them, in the app and from source.
+// On Windows, a path written in on a Mac has no drive and is not a path at all, so it is
+// only one guess among the others (packages/fonts/src/index.mjs found that out first).
 const WASM = join("node_modules", "@hyzyla", "pdfium", "dist", "pdfium.wasm");
 function wasmPath(): string {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const places = [join(here, "..", "..", "..", WASM), join(here, "..", WASM), join(process.cwd(), "..", "..", WASM), join(process.cwd(), WASM)];
+  let here: string | undefined;
+  try { here = dirname(fileURLToPath(import.meta.url)); } catch { /* built on another system */ }
+  const places = [...(here ? [join(here, "..", "..", "..", WASM), join(here, "..", WASM)] : []), join(process.cwd(), "..", "..", WASM), join(process.cwd(), WASM)];
   const found = places.find((p) => existsSync(p));
   if (!found) throw new Error("knitted could not find the part it reads PDFs with. Reinstall the app.");
   return found;
