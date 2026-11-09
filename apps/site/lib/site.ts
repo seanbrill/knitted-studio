@@ -1,7 +1,7 @@
 export const SITE_URL = "https://knitted.studio";
 export const GITHUB = "https://github.com/seanbrill/knitted-studio";
 export const SITE_NAME = "knitted.studio";
-export const TAGLINE = "Social posts, ads and web graphics from reusable brand patterns. You and your model, working on the same canvas.";
+export const TAGLINE = "A desktop studio for your brand's posts, ads and short videos: set the brand once as patterns, then fill them yourself or with your AI model, and knit every size.";
 
 export const NAV = [
   { href: "/features/", label: "Features" },

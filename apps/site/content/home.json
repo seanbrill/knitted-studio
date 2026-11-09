@@ -1,10 +1,14 @@
 {
   "hero": {
-    "eyebrow": "Open source · Free forever",
-    "sub": "Social posts, ads and web graphics from reusable brand patterns. You and your model, working on the same canvas.",
-    "cta": "Star on GitHub",
+    "eyebrow": "Free and open source · on your own computer",
+    "sub": "A desktop studio for your brand's posts, ads and short videos. Set the brand once as patterns, then fill them yourself or let your AI model do it, and knit every size in one go.",
+    "cta": "Download knitted",
     "ghost": "See how it works",
-    "strip": "The render engine and the MCP server work today. The studio app is still being built, and every page here says which is which."
+    "caption": "The studio today, with a FileFreak post open and its patterns beside it."
+  },
+  "today": {
+    "label": "In the app today",
+    "items": ["Pattern editor", "Pictures and video", "Motion and voiceover", "Design sheets", "Your model, over MCP", "Comments your model acts on", "Folders for everything"]
   },
   "idea": {
     "eyebrow": "The idea in one picture",
@@ -12,24 +16,26 @@
     "lead": "Lock what the brand decided. Leave the rest free. Then change one line and watch every size follow. This is a small, working model of it."
   },
   "steps": {
-    "eyebrow": "Three steps",
+    "eyebrow": "How it works",
     "title": "From brand to batch.",
     "items": [
-      { "n": "01", "title": "Set your swatch", "text": "Colours, fonts, logos and a written voice, in one brand kit. Done once." },
-      { "n": "02", "title": "Build a pattern", "text": "Lay out the stitches. Lock the ones that carry the brand. Leave the rest free." },
-      { "n": "03", "title": "Knit as many as you like", "text": "Change the headline and the photo, then knit a dozen posts in every size." }
+      { "n": "01", "title": "Set your brand", "text": "Give it your website. knitted reads your colours, fonts and logo into a Swatch, and pictures of every page into the Brief.", "shot": "/shots/step-brand.jpg", "alt": "The Swatch of a project: its colours, fonts and logo" },
+      { "n": "02", "title": "Build patterns", "text": "Lay out a post, a story or an ad once. Lock what the brand decided; leave the headline and the photo free.", "shot": "/shots/step-pattern.jpg", "alt": "The pattern editor, with a post on the canvas, its layers on the left and its settings on the right" },
+      { "n": "03", "title": "Knit every size", "text": "Fill the free slots, press Knit, and get PNG, JPEG or MP4 in every size, sorted into folders.", "shot": "/shots/step-knit.jpg", "alt": "A folder of knitted posts in the studio" }
     ]
+  },
+  "model": {
+    "eyebrow": "Your model, beside you",
+    "title": "Watch it work. Pause it any time.",
+    "text": "Connect Claude Code, or add your Anthropic key and ask inside the app. Your model reads the brand, fills patterns, designs pages and knits, on the same canvas you use. What it changes is outlined in red with its name, and Pause holds its changes until you say so.",
+    "ticks": ["Follow it from screen to screen", "Pin a comment to a spot and it does what it says", "Locked stitches stay locked, for it too"],
+    "shot": "/shots/model-follow.jpg",
+    "alt": "The studio while a model files knits into a folder: the folder and each knit are outlined in red, with what the model is doing"
   },
   "lock": {
     "eyebrow": "Brand lock",
     "title": "Your brand stays put.",
     "text": "Most tools drift. A model gets a little creative with the logo, someone nudges the red, and by Friday nothing matches. In knitted a locked stitch is locked for everyone, your model included. If it tries, the write is refused and the refusal is reported back, so nobody believes a change happened when it did not."
-  },
-  "doors": {
-    "eyebrow": "Two front doors",
-    "title": "Use the studio. Or let your model.",
-    "studio": { "title": "In the studio", "text": "A canvas where locked and free stitches are drawn differently, so you always know what is yours to change.", "status": "The editor is being built." },
-    "model": { "title": "Through your model", "text": "The same operations are open to your model over MCP. It reads the Pattern, fills the free slots and knits.", "status": "Available now." }
   },
   "motion": {
     "eyebrow": "Motion and voice",
@@ -37,7 +43,26 @@
     "text": "A video is not a pile of pictures pasted on a timer. Each frame of a knitted animation is made at an exact moment, so things ease, fade and slide the way they do on a good website. Then it is encoded, and the result is the same on a slow laptop as on a fast one.",
     "voice": "Voiceover is made by a speech model running on your own computer. Everything runs on your computer."
   },
-  "gallery": { "eyebrow": "Sample patterns", "title": "What a pattern looks like.", "note": "Drawn from the brand tokens, not knitted output yet. Real knits will replace these." },
+  "gallery": {
+    "eyebrow": "Made with knitted",
+    "title": "Real knits, from one set of patterns.",
+    "note": "Each of these came out of the studio as it is today, for FileFreak, a file-hosting brand.",
+    "items": [
+      { "src": "/shots/knits/surprise-bill.jpg", "alt": "Post: Surprise bill? Not here. The FileFreak mascot surrounded by flames." },
+      { "src": "/shots/knits/five-gb-free.jpg", "alt": "Post: 5 GB free, with no card, beside the mascot." },
+      { "src": "/shots/knits/roll-back.jpg", "alt": "Post: Go back a deploy in one command, with a terminal." },
+      { "src": "/shots/knits/ship-from-one-place.jpg", "alt": "Ad: Ship from one place, beside the mascot." },
+      { "src": "/shots/knits/zero-to-deployed.jpg", "alt": "Post: Ship a site from your terminal." },
+      { "src": "/shots/knits/share-links.jpg", "alt": "Post: Links that know when to stop." }
+    ]
+  },
+  "sheets": {
+    "eyebrow": "Design sheets",
+    "title": "Whole sites, on one board.",
+    "text": "Foundations, components and every page on a computer and a phone, drawn from your Swatch, in labelled sections like a Figma file. Design them yourself or with your model, comment on any frame, and download them with a style guide.",
+    "shot": "/shots/design-sheet.jpg",
+    "alt": "A design sheet in the studio: a website's colours, type, components and pages on one board"
+  },
   "local": {
     "eyebrow": "Local, private, open",
     "items": [
@@ -50,6 +75,6 @@
     "eyebrow": "Ready when you are",
     "title": "Knit your first post tonight.",
     "text": "The desktop app for Windows, macOS and Linux is not released yet. Star the project and you will see it the moment it is.",
-    "released": "The desktop app for Windows, macOS and Linux is out as an early preview. Download it, or star the project to see what comes next."
+    "released": "Download the studio, give it your website, and your first patterns are ready to fill. Free, for Windows, macOS and Linux."
   }
 }

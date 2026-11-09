@@ -1,15 +1,170 @@
 {
-  "note": "Sample patterns drawn from the brand tokens. They are not real knitted output yet; the gallery says so.",
-  "items": [
-    { "id": "launch-story", "title": "Launch story", "format": "Story, 9:16", "aspect": "9 / 16", "theme": "ember", "layout": "headline", "eyebrow": "New this week", "headline": "Make it knitted.", "tag": "Pattern: Launch story", "alt": "Sample Story post on an orange field with the headline Make it knitted." },
-    { "id": "quote-square", "title": "Quote card", "format": "Square, 1:1", "aspect": "1 / 1", "theme": "oxblood", "layout": "quote", "eyebrow": "Customer words", "headline": "It finally looks like us.", "tag": "Pattern: Quote card", "alt": "Sample square quote card on a deep red field." },
-    { "id": "stat-portrait", "title": "Big number", "format": "Portrait, 4:5", "aspect": "4 / 5", "theme": "cream", "layout": "stat", "eyebrow": "By the numbers", "headline": "12 posts", "tag": "One Pattern, one afternoon", "alt": "Sample portrait post with the number 12 posts on a warm white field." },
-    { "id": "wide-ad", "title": "Wide ad", "format": "Wide, 16:9", "aspect": "16 / 9", "theme": "ink", "layout": "headline", "eyebrow": "Ad", "headline": "Pattern once.", "tag": "Pattern: Wide ad", "alt": "Sample wide ad on a warm black field with the headline Pattern once." },
-    { "id": "chevron-square", "title": "Chevron field", "format": "Square, 1:1", "aspect": "1 / 1", "theme": "ember", "layout": "chevrons", "eyebrow": "Open source", "headline": "Free forever.", "tag": "Pattern: Chevron field", "alt": "Sample square post on orange with a chevron pattern in deep red." },
-    { "id": "red-story", "title": "Announcement", "format": "Story, 9:16", "aspect": "9 / 16", "theme": "red", "layout": "headline", "eyebrow": "Heads up", "headline": "We moved.", "tag": "Pattern: Announcement", "alt": "Sample Story post on a red field with the headline We moved." },
-    { "id": "tip-portrait", "title": "Quick tip", "format": "Portrait, 4:5", "aspect": "4 / 5", "theme": "ember", "layout": "quote", "eyebrow": "Tip 03", "headline": "Lock the logo.", "tag": "Pattern: Quick tip", "alt": "Sample portrait tip card on orange with the text Lock the logo." },
-    { "id": "banner-wide", "title": "Web banner", "format": "Wide, 16:9", "aspect": "16 / 9", "theme": "cream", "layout": "headline", "eyebrow": "On the site", "headline": "Knit your first post.", "tag": "Pattern: Web banner", "alt": "Sample web banner on warm white with the headline Knit your first post." },
-    { "id": "oxblood-square", "title": "Sale", "format": "Square, 1:1", "aspect": "1 / 1", "theme": "oxblood", "layout": "stat", "eyebrow": "This weekend", "headline": "40% off", "tag": "Pattern: Sale", "alt": "Sample square sale post on deep red with the text 40% off." },
-    { "id": "ink-story", "title": "Behind the scenes", "format": "Story, 9:16", "aspect": "9 / 16", "theme": "ink", "layout": "chevrons", "eyebrow": "Behind the scenes", "headline": "Row by row.", "tag": "Pattern: Behind the scenes", "alt": "Sample Story post on warm black with the headline Row by row." }
+  "note": "Every picture and video here was knitted in the studio for FileFreak, a file-hosting brand, from the patterns in one project. They are only made smaller for this page, and the videos play without their sound.",
+  "groups": [
+    {
+      "id": "stories",
+      "title": "Stories",
+      "size": "9:16 · 1080 × 1920",
+      "text": "For Instagram, TikTok and YouTube Shorts. The layout stays; the headline, the line and the link change.",
+      "shape": "story",
+      "items": [
+        {
+          "src": "/shots/gallery/story-start-free.jpg",
+          "w": 405,
+          "h": 720,
+          "title": "Start free, no card",
+          "alt": "Story: 5 GB. No card. It never charges. With the FileFreak mascot."
+        },
+        {
+          "src": "/shots/gallery/story-folder-site.jpg",
+          "w": 405,
+          "h": 720,
+          "title": "A folder becomes a site",
+          "alt": "Story: A folder becomes a site, served at name.filefreak.page."
+        },
+        {
+          "src": "/shots/gallery/story-ship.jpg",
+          "w": 405,
+          "h": 720,
+          "title": "Ship from one place",
+          "alt": "Story on a dark field: Ship from one place, with a screenshot of FileFreak's file browser."
+        },
+        {
+          "src": "/shots/gallery/story-desktop.jpg",
+          "w": 405,
+          "h": 720,
+          "title": "The desktop client",
+          "alt": "Story: Your files, beside your folders, about FileFreak's desktop client."
+        }
+      ]
+    },
+    {
+      "id": "posts",
+      "title": "Posts and carousels",
+      "size": "4:5 · 1080 × 1350",
+      "text": "The size most feeds show largest. A carousel is a pattern for each slide, knitted together.",
+      "shape": "post",
+      "items": [
+        {
+          "src": "/shots/gallery/post-no-surprise-bills.jpg",
+          "w": 432,
+          "h": 540,
+          "title": "No surprise bills",
+          "alt": "Post: Surprise bill? Not here. The 3D FileFreak mascot surrounded by flames."
+        },
+        {
+          "src": "/shots/gallery/post-share-links.jpg",
+          "w": 432,
+          "h": 540,
+          "title": "Links that stop when you say",
+          "alt": "Post: Links that stop when you say, beside the 3D FileFreak mascot dressed as a police officer."
+        },
+        {
+          "src": "/shots/gallery/post-every-download.jpg",
+          "w": 432,
+          "h": 540,
+          "title": "Every download checked",
+          "alt": "Post: Every download is checked, with a terminal showing filefreak cp."
+        },
+        {
+          "src": "/shots/gallery/post-73-endpoints.jpg",
+          "w": 432,
+          "h": 540,
+          "title": "73 endpoints, one SDK",
+          "alt": "Post: 73 endpoints, one SDK, with a terminal showing npm install."
+        },
+        {
+          "src": "/shots/gallery/post-desktop.jpg",
+          "w": 432,
+          "h": 540,
+          "title": "Your files, beside your folders",
+          "alt": "Post: Your files, beside your folders, with a terminal showing filefreak ui."
+        },
+        {
+          "src": "/shots/gallery/post-everything.jpg",
+          "w": 432,
+          "h": 540,
+          "title": "Everything a project needs",
+          "alt": "Post on a dark field: Everything a project needs, with FileFreak's file browser and four buttons."
+        },
+        {
+          "src": "/shots/gallery/post-zero-hook.jpg",
+          "w": 432,
+          "h": 540,
+          "title": "Carousel, slide 1 of 5",
+          "alt": "Carousel slide 1: Ship a site from your terminal."
+        },
+        {
+          "src": "/shots/gallery/post-zero-deploy.jpg",
+          "w": 432,
+          "h": 540,
+          "title": "Carousel, slide 3 of 5",
+          "alt": "Carousel slide 3: Deploy the build, with a terminal showing filefreak sites deploy."
+        }
+      ]
+    },
+    {
+      "id": "motion",
+      "title": "Reels and animated posts",
+      "size": "MP4 · 9:16 and 4:5",
+      "text": "Made frame by frame, then encoded, so the motion is the same on any computer.",
+      "shape": "motion",
+      "videos": [
+        {
+          "src": "/shots/gallery/reel-the-hub.mp4",
+          "poster": "/shots/gallery/reel-the-hub.jpg",
+          "w": 360,
+          "h": 640,
+          "title": "Reel: The Hub",
+          "alt": "Reel: See what people made public, as the headline types itself in."
+        },
+        {
+          "src": "/shots/gallery/reel-limit.mp4",
+          "poster": "/shots/gallery/reel-limit.jpg",
+          "w": 360,
+          "h": 640,
+          "title": "Reel: A limit you set",
+          "alt": "Reel: Nothing charged by surprise, as the headline types itself in."
+        },
+        {
+          "src": "/shots/gallery/post-one-bill.mp4",
+          "poster": "/shots/gallery/post-one-bill.jpg",
+          "w": 432,
+          "h": 540,
+          "title": "Animated post: One account, one bill",
+          "alt": "Animated post: One account, one allowance, one bill, as three steps slide in one after another."
+        }
+      ]
+    },
+    {
+      "id": "square-wide",
+      "title": "Squares and wide",
+      "size": "1:1 · 1080 × 1080 and 16:9 · 1920 × 1080",
+      "text": "For LinkedIn, X, Threads and YouTube. The same brand, in the shapes they ask for.",
+      "shape": "mixed",
+      "items": [
+        {
+          "src": "/shots/gallery/square-pro.jpg",
+          "w": 540,
+          "h": 540,
+          "title": "Pro at a glance",
+          "alt": "Square post: One plan for your files, sites and code, with four numbers in tiles."
+        },
+        {
+          "src": "/shots/gallery/square-api.jpg",
+          "w": 540,
+          "h": 540,
+          "title": "API stat square",
+          "alt": "Square post: 73 API endpoints, one SDK, with the number large."
+        },
+        {
+          "src": "/shots/gallery/wide-hub.jpg",
+          "w": 960,
+          "h": 540,
+          "title": "The Hub, wide",
+          "alt": "Wide post: See what people have made public, beside the FileFreak mascot."
+        }
+      ]
+    }
   ]
 }

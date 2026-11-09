@@ -117,19 +117,59 @@ body { font-size: 15px; }
   .hero-grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-8); padding-top: var(--space-6); }
   .hero-visual { max-width: 420px; }
 }
-.mock {
-  background: var(--rail); border-radius: var(--radius-lg); padding: var(--space-3); display: grid; grid-template-columns: 28px 1fr; gap: var(--space-3);
-  box-shadow: var(--shadow-lift); transform: rotate(1.5deg);
+.hero-facts { margin: var(--space-5) 0 0; font-family: var(--font-mono); font-size: 12px; opacity: 0.85; }
+/* The studio itself, in a window, with two real knits laid over its corner and the
+ * model's outline on it, as it looks while a model works. */
+.hero-shot { min-height: 440px; }
+.shot-window { position: relative; width: 128%; border-radius: var(--radius-lg); overflow: hidden; box-shadow: 0 0 0 8px var(--rail), 0 40px 80px -30px rgba(23, 17, 11, 0.7); transform: rotate(-2deg); transform-origin: left center; }
+.shot-window img { display: block; width: 100%; height: auto; }
+.hero-knit { position: absolute; width: 27%; height: auto; border-radius: var(--radius-md); box-shadow: 0 24px 48px -16px rgba(23, 17, 11, 0.6); }
+.hero-knit-1 { left: -6%; bottom: -14%; transform: rotate(-6deg); }
+.hero-knit-2 { left: 20%; bottom: -20%; transform: rotate(4deg); }
+.hero-model { position: absolute; left: 38%; top: -22px; display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: var(--radius-pill); background: var(--surface); color: var(--ink); border: 2px solid var(--red); font-size: 13px; font-weight: 600; white-space: nowrap; box-shadow: 0 10px 24px -10px rgba(23, 17, 11, 0.5); }
+.hero-model i { width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
+@media (max-width: 900px) {
+  .hero-shot { min-height: 0; margin-bottom: var(--space-12); }
+  .shot-window { width: 100%; transform: none; }
+  .hero-knit { width: 34%; }
+  .hero-model { left: auto; right: 0; top: -18px; }
 }
-.mock-rail { display: flex; flex-direction: column; gap: var(--space-3); padding-top: var(--space-2); align-items: center; }
-.mock-rail i { width: 16px; height: 16px; border-radius: 4px; background: var(--on-rail-muted); opacity: 0.55; }
-.mock-rail i:first-child { background: var(--ember); opacity: 1; }
-.mock-canvas { background: var(--surface-sunken); border-radius: var(--radius-md); padding: var(--space-4); display: grid; place-items: center; }
-.mock-canvas .art { width: min(100%, 300px); }
-.caption { margin-top: var(--space-3); color: inherit; font-size: 12px; }
-.honest-strip { background: var(--rail); color: var(--on-rail); }
-.honest-strip p { padding: var(--space-3) 0; font-size: 13px; display: flex; gap: var(--space-3); flex-wrap: wrap; align-items: center; }
-.honest-strip strong { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--rail-active-ink); font-weight: 500; }
+@media (max-width: 480px) { .hero-model { display: none; } }
+
+/* What is in the app today, under the hero. */
+.today-strip { background: var(--rail); color: var(--on-rail); }
+.today-strip .wrap { display: flex; align-items: center; gap: var(--space-3) var(--space-4); flex-wrap: wrap; padding-top: var(--space-4); padding-bottom: var(--space-4); }
+.today-label { margin: 0; font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--rail-active-ink); }
+.today-strip ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.today-strip li { font-size: 13px; font-weight: 600; padding: 5px 12px; border: 1px solid rgba(246, 243, 239, 0.22); border-radius: var(--radius-pill); }
+
+/* A step with how it looks in the studio under it. */
+.step-shot { display: flex; flex-direction: column; }
+.step-shot p { flex: 1; margin: 0 0 var(--space-5); }
+.step-shot img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 10; object-fit: cover; object-position: left top; border-radius: var(--radius-md); box-shadow: 0 0 0 1px var(--line); }
+
+/* Bands with a picture of the studio beside the words. */
+.field-black { background: var(--rail); color: var(--on-rail); }
+.field-black .prose, .field-black .body-sm { color: var(--on-rail); }
+.eyebrow-glow { color: var(--rail-active-ink); }
+.link-glow { color: var(--rail-active-ink); }
+.split-media { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: var(--space-12); align-items: center; }
+.split-media.split-flip { grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); }
+.media-shot { display: block; width: 100%; height: auto; border-radius: var(--radius-lg); box-shadow: 0 0 0 1px rgba(246, 243, 239, 0.12), 0 30px 60px -30px #000; }
+.media-shot-light { box-shadow: 0 0 0 1px var(--line), 0 30px 60px -30px rgba(23, 17, 11, 0.45); }
+.ticks { list-style: none; margin: var(--space-6) 0; padding: 0; display: grid; gap: var(--space-3); font-weight: 600; }
+.ticks li { display: flex; gap: var(--space-3); }
+.ticks li::before { content: ""; flex-shrink: 0; width: 18px; height: 18px; margin-top: 2px; border-radius: 50%; background: var(--success) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / 12px no-repeat; }
+@media (max-width: 900px) {
+  .split-media, .split-media.split-flip { grid-template-columns: minmax(0, 1fr); gap: var(--space-8); }
+  .split-flip > img { order: 2; }
+}
+
+/* Real knits, in a row that steps up and down. */
+.knit-strip { list-style: none; margin: 0 0 var(--space-6); padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--space-4); align-items: end; }
+.knit-strip img { display: block; width: 100%; height: auto; border-radius: var(--radius-md); box-shadow: 0 18px 40px -20px rgba(23, 17, 11, 0.5); }
+.knit-strip li:nth-child(2n) { transform: translateY(-18px); }
+@media (max-width: 900px) { .knit-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: var(--space-8); } }
 
 /* ── Sample post art (also used in the demo and gallery) ────────────────── */
 .art {
@@ -252,10 +292,31 @@ body { font-size: 15px; }
 .footer-chev { color: var(--ember); margin-top: var(--space-4); }
 
 /* ── Gallery page ───────────────────────────────────────────────────────── */
-.gallery-grid { columns: 3 260px; column-gap: var(--space-6); }
-.gallery-grid figure { break-inside: avoid; margin: 0 0 var(--space-8); }
-.gallery-grid .art { width: 100%; }
-.gallery-grid figcaption { margin-top: var(--space-2); }
+/* Gallery: real knits, a group per size */
+.knit-group { padding-top: var(--space-16); }
+.knit-group-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); column-gap: var(--space-8); align-items: end; margin-bottom: var(--space-8); }
+.knit-group-head h2 { margin: 0; }
+.knit-group-head .eyebrow { grid-column: 1; grid-row: 2; margin: var(--space-2) 0 0; }
+.knit-group-head .body-lg { grid-column: 2; grid-row: 1 / span 2; margin: 0; max-width: 46ch; }
+.knit-grid { display: grid; gap: var(--space-6); align-items: start; }
+.knit-grid figure { margin: 0; }
+.knit-grid img, .knit-grid video { display: block; width: 100%; height: auto; border-radius: var(--radius-md); background: var(--surface-sunken); box-shadow: 0 0 0 1px var(--line), 0 18px 40px -22px rgba(23, 17, 11, 0.45); }
+.knit-grid figcaption { margin-top: var(--space-3); }
+.knit-grid-story { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.knit-grid-post { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.knit-grid-motion { grid-template-columns: 1fr 1fr 1.333fr; align-items: end; }
+.knit-grid-mixed { grid-template-columns: 1fr 1fr 2fr; align-items: end; }
+.knit-group-foot { margin: var(--space-16) 0 0; }
+@media (max-width: 900px) {
+  .knit-group-head { grid-template-columns: 1fr; }
+  .knit-group-head .eyebrow, .knit-group-head .body-lg { grid-column: 1; grid-row: auto; }
+  .knit-group-head .body-lg { margin-top: var(--space-3); }
+  .knit-grid-story, .knit-grid-post { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .knit-grid-motion { grid-template-columns: 1fr 1fr; }
+  .knit-grid-motion figure:last-child { grid-column: 1 / -1; max-width: 70%; }
+  .knit-grid-mixed { grid-template-columns: 1fr 1fr; }
+  .knit-grid-mixed figure:last-child { grid-column: 1 / -1; }
+}
 .notice { border-left: 4px solid var(--ember); background: var(--tint); padding: var(--space-4) var(--space-5); border-radius: 0 var(--radius-md) var(--radius-md) 0; }
 .notice-soon { border-left-style: dashed; background: var(--surface-sunken); }
 
