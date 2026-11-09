@@ -67,6 +67,16 @@ const search = async (words) => {
 };
 const results = () => page.getByRole("list", { name: "Results" }).getByRole("listitem");
 
+test("before a search: where finds go, where they come from, and searches to start from that run with a press", async () => {
+  await page.goto(`${studio.url}/stock?to=${projectId}&kind=image`);
+  await page.getByText("From Openverse. A free Pixabay key adds more.").waitFor();
+  assert.equal(await page.getByRole("search").getByRole("button", { name: "Search" }).isDisabled(), true, "nothing typed, nothing to search");
+  await page.getByRole("group", { name: "Start from" }).getByRole("button", { name: "coffee shop" }).click();
+  await page.waitForURL(/q=coffee\+shop/);
+  assert.equal(await page.getByLabel("Search free stock").inputValue(), "coffee shop");
+  await results().first().waitFor();
+});
+
 test("with no key, a search finds openly licensed photos, and says Pixabay has more with a free key", async () => {
   await page.goto(`${studio.url}/stock?to=${projectId}`);
   await page.getByRole("heading", { name: "Free photos, video and sound" }).waitFor();
@@ -131,8 +141,8 @@ test("adding a photo puts it in the project's Yarn with its credit, which the dr
 test("a CC BY photo goes to the Library, says to credit its maker, and keeps Openverse's own credit line", async () => {
   await page.goto(`${studio.url}/stock?to=${projectId}&q=rye`);
   await results().first().waitFor();
-  await page.getByRole("combobox", { name: "Add to" }).click();
-  await page.getByRole("option", { name: "Add to the Library, for every project" }).click();
+  await page.getByRole("combobox", { name: "Adds to" }).click();
+  await page.getByRole("option", { name: "The Library, for every project" }).click();
   await page.getByRole("button", { name: "Add Rye loaf 2 to the Library" }).click();
   await page.getByText("Added Rye loaf 2 to the Library.").waitFor();
   const lib = await serverHas(studio, "/api/projects/library/yarn", (l) => l.some((y) => y.meta.stock?.id === `openverse:${OV[1]}`));
@@ -145,7 +155,7 @@ test("a CC BY photo goes to the Library, says to credit its maker, and keeps Ope
   await credit.getByRole("link", { name: /CC BY 4.0/ }).waitFor();
   // Where the next one goes is remembered.
   await page.goto(`${studio.url}/stock`);
-  await page.getByRole("combobox", { name: "Add to" }).getByText("Add to the Library, for every project").waitFor();
+  await page.getByRole("combobox", { name: "Adds to" }).getByText("The Library, for every project").waitFor();
 });
 
 test("sound comes from Openverse, to listen to before adding; Pixabay has none", async () => {

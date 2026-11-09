@@ -116,10 +116,10 @@ export function ChatList({ chats, shown, href, onOpen, onDeleted }: {
                 <span className="body-sm" style={{ color: "var(--ink-muted)", ...oneLine }}>{c.running ? "Answering..." : timeAgo(c.updatedAt)}, {placeOf(c)}</span>
               </>);
               return (
-                <li key={c.id} style={{ display: "flex", alignItems: "center", gap: 4, borderRadius: "var(--radius-md)", background: on ? "var(--tint)" : undefined }}>
+                <li key={c.id} className="chat-li" data-on={on || undefined} style={{ display: "flex", alignItems: "center", gap: 4, borderRadius: "var(--radius-md)", background: on ? "var(--tint)" : undefined }}>
                   {href ? <Link href={href(c)} aria-current={on ? "page" : undefined} style={look}>{what}</Link>
                     : <button type="button" aria-current={on || undefined} onClick={() => onOpen?.(c)} style={{ ...look, background: "transparent", border: 0, borderRadius: "var(--radius-md)", textAlign: "left", font: "inherit", cursor: "pointer" }}>{what}</button>}
-                  <IconButton label={`Delete the chat "${c.title}"`} onClick={() => setDoomed(c)} style={{ flexShrink: 0, marginRight: 4 }}><Trash2 size={14} aria-hidden /></IconButton>
+                  <IconButton label={`Delete the chat "${c.title}"`} onClick={() => setDoomed(c)} className="chat-del" style={{ flexShrink: 0, marginRight: 4 }}><Trash2 size={14} aria-hidden /></IconButton>
                 </li>
               );
             })}

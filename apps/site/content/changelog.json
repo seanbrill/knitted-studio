@@ -1,5 +1,15 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
+  "next": {
+    "title": "Posts, Insights and Stock, ready to start",
+    "items": [
+      "Posts shows where a post can go now: one chip per network, with the account it posts as, or what is left to set up. Each opens that network in Settings, already open.",
+      "With nothing posted, Posts says how to start: Open Knits when an account is connected, or Set up Social when none is, and every knit has Download and Copy caption to post it yourself.",
+      "Insights shows what will be there before anything is posted, dimmed, with a way to the project's Posts.",
+      "Stock says where finds go under the search, where they come from, and offers searches to start from for photos, videos and sound, each run with a press.",
+      "In Ask, a chat's delete shows on the open chat and the one you point at, not on every chat in the list."
+    ]
+  },
   "entries": [
     {
       "version": "0.1.42",

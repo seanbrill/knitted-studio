@@ -17,6 +17,12 @@ const { Search, Play, ExternalLink, Check, Music, AlertTriangle } = icons;
 const KINDS: { value: StockKind; label: string }[] = [{ value: "image", label: "Photos" }, { value: "video", label: "Videos" }, { value: "audio", label: "Sound" }];
 const TO_KEY = "knitted.stock.to";
 const seconds = (ms?: number) => (ms ? `${Math.round(ms / 1000)}s` : "");
+/** Searches to start from, each one that fits its kind. */
+const START: Record<StockKind, string[]> = {
+  image: ["coffee shop", "sunrise over a city", "hands on a keyboard", "desk from above", "people laughing", "mountain lake"],
+  video: ["city at night", "pouring coffee", "waves on a beach", "typing on a laptop", "clouds moving", "people walking"],
+  audio: ["applause", "rain on a window", "upbeat music", "birdsong", "crowd cheering", "notification chime"],
+};
 
 export function StockView() {
   const params = useSearchParams();
@@ -32,6 +38,7 @@ export function StockView() {
   const [looking, setLooking] = useState<StockItem | null>(null);
   const [added, setAdded] = useState<Record<string, string>>({});
   const { data: projects } = useLive(() => api.projects.list(), []);
+  const { data: cfg } = useLive(() => api.stock.config(), []);
   const [to, setTo] = useState<string>("");
 
   // Where a file goes: the address says, else where the last one went, else the first project.
@@ -79,16 +86,15 @@ export function StockView() {
   const asked = found?.sources.filter((s) => s.state !== "none") ?? [];
   // Pexels is not giving out keys for now, so only a source someone can get a key for is suggested.
   const noKey = found?.sources.filter((s) => s.state === "no-key" && !STOCK_SOURCES[s.provider].note) ?? [];
+  // Before a search: where finds come from, and a source a free key would add.
+  const on = cfg?.sources.filter((s) => !s.key || s.key.present).map((s) => s.name) ?? [];
+  const could = cfg?.sources.filter((s) => s.key && !s.key.present && !s.note).map((s) => s.name) ?? [];
+  const kindWord = KINDS.find((k) => k.value === kind)!.label.toLowerCase();
 
   return (
     <div className="page">
-      <PageHeader eyebrow="Stock" title="Free photos, video and sound">
-        <div style={{ minWidth: 240 }}>
-          <Select aria-label="Add to" value={to} onValueChange={(v) => { setTo(v); try { localStorage.setItem(TO_KEY, v); } catch {} }}
-            options={[...(projects ?? []).map((p) => ({ value: p.id, label: `Add to ${p.name}` })), { value: LIBRARY_ID, label: "Add to the Library, for every project" }]} />
-        </div>
-      </PageHeader>
-      <form role="search" onSubmit={(e) => { e.preventDefault(); go({ q: text.trim() }); }} style={{ display: "flex", gap: "var(--space-3)", alignItems: "center", flexWrap: "wrap", marginBottom: "var(--space-4)" }}>
+      <PageHeader eyebrow="Stock" title="Free photos, video and sound" />
+      <form role="search" onSubmit={(e) => { e.preventDefault(); go({ q: text.trim() }); }} style={{ display: "flex", gap: "var(--space-3)", alignItems: "center", flexWrap: "wrap", marginBottom: "var(--space-3)" }}>
         <div style={{ position: "relative", flex: "1 1 320px", maxWidth: 520 }}>
           <Search size={16} aria-hidden style={{ position: "absolute", left: 12, top: 12, color: "var(--ink-muted)" }} />
           <Input aria-label="Search free stock" value={text} onChange={(e) => setText(e.target.value)} placeholder="Try coffee shop, sunrise, applause" style={{ paddingLeft: 36, height: 40 }} />
@@ -96,17 +102,23 @@ export function StockView() {
         <SegmentedControl<StockKind> label="Kind" value={kind} onChange={(k) => go({ kind: k, q: text.trim() })} options={KINDS} />
         <Button type="submit" variant="primary" disabled={!text.trim()}>Search</Button>
       </form>
-
-      {noKey.length > 0 && (
-        <p className="body-sm" style={{ margin: "0 0 var(--space-4)", color: "var(--ink-muted)" }}>
-          {noKey.map((s) => s.name).join(" and ")} {noKey.length === 1 ? "has" : "have"} more {KINDS.find((k) => k.value === kind)!.label.toLowerCase()} with a free key. <Link className="link" href="/settings?tab=stock">Add a key</Link>
-        </p>
-      )}
+      <div className="stock-to">
+        <label htmlFor="stock-to">Adds to</label>
+        <div className="stock-to-pick">
+          <Select id="stock-to" value={to} onValueChange={(v) => { setTo(v); try { localStorage.setItem(TO_KEY, v); } catch {} }}
+            options={[...(projects ?? []).map((p) => ({ value: p.id, label: p.name })), { value: LIBRARY_ID, label: "The Library, for every project" }]} />
+        </div>
+        {noKey.length > 0
+          ? <span className="stock-from">{noKey.map((s) => s.name).join(" and ")} {noKey.length === 1 ? "has" : "have"} more {kindWord} with a free key. <Link className="link" href="/settings?tab=stock">Add a key</Link></span>
+          : !found && on.length > 0 && <span className="stock-from">From {on.join(" and ")}.{could.length > 0 && <> A free {could.join(" or ")} key adds more. <Link className="link" href="/settings?tab=stock">Add a key</Link></>}</span>}
+      </div>
       {asked.filter((s) => s.state === "error").map((s) => <p key={s.provider} className="field-error" role="alert" style={{ margin: "0 0 var(--space-3)" }}><AlertTriangle size={14} aria-hidden /> {s.note}</p>)}
       {err && <p className="field-error" role="alert"><AlertTriangle size={14} aria-hidden /> {err}</p>}
 
       {!q.trim() ? (
-        <EmptyState title="Search for what you need" body="Photos, videos, music and sounds that are free for a business to use: from Openverse with no key, and from Pixabay once you add a free key in Settings. Each one keeps its credit and licence when you add it." />
+        <EmptyState title="Search for what you need" body="Photos, videos, music and sounds that are free for a business to use. Each one keeps its credit and licence when you add it."
+          action={<div className="stock-start" role="group" aria-labelledby="stock-start"><p className="eyebrow" id="stock-start">Start from</p>
+            {START[kind].map((s) => <button key={s} type="button" className="chip chip-button" onClick={() => { setText(s); go({ q: s }); }}>{s}</button>)}</div>} />
       ) : !found ? (
         <div style={{ display: "grid", gap: "var(--space-4)", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>{[0, 1, 2, 3, 4, 5].map((i) => <Skeleton key={i} height={220} />)}</div>
       ) : !found.items.length ? (

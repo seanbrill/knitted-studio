@@ -72,6 +72,22 @@ async function connectX() {
   return url;
 }
 
+test("Posts with no account says where a post can go, and each network leads to its own setup", async () => {
+  await page.goto(`${studio.url}/projects/${projectId}/posts`);
+  await page.getByRole("heading", { name: "Connect an account to post from here" }).waitFor();
+  await page.getByRole("link", { name: "Set up Social" }).waitFor();
+  const x = page.getByRole("group", { name: "Posts go to" }).getByRole("link", { name: /^X\b/ });
+  assert.match(await x.textContent(), /Set up/);
+  await x.click();
+  await page.waitForURL(/tab=social&network=x/);
+  assert.equal(await page.getByRole("region", { name: "X" }).getByRole("button", { name: /^X\b/ }).getAttribute("aria-expanded"), "true", "X is open");
+  assert.equal(await page.getByRole("region", { name: "LinkedIn" }).getByRole("button", { name: /^LinkedIn\b/ }).getAttribute("aria-expanded"), "false", "one at a time");
+  await page.goto(`${studio.url}/insights?project=${projectId}`);
+  await page.getByRole("list", { name: "What will be here" }).waitFor();
+  await page.getByRole("link", { name: "Go to Posts in Social e2e" }).click();
+  await page.waitForURL(new RegExp(`/projects/${projectId}/posts$`));
+});
+
 test("Settings, Social: an X app is set up from what the card says, and its secret never comes back", async () => {
   await page.goto(`${studio.url}/settings?tab=social&network=x`);
   const card = page.getByRole("region", { name: "X" });

@@ -37,7 +37,15 @@ export function InsightsView() {
         </div>
       </PageHeader>
       {!data ? <Skeleton height={240} /> : !data.posts.length ? (
-        <EmptyState title="Nothing posted yet" body="Once posts go out, knitted asks each platform how they are doing, and what works shows here. Post from a knit, or from a project's Posts." />
+        <EmptyState title="Nothing posted yet" body="After a post goes out, knitted asks its network how it is doing, an hour in and then for a month, and this page fills in:"
+          action={<>
+            <ul className="ins-ghosts" aria-label="What will be here">
+              {["By platform", "What your posts say", "Every post"].map((t) => <li key={t}>{t}<i aria-hidden /><i aria-hidden /></li>)}
+            </ul>
+            {projectId
+              ? <Link className="btn btn-secondary" href={`/projects/${projectId}/posts`}>Go to Posts in {names.get(projectId) ?? "this project"}</Link>
+              : <Link className="btn btn-secondary" href="/projects">Go to Projects</Link>}
+          </>} />
       ) : (
         <div style={{ display: "grid", gap: "var(--space-8)" }}>
           <p className="body" style={{ margin: 0, color: "var(--ink-muted)", maxWidth: 720 }}>{data.note}</p>

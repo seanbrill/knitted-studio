@@ -1,14 +1,16 @@
 "use client";
 
-// A project's posts: what needs the person (failed, missed, drafts), what is scheduled, and
-// what went out, with a link to each on its platform.
+// A project's posts: where a post can go now, what needs the person (failed, missed, drafts),
+// what is scheduled, and what went out, with a link to each on its platform. With nothing
+// posted, it says how to start: Open Knits with an account, Set up Social with none.
 
 import Link from "next/link";
 import { useState } from "react";
-import { PLATFORMS, metricsLine } from "@knitted/core";
-import { api, knitFileUrl, type KnitRecord, type SocialAccount, type SocialPost } from "@knitted/core/client";
+import { PLATFORMS, PLATFORM_IDS, metricsLine } from "@knitted/core";
+import { api, knitFileUrl, type KnitRecord, type SocialAccount, type SocialConfigView, type SocialPost } from "@knitted/core/client";
 import { Button, ConfirmDialog, Dialog, EmptyState, Field, Input, Skeleton, icons, useToast } from "@knitted/ui";
 import { timeAgo, useLive } from "@/lib/hooks";
+import { PlatformMark } from "./PostDialog";
 
 const { AlertTriangle, CalendarClock, ExternalLink, Send, Trash2, Check, RefreshCw } = icons;
 
@@ -30,19 +32,28 @@ export function PostsView({ projectId }: { projectId: string }) {
   const { data: posts } = useLive(() => api.posts.list(projectId), [projectId]);
   const { data: knits } = useLive(() => api.knit.list(projectId), [projectId]);
   const { data: accounts } = useLive(() => api.social.accounts(), []);
+  const { data: social } = useLive(() => api.social.config(), []);
   const [moving, setMoving] = useState<SocialPost | null>(null);
   if (!posts || !knits || !accounts) return <Skeleton height={200} />;
   const byKnit = new Map(knits.map((k) => [k.id, k]));
   const byAccount = new Map(accounts.map((a) => [a.id, a]));
+  const knitsHref = `/projects/${projectId}/knits`;
   const sorted = (list: SocialPost[], g: (typeof GROUPS)[number]) => g.title === "Scheduled" ? [...list].sort((a, b) => (a.scheduledAt ?? "").localeCompare(b.scheduledAt ?? "")) : list;
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "var(--space-4)", flexWrap: "wrap", marginBottom: "var(--space-4)" }}>
+      <div className="posts-head">
         <h2 className="h2" style={{ margin: 0 }}>Posts</h2>
-        {posts.some((p) => p.status === "posted") && <Link className="link body-sm" href={`/insights?project=${encodeURIComponent(projectId)}`}>What works, in Insights</Link>}
+        <div className="posts-head-actions">
+          {posts.some((p) => p.status === "posted") && <Link className="link body-sm" href={`/insights?project=${encodeURIComponent(projectId)}`}>What works, in Insights</Link>}
+          {posts.length > 0 && <Link className="btn btn-secondary btn-sm" href={knitsHref}>Open Knits</Link>}
+        </div>
       </div>
-      {posts.length === 0 ? (
-        <EmptyState title="Nothing posted yet" body={accounts.length ? "Open a knit and press Post, or pick several and post them together." : "Connect your accounts in Settings, Social, then open a knit and press Post."} />
+      <GoesTo accounts={accounts} social={social} />
+      {posts.length === 0 ? (accounts.length
+        ? <EmptyState title="Nothing posted yet" body="Open a knit and press Post, or pick several in Knits and post them together. What goes out, what is scheduled and what waits as a draft shows here."
+            action={<Link className="btn btn-primary" href={knitsHref}>Open Knits</Link>} />
+        : <EmptyState title="Connect an account to post from here" body="Each network needs an app of your own, made once; Settings walks through it. Until then, every knit has Download and Copy caption, to post it yourself."
+            action={<div className="empty-actions"><Link className="btn btn-primary" href="/settings?tab=social">Set up Social</Link><Link className="btn btn-secondary" href={knitsHref}>Open Knits</Link></div>} />
       ) : (
         <div style={{ display: "grid", gap: "var(--space-8)" }}>
           {GROUPS.map((g) => {
@@ -60,6 +71,32 @@ export function PostsView({ projectId }: { projectId: string }) {
         </div>
       )}
       <MoveDialog post={moving} onClose={() => setMoving(null)} />
+    </div>
+  );
+}
+
+/**
+ * Where a post can go now: one chip per network, in the order Settings lists them. A connected
+ * one shows its account; the rest say what is left, and each opens that network in Settings.
+ */
+function GoesTo({ accounts, social }: { accounts: SocialAccount[]; social?: SocialConfigView | null }) {
+  return (
+    <div className="posts-where" role="group" aria-labelledby="posts-where">
+      <span className="posts-where-label" id="posts-where">Posts go to</span>
+      {PLATFORM_IDS.map((p) => {
+        const mine = accounts.filter((a) => a.platform === p);
+        const app = social?.apps[p];
+        const ready = !!app?.clientId && (app.secret || !!PLATFORMS[p].secretOptional);
+        const again = mine.some((a) => a.status === "reconnect");
+        const state = mine.length
+          ? (again ? "Connect again" : mine.length > 1 ? `${mine.length} accounts` : mine[0].handle ? `@${mine[0].handle}` : mine[0].name)
+          : ready ? "Connect" : "Set up";
+        return (
+          <Link key={p} className="posts-net" data-tone={mine.length ? (again ? "warn" : "ok") : undefined} href={`/settings?tab=social&network=${p}`}>
+            <PlatformMark p={p} small /><span>{PLATFORMS[p].name}</span><em>{state}</em>
+          </Link>
+        );
+      })}
     </div>
   );
 }
