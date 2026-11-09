@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
-import { axeProblems, launchBrowser, startStudio } from "./harness.mjs";
+import { axeProblems, launchBrowser, serverHas, startStudio } from "./harness.mjs";
 
 let studio, browser, page, projectId;
 const files = mkdtempSync(join(tmpdir(), "knitted-sw-e2e-"));
@@ -75,10 +75,11 @@ test("an invalid colour is refused in plain words and nothing broken is saved", 
 
 test("a second swatch from a template, activated for the project", async () => {
   await page.getByRole("button", { name: "New swatch" }).click();
+  await page.getByRole("menuitem", { name: /^Blank, or from a template/ }).click();
   await page.getByRole("dialog").getByLabel("Template").click();
   await page.getByRole("option", { name: "Warm retail" }).click();
   await page.getByRole("button", { name: "Create swatch" }).click();
-  await page.getByRole("button", { name: /Warm retail/ }).waitFor();
+  await page.getByRole("button", { name: /^Warm retail/ }).waitFor();
   await page.getByRole("button", { name: "Use for this project" }).click();
   await page.getByText("is now this project's swatch").waitFor();
   const proj = (await j("GET", `/api/projects/${projectId}`)).body;
@@ -147,7 +148,8 @@ test("a swatch started from a website is looked over, changed and created, and n
   try {
     const activeBefore = (await j("GET", `/api/projects/${projectId}`)).body.swatchId;
     await page.goto(`${studio.url}/projects/${projectId}/swatch`);
-    await page.getByRole("button", { name: "From a website" }).click();
+    await page.getByRole("button", { name: "New swatch" }).click();
+    await page.getByRole("menuitem", { name: /^From a website/ }).click();
     const dialog = page.getByRole("dialog");
     await dialog.getByLabel("Website").fill("brandy.example");
     await dialog.getByRole("button", { name: "Read the site" }).click();
@@ -170,6 +172,30 @@ test("a swatch started from a website is looked over, changed and created, and n
     assert.equal((await j("GET", `/api/projects/${projectId}`)).body.swatchId, activeBefore, "it is not the project's swatch until Use");
     await page.getByRole("button", { name: "Use for this project" }).waitFor();
   } finally { await page.unroute("**/swatches/from-url"); }
+});
+
+test("each swatch has its own menu, from its ... button or a right-click, and Delete on its row asks first", async () => {
+  await page.goto(`${studio.url}/projects/${projectId}/swatch`);
+  const before = (await j("GET", `/api/projects/${projectId}/swatches`)).body;
+  const one = before.find((s) => s.name === "Warm retail");
+  // The menu says what it is for first, and which keys do the same.
+  await page.getByRole("button", { name: "Actions for Warm retail" }).click();
+  const menu = page.getByRole("menu");
+  await menu.getByRole("menuitem", { name: /^Use for this project/ }).waitFor();
+  assert.equal(await menu.getByRole("menuitem", { name: /^Use for this project/ }).getAttribute("aria-disabled"), "true", "it is already the project's");
+  await menu.getByRole("menuitem", { name: /^Move to folder/ }).getByText("M", { exact: true }).waitFor();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: /^Warm retail/ }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Duplicate" }).click();
+  const copy = await serverHas(studio, `/api/projects/${projectId}/swatches`, (l) => l.length === before.length + 1 && l.find((s) => !before.some((b) => b.id === s.id)));
+  const made = copy.find((s) => !before.some((b) => b.id === s.id));
+  const row = page.getByRole("button", { name: new RegExp(`^${made.name}`), pressed: true });
+  await row.focus();
+  await page.keyboard.press("Delete");
+  const confirm = page.getByRole("dialog", { name: `Delete ${made.name}?` });
+  await confirm.getByRole("button", { name: "Delete swatch" }).click();
+  await serverHas(studio, `/api/projects/${projectId}/swatches`, (l) => l.length === before.length);
+  assert.ok((await j("GET", `/api/projects/${projectId}/swatches`)).body.some((s) => s.id === one.id), "the one it was copied from stays");
 });
 
 test("you cannot delete the last swatch", async () => {

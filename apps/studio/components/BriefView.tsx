@@ -4,9 +4,10 @@
 // website by their model, written by them, or both), notes for whoever builds it next, and the
 // reference: files about the business to look at and read, like pictures of every page of
 // the website, a menu or a brochure. Sync reads the website again, any time, and brings it
-// all up to date.
+// all up to date. The profile reads in the middle, with an outline of its parts beside it that
+// marks where you are; the website and the notes sit on the other side, never a scroll away.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api, type SyncJob, type SyncOptions, type SyncStep, type SyncStepState } from "@knitted/core/client";
 import type { Brief } from "@knitted/core";
@@ -15,7 +16,7 @@ import { timeAgo, useLive } from "@/lib/hooks";
 import { YarnView } from "./YarnView";
 import { SyncChoices } from "./SyncChoices";
 
-const { Globe, RefreshCw, Pencil, Undo2, Check, X, AlertTriangle, Sparkles, Clock } = icons;
+const { Globe, RefreshCw, Pencil, Undo2, Check, X, AlertTriangle, Sparkles } = icons;
 
 const STEP_WORDS: Record<SyncStep, string> = {
   read: "Read the website",
@@ -71,42 +72,41 @@ export function BriefView({ projectId }: { projectId: string }) {
 
   if (!brief) return <div style={{ display: "grid", gap: "var(--space-4)" }}><Skeleton height={40} /><Skeleton height={260} /></div>;
 
+  const syncLabel = brief.site.url ? "Sync again" : "Sync with a website";
   return (
     <div style={{ display: "grid", gap: "var(--space-6)" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: "var(--space-3)", flexWrap: "wrap" }}>
+      <div className="brief-head">
         <h2 className="h2" style={{ margin: 0 }}>Brief</h2>
-        <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
-          {!editing && <Button tip="Write the profile yourself, or change what your model wrote" onClick={() => setEditing(true)}><Pencil size={14} aria-hidden /> {brief.profile ? "Edit" : "Write it yourself"}</Button>}
-          <Button variant="primary" disabled={running} tip={brief.site.url ? `Read ${host(brief.site.url)} again and bring the profile, the swatch and the pictures up to date` : "Read the business's website: the profile, a swatch and pictures of every page"} onClick={() => setAsking(true)}>
-            <RefreshCw size={14} aria-hidden /> {brief.site.url ? "Sync again" : "Sync with a website"}
-          </Button>
-        </div>
+        {!editing && brief.profile && <Button tip="Change what the profile says" onClick={() => setEditing(true)}><Pencil size={14} aria-hidden /> Edit</Button>}
       </div>
 
-      <SiteLine brief={brief} />
       {sync.job && <SyncProgress job={sync.job} onDismiss={() => { sync.dismiss(); router.replace(`/projects/${projectId}/brief`, { scroll: false }); }} onStop={async () => { await api.brief.cancel(sync.job!.id).catch(() => {}); }} onSwatch={() => router.push(`/projects/${projectId}/swatch`)} />}
 
-      <section aria-labelledby="brief-profile" className="card" style={{ padding: "var(--space-5)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--space-3)", flexWrap: "wrap", marginBottom: "var(--space-3)" }}>
-          <h3 id="brief-profile" className="h3" style={{ margin: 0 }}>Profile</h3>
-          <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center", flexWrap: "wrap" }}>
-            <SourceLine brief={brief} />
+      <div className="brief-cols" data-outline={brief.profile && !editing ? "" : undefined}>
+        {brief.profile && !editing && <Outline profile={brief.profile} />}
+        <section aria-labelledby="brief-profile" className="card brief-card">
+          <div className="brief-card-head">
+            <h3 id="brief-profile" className="h3" style={{ margin: 0 }}>Profile</h3>
+            {!editing && <SourceLine brief={brief} />}
             {brief.canUndo && !editing && (
               <Button size="sm" variant="ghost" tip="Put back the profile from before your model's last change" onClick={async () => { try { await api.brief.undo(projectId); await refresh(); toast("Put back the profile from before"); } catch (e) { toast.problem((e as Error).message); } }}>
                 <Undo2 size={13} aria-hidden /> Undo
               </Button>
             )}
           </div>
+          {editing ? <ProfileEditor brief={brief} onCancel={() => setEditing(false)} onSaved={async () => { setEditing(false); await refresh(); toast("Saved the profile"); }} />
+            : brief.profile ? <div className="brief-read"><Markdown text={brief.profile} topLevel={4} className="brief-profile" /></div>
+            : running && sync.job?.progress?.live ? <LiveText text={sync.job.progress.live} />
+            : <EmptyState title="No profile yet" body="Sync with the business's website and your model writes one from every page it reads. Or write it yourself: who they are, what they offer, how they talk." action={<Button onClick={() => setEditing(true)}><Pencil size={14} aria-hidden /> Write it yourself</Button>} />}
+        </section>
+        <div className="brief-side">
+          <SiteCard brief={brief} running={running} label={syncLabel} onSync={() => setAsking(true)} />
+          <NotesCard brief={brief} projectId={projectId} onSaved={refresh} />
         </div>
-        {editing ? <ProfileEditor brief={brief} onCancel={() => setEditing(false)} onSaved={async () => { setEditing(false); await refresh(); toast("Saved the profile"); }} />
-          : brief.profile ? <Markdown text={brief.profile} topLevel={4} className="brief-profile" />
-          : running && sync.job?.progress?.live ? <LiveText text={sync.job.progress.live} />
-          : <EmptyState title="No profile yet" body="Sync with the business's website and your model writes one from every page it reads. Or write it yourself: who they are, what they offer, how they talk." action={<Button variant="primary" onClick={() => setAsking(true)}><Globe size={14} aria-hidden /> Sync with a website</Button>} />}
-      </section>
+      </div>
 
-      <NotesCard brief={brief} projectId={projectId} onSaved={refresh} />
-
-      <section aria-label="Reference">
+      <section aria-label="Reference" id="brief-reference" className="brief-reference">
+        <h3 className="h3" style={{ margin: "0 0 4px" }}>Reference</h3>
         <p className="body-sm" style={{ margin: "0 0 var(--space-3)", color: "var(--ink-muted)", maxWidth: "70ch" }}>
           Files about the business for your model to look at and read: pictures of the website, menus, brochures, price lists. They are not for putting in a pattern: cut a part out of one into Yarn for that. Useful for designing a new version of a page, too.
         </p>
@@ -118,17 +118,67 @@ export function BriefView({ projectId }: { projectId: string }) {
   );
 }
 
+/**
+ * The profile's parts, in sight beside it: each goes to its part, and the one being read is
+ * marked as the page scrolls. The reference below is the last stop.
+ */
+function Outline({ profile }: { profile: string }) {
+  const [heads, setHeads] = useState<string[]>([]);
+  const [here, setHere] = useState(0);
+  const found = useRef<HTMLElement[]>([]);
+  useEffect(() => {
+    const read = () => {
+      found.current = [...document.querySelectorAll<HTMLElement>(".brief-profile h4")];
+      setHeads(found.current.map((h) => h.textContent ?? ""));
+    };
+    read();
+    const main = document.getElementById("main");
+    // The part being read is the last one whose heading has passed the top of the window.
+    const onScroll = () => {
+      const top = (main?.getBoundingClientRect().top ?? 0) + 120;
+      let at = 0;
+      found.current.forEach((h, i) => { if (h.getBoundingClientRect().top <= top) at = i; });
+      setHere(at);
+    };
+    main?.addEventListener("scroll", onScroll, { passive: true });
+    return () => main?.removeEventListener("scroll", onScroll);
+  }, [profile]);
+  if (heads.length < 2) return <div aria-hidden />;
+  return (
+    <nav aria-label="The profile's parts" className="brief-toc">
+      <p className="brief-toc-cap">In the profile</p>
+      <ul>
+        {heads.map((h, i) => (
+          <li key={`${i}-${h}`}><button type="button" aria-current={i === here ? "location" : undefined} onClick={() => { setHere(i); found.current[i]?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>{h}</button></li>
+        ))}
+      </ul>
+      <p className="brief-toc-cap">Below</p>
+      <ul><li><button type="button" onClick={() => document.getElementById("brief-reference")?.scrollIntoView({ behavior: "smooth", block: "start" })}>Reference</button></li></ul>
+    </nav>
+  );
+}
+
 const host = (url: string) => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; } };
 
-function SiteLine({ brief }: { brief: Brief }) {
+function SiteCard({ brief, running, label, onSync }: { brief: Brief; running: boolean; label: string; onSync: () => void }) {
   const s = brief.site;
-  if (!s.url) return null;
   return (
-    <p className="body-sm" style={{ margin: 0, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", color: "var(--ink-muted)" }}>
-      <Globe size={14} aria-hidden />
-      <a className="link" href={s.url} target="_blank" rel="noreferrer">{host(s.url)}</a>
-      {s.syncedAt && <span><Clock size={12} aria-hidden style={{ verticalAlign: -1 }} /> Synced {timeAgo(s.syncedAt)}{s.pages ? `, ${s.pages} page${s.pages === 1 ? "" : "s"} read` : ""}{s.pictures ? `, ${s.pictures} picture${s.pictures === 1 ? "" : "s"}` : ""}</span>}
-    </p>
+    <section aria-labelledby="brief-site" className="card brief-side-card">
+      <h3 id="brief-site" className="brief-side-title">The website</h3>
+      {s.url ? (<>
+        <p className="body-sm brief-site"><Globe size={14} aria-hidden /><a className="link" href={s.url} target="_blank" rel="noreferrer">{host(s.url)}</a></p>
+        {s.syncedAt && (
+          <dl className="brief-facts">
+            <dt>Synced</dt><dd><time dateTime={s.syncedAt} title={new Date(s.syncedAt).toLocaleString()}>{timeAgo(s.syncedAt)}</time></dd>
+            {s.pages ? <><dt>Pages read</dt><dd>{s.pages}</dd></> : null}
+            {s.pictures ? <><dt>Pictures</dt><dd>{s.pictures}, in Reference</dd></> : null}
+          </dl>
+        )}
+      </>) : <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>Read the business&apos;s website: your model writes the profile, and you get a swatch and pictures of every page.</p>}
+      <Button variant="primary" disabled={running} tip={s.url ? `Read ${host(s.url)} again and bring the profile, the swatch and the pictures up to date` : undefined} onClick={onSync}>
+        {s.url ? <RefreshCw size={14} aria-hidden /> : <Globe size={14} aria-hidden />} {label}
+      </Button>
+    </section>
   );
 }
 
@@ -139,7 +189,7 @@ function SourceLine({ brief }: { brief: Brief }) {
     ? src.kind === "site" && src.url ? `Written by your model from ${host(src.url)}${src.pages?.length ? `, ${src.pages.length} pages` : ""}` : "Changed by your model"
     : "Written by you";
   const when = brief.updatedAt ? `, ${timeAgo(brief.updatedAt)}` : "";
-  return <span className="eyebrow" title={src.pages?.map((p) => p.url).join("\n")}>{what}{when}</span>;
+  return <p className="body-sm brief-source" title={src.pages?.map((p) => p.url).join("\n")}>{what}{when}</p>;
 }
 
 function LiveText({ text }: { text: string }) {
@@ -177,10 +227,10 @@ function NotesCard({ brief, projectId, onSaved }: { brief: Brief; projectId: str
   }, [brief.notes]);
   const save = async () => { if (text === brief.notes) return; try { await api.brief.save(projectId, { notes: text }); onSaved(); toast("Saved the notes"); } catch (e) { toast.problem((e as Error).message); } };
   return (
-    <section aria-labelledby="brief-notes" className="card" style={{ padding: "var(--space-5)" }}>
-      <h3 id="brief-notes" className="h3" style={{ margin: "0 0 4px" }}>Notes for your model</h3>
-      <p className="body-sm" style={{ margin: "0 0 var(--space-3)", color: "var(--ink-muted)" }}>What to stress, and what the website has wrong or out of date. Your model reads them each time it builds the profile.</p>
-      <Textarea aria-label="Notes for your model" rows={4} value={text} onChange={(e) => setText(e.target.value)} onBlur={save} placeholder="The summer menu is not on the site yet. We are dog friendly. Never call it a cafe." />
+    <section aria-labelledby="brief-notes" className="card brief-side-card">
+      <h3 id="brief-notes" className="brief-side-title">Notes for your model</h3>
+      <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>What to stress, and what the website has wrong or out of date. Your model reads them each time it builds the profile.</p>
+      <Textarea aria-label="Notes for your model" rows={5} value={text} onChange={(e) => setText(e.target.value)} onBlur={save} placeholder="The summer menu is not on the site yet. We are dog friendly. Never call it a cafe." />
     </section>
   );
 }

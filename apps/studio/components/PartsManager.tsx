@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@knitted/core/client";
 import { foldersIn, hasLintErrors, isInside, lintCodePart, nameOf, type Part, type PartCategory } from "@knitted/core";
-import { Button, Chip, ConfirmDialog, Dialog, EmptyState, Field, Input, Select, SkeletonSection, Textarea, icons, useToast } from "@knitted/ui";
+import { Button, Chip, ConfirmDialog, ContextMenu, Dialog, EmptyState, Field, IconButton, Input, Menu, Select, SkeletonSection, Textarea, icons, useToast, type MenuItems } from "@knitted/ui";
 import { useLive } from "@/lib/hooks";
 import { leadOf, useMarks } from "@/lib/agent";
 import { ModelMark } from "./ModelMark";
@@ -12,7 +12,7 @@ import { PartThumb } from "./editor/PartThumb";
 import { FolderCrumbs, FolderDialogs, FolderList, NewFolderButton, useFolders } from "./Folders";
 import { ViewBar, commonSorts, layout, useView } from "./Views";
 
-const { Plus, Upload, Download, Copy, Trash2, AlertTriangle, FolderInput, Pencil } = icons;
+const { Plus, Upload, Download, Copy, Trash2, AlertTriangle, FolderInput, Pencil, MoreHorizontal, Library, FolderOpen } = icons;
 const CATS: { value: PartCategory; label: string }[] = [{ value: "text", label: "Text" }, { value: "media", label: "Media" }, { value: "motion", label: "Motion" }, { value: "frame", label: "Frame" }, { value: "cta", label: "Call to action" }, { value: "other", label: "Other" }];
 const STARTER_HTML = `<div class="card">\n  <span class="k">{{kicker}}</span>\n  <strong>{{title}}</strong>\n</div>`;
 const STARTER_CSS = `.card{position:absolute;inset:0;display:grid;align-content:center;gap:6px;padding:8%;background:#17110b;color:#fffbf6;font:700 5.5vw system-ui;border-radius:12px;animation:in 600ms ease-out both}\n.k{font:500 2.4vw ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;color:#ff9254}\n@keyframes in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}`;
@@ -64,30 +64,44 @@ export function PartsManager({ projectId }: { projectId: string }) {
   const here = view.sorted(mine.filter((p) => (filtering ? isInside(p.folder, kit.here) && matches(p) : p.folder === kit.here)));
   const builtin = view.sorted(parts.filter((p) => p.builtin && (!filtering || matches(p))));
 
+  /** A part's menu, from its ... button or a right-click, in the order every menu has. A starter can only be copied or taken out. */
+  const menuFor = (p: Part, editable: boolean): MenuItems => [
+    // A starter part's copy goes in the folder the person is in; one of theirs, next to it.
+    { label: "Duplicate", icon: <Copy size={14} aria-hidden />, hint: p.builtin ? `A copy of your own${kit.here ? `, in ${nameOf(kit.here)}` : ""}` : undefined,
+      onSelect: () => void act(() => api.parts.action(p.id, "duplicate", projectId, p.builtin ? kit.here : undefined), `Duplicated ${p.name}${p.builtin && kit.here ? ` into ${nameOf(kit.here)}` : ""}`) },
+    ...(editable ? [
+      { label: "Move to folder", icon: <FolderInput size={14} aria-hidden />, onSelect: () => kit.askMove([p], p.name) },
+      p.projectId
+        ? { label: "Move to the Library", icon: <Library size={14} aria-hidden />, hint: "Every project can use it then", onSelect: () => void act(() => api.parts.action(p.id, "to-library"), "Now in the library for every project") }
+        : { label: "Move to this project", icon: <FolderOpen size={14} aria-hidden />, hint: "Only this project has it then", onSelect: () => void act(() => api.parts.action(p.id, "to-project", projectId), "Moved into this project") },
+    ] : []),
+    { label: "Export", icon: <Download size={14} aria-hidden />, hint: "A file another project can import", onSelect: () => void download(p) },
+    ...(editable ? ["separator" as const, { label: "Delete", icon: <Trash2 size={14} aria-hidden />, danger: true, onSelect: async () => setDel({ part: p, usedIn: (await api.parts.get(p.id)).usage.length }) }] : []),
+  ];
+
   const grid = (list: Part[], editable: boolean) => (
     <ul className="arrive-list" style={layout(view.mode, 240)}>
       {list.map((p) => (
-        <li key={p.id} className="card" draggable={editable} onDragStart={editable ? kit.dragThings([p.id]) : undefined}
-          style={view.mode === "grid" ? { padding: "var(--space-3)", display: "grid", gap: 8, position: "relative" } : { padding: "var(--space-2) var(--space-3)", display: "grid", gridTemplateColumns: "120px minmax(0, 1fr) auto", gap: "var(--space-3)", alignItems: "center", position: "relative" }}>
-          <ModelMark mark={marks.get(p.id)} lead={lead === p.id} />
-          <PartThumb part={p} swatch={swatch} projectId={projectId} width={view.mode === "grid" ? 216 : 120} />
-          <div style={{ minWidth: 0 }}>
-            <p className="label" style={{ margin: 0 }}>{p.name}</p>
-            <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>{p.builtin ? "Starter" : p.projectId ? "This project" : "Library"} · {p.kind === "code" ? "code" : "stitches"} · v{p.version}</p>
-            {p.slots.length > 0 && <p className="body-sm" style={{ margin: "2px 0 0" }}>{p.slots.map((s) => <Chip key={s.name} className="code">{s.name}{s.locked ? " locked" : ""}</Chip>)}</p>}
-          </div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            <Button size="sm" aria-label={`${p.builtin ? "Edit a copy of" : "Edit"} ${p.name}`} tip={p.builtin ? "A starter stays as it comes: this makes a copy of your own and opens it." : p.kind === "code" ? "Its markup and CSS." : "Opens it in the editor. Every pattern that uses it shows the change."} onClick={() => edit(p)}><Pencil size={12} aria-hidden /> {p.builtin ? "Edit a copy" : "Edit"}</Button>
-            {/* A starter part's copy goes in the folder the person is in; one of theirs, next to it. */}
-            <Button size="sm" onClick={() => act(() => api.parts.action(p.id, "duplicate", projectId, p.builtin ? kit.here : undefined), `Duplicated ${p.name}${p.builtin && kit.here ? ` into ${nameOf(kit.here)}` : ""}`)}><Copy size={12} aria-hidden /> Duplicate</Button>
-            {editable && <Button size="sm" aria-label={`Move to folder, ${p.name}`} onClick={() => kit.askMove([p], p.name)}><FolderInput size={12} aria-hidden /> Move to folder</Button>}
-            <Button size="sm" onClick={() => download(p)}><Download size={12} aria-hidden /> Export</Button>
-            {editable && (p.projectId
-              ? <Button size="sm" onClick={() => act(() => api.parts.action(p.id, "to-library"), "Now in the library for every project")}>To library</Button>
-              : <Button size="sm" onClick={() => act(() => api.parts.action(p.id, "to-project", projectId), "Moved into this project")}>To this project</Button>)}
-            {editable && <Button size="sm" variant="danger" aria-label={`Delete ${p.name}`} onClick={async () => setDel({ part: p, usedIn: (await api.parts.get(p.id)).usage.length })}><Trash2 size={12} aria-hidden /></Button>}
-          </div>
-        </li>
+        <ContextMenu key={p.id} items={menuFor(p, editable)}>
+          <li className={`card part-card part-card-${view.mode}`} draggable={editable} onDragStart={editable ? kit.dragThings([p.id]) : undefined}>
+            <ModelMark mark={marks.get(p.id)} lead={lead === p.id} />
+            <PartWell part={p} swatch={swatch} projectId={projectId} />
+            <div className="part-words">
+              <p className="label part-name" title={p.name}>{p.name}</p>
+              <p className="body-sm muted part-meta">{p.builtin ? "Starter" : p.projectId ? "This project" : "Library"} · {p.kind === "code" ? "code" : "stitches"}{p.version > 1 ? ` · v${p.version}` : ""}</p>
+            </div>
+            {p.slots.length ? (
+              <ul className="part-slots" aria-label="Slots">
+                {p.slots.slice(0, 3).map((s) => <li key={s.name}><Chip className="code">{s.name}{s.locked ? " locked" : ""}</Chip></li>)}
+                {p.slots.length > 3 && <li><Chip><span aria-hidden>+{p.slots.length - 3}</span><span className="sr-only">and {p.slots.length - 3} more</span></Chip></li>}
+              </ul>
+            ) : <div className="part-slots" aria-hidden />}
+            <div className="part-actions">
+              <Button size="sm" aria-label={`${p.builtin ? "Edit a copy of" : "Edit"} ${p.name}`} tip={p.builtin ? "A starter stays as it comes: this makes a copy of your own and opens it." : p.kind === "code" ? "Its markup and CSS." : "Opens it in the editor. Every pattern that uses it shows the change."} onClick={() => edit(p)}><Pencil size={12} aria-hidden /> {p.builtin ? "Edit a copy" : "Edit"}</Button>
+              <Menu trigger={<IconButton label={`Actions for ${p.name}`} className="part-more"><MoreHorizontal size={16} /></IconButton>} items={menuFor(p, editable)} />
+            </div>
+          </li>
+        </ContextMenu>
       ))}
     </ul>
   );
@@ -167,4 +181,22 @@ function CodePartDialog({ part, open, onOpenChange, projectId, folder, swatch, o
       </div>
     </Dialog>
   );
+}
+
+/**
+ * A part in a well of one shape, on the sunken checks, scaled to fit and centred: a wide bar
+ * and a tall badge read at one size, and every card is the same height.
+ */
+function PartWell({ part, swatch, projectId }: { part: Part; swatch: Parameters<typeof PartThumb>[0]["swatch"]; projectId: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [box, setBox] = useState<{ w: number; h: number } | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setBox({ w: e.contentRect.width, h: e.contentRect.height }));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const width = box ? Math.max(24, Math.floor(Math.min(box.w * 0.8, box.h * 0.72 * part.aspect))) : 0;
+  return <div ref={ref} className="part-well" aria-hidden>{width > 0 && <PartThumb part={part} swatch={swatch} projectId={projectId} width={width} bare />}</div>;
 }

@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, yarnThumbUrl } from "@knitted/core/client";
 import { COLOR_ROLES, type ColorRole, type Swatch, type SwatchColor, type Yarn } from "@knitted/core";
 import {
-  Button, Chip, ColorField, ConfirmDialog, Dialog, EmptyState, Field, Input, Select, Skeleton, Slider, Switch, Textarea, icons, useToast,
+  Button, Chip, ColorField, ConfirmDialog, ContextMenu, Dialog, Field, IconButton, Input, Menu, Popover, Select, Skeleton, Slider, Switch, Textarea, icons, useToast,
+  type MenuItems,
 } from "@knitted/ui";
 import { useLive } from "@/lib/hooks";
 import { leadOf, useMarks } from "@/lib/agent";
@@ -13,8 +14,10 @@ import { SwatchPreview } from "./SwatchPreview";
 import { ContrastPanel } from "./ContrastPanel";
 import { FolderCrumbs, FolderDialogs, FolderList, NewFolderButton, byFolder, useFolders } from "./Folders";
 import { ViewBar, commonSorts, layout, useView } from "./Views";
+import { SetCard } from "./SettingsParts";
+import { keyText } from "./Shortcuts";
 
-const { Plus, Trash2, Copy, Download, Upload, Link2, Wand2, AlertTriangle, Check, FolderInput } = icons;
+const { Plus, Trash2, Copy, Download, Upload, Link2, Wand2, AlertTriangle, Check, FolderInput, ChevronDown, MoreHorizontal, Search, Star, Palette } = icons;
 
 type Draft = Omit<Swatch, "id" | "projectId" | "folder" | "createdAt" | "updatedAt">;
 const toDraft = (s: Swatch): Draft => ({ name: s.name, colors: s.colors, fonts: s.fonts, logos: s.logos, voice: s.voice, rules: s.rules });
@@ -41,6 +44,9 @@ export function SwatchView({ projectId }: { projectId: string }) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [dialog, setDialog] = useState<null | "new" | "yarn" | "site" | "delete">(null);
+  // The swatch a menu acts on: any in the list, not only the one open.
+  const [target, setTarget] = useState<Swatch | null>(null);
+  const [logoFind, setLogoFind] = useState("");
   const importRef = useRef<HTMLInputElement>(null);
   const dirty = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -100,129 +106,167 @@ export function SwatchView({ projectId }: { projectId: string }) {
     edit({ fonts: { ...draft.fonts, [slot]: y ? { family: y.meta.family ?? y.name, yarnId: y.id } : { family: v } } });
   };
 
-  const exportFile = async () => {
-    const res = await fetch(`/api/swatches/${current.id}/export`);
+  const exportFile = async (sw: Swatch) => {
+    const res = await fetch(`/api/swatches/${sw.id}/export`);
     const url = URL.createObjectURL(await res.blob());
-    const a = Object.assign(document.createElement("a"), { href: url, download: `${current.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.knitted-swatch.json` });
+    const a = Object.assign(document.createElement("a"), { href: url, download: `${sw.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.knitted-swatch.json` });
     a.click(); URL.revokeObjectURL(url);
   };
+  const open = (id: string) => { dirty.current = false; setPickedId(id); };
+  const activate = async (sw: Swatch) => { await api.swatches.activate(sw.id); await refresh(); await refreshProject(); toast(`${sw.name} is now this project's swatch`); };
+  const lastOne = swatches.length < 2;
+  const askDelete = (sw: Swatch) => { if (!lastOne) { setTarget(sw); setDialog("delete"); } };
+  /** A swatch's menu, the same from its ... button and a right-click, in the order every menu has. */
+  const menuFor = (sw: Swatch): MenuItems => {
+    const active = sw.id === project?.swatchId;
+    return [
+      { label: "Use for this project", icon: <Star size={14} aria-hidden />, disabled: active, hint: active ? "It is this project's swatch" : undefined, onSelect: () => void activate(sw) },
+      { label: "Duplicate", icon: <Copy size={14} aria-hidden />, onSelect: async () => { const d = await api.swatches.duplicate(sw.id); await refresh(); open(d.id); } },
+      { label: "Move to folder", icon: <FolderInput size={14} aria-hidden />, shortcut: "M", onSelect: () => kit.askMove([sw], sw.name) },
+      { label: "Export", icon: <Download size={14} aria-hidden />, hint: "A file another project can import", onSelect: () => void exportFile(sw) },
+      "separator",
+      { label: "Delete", icon: <Trash2 size={14} aria-hidden />, danger: true, shortcut: keyText(["Delete"]), disabled: lastOne, hint: lastOne ? "A project keeps at least one swatch" : undefined, onSelect: () => askDelete(sw) },
+    ];
+  };
+  const logoOffer = images.filter((y) => !draft.logos.some((l) => l.yarnId === y.id) && (!logoFind.trim() || y.name.toLowerCase().includes(logoFind.trim().toLowerCase())));
+  const deleting = target ?? current;
+  const deletingActive = deleting.id === project?.swatchId;
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 340px", gap: "var(--space-8)", alignItems: "start" }}>
       <link rel="stylesheet" href={`/api/projects/${projectId}/fonts.css`} />
       <div style={{ display: "grid", gap: "var(--space-6)" }}>
         {(kit.here || (kit.folders ?? []).length > 0) && <div><FolderCrumbs kit={kit} /><FolderList kit={kit} /></div>}
-        <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center", flexWrap: "wrap" }}>
+        <div className="sw-bar">
           {swatches.length > 4 && <Input aria-label="Search swatches" placeholder="Search swatches" value={find} onChange={(e) => setFind(e.target.value)} style={{ width: 200 }} />}
-          <Button size="sm" tip="A brand of its own: colours, fonts, logos and voice" onClick={() => setDialog("new")}><Plus size={13} aria-hidden /> New swatch</Button>
-          <NewFolderButton kit={kit} size="sm" />
+          {/* Every way to start one, behind one button, as Add is in Yarn. */}
+          <Menu align="start" trigger={<Button tip="A brand of its own: colours, fonts, logos and voice"><Plus size={14} aria-hidden /> New swatch <ChevronDown size={13} aria-hidden /></Button>} items={[
+            { label: "Blank, or from a template", icon: <Palette size={14} aria-hidden />, hint: "Warm starter, Black and white and more", onSelect: () => setDialog("new") },
+            { label: "From a website", icon: <Link2 size={14} aria-hidden />, hint: "Its colours, fonts and logo, read for you", onSelect: () => setDialog("site") },
+            { label: "Import a file", icon: <Upload size={14} aria-hidden />, hint: "A .knitted-swatch.json from another project", onSelect: () => importRef.current?.click() },
+          ]} />
+          <input ref={importRef} type="file" accept=".json,application/json" hidden aria-label="Choose a swatch file" onChange={async (e) => {
+            const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
+            try { const s = await api.swatches.import(projectId, JSON.parse(await f.text()), kit.here); await refresh(); open(s.id); toast(`Imported ${s.name}`); } catch (err) { toast.problem((err as Error).message); }
+          }} />
+          <NewFolderButton kit={kit} />
           <ViewBar view={view} what="swatches" />
         </div>
-        <ul aria-label="Swatches" style={view.mode === "grid" ? layout("grid", 150) : { ...layout("list"), gap: 4 }}>
+        <ul aria-label="Swatches" style={view.mode === "grid" ? layout("grid", 170) : { ...layout("list"), gap: 6 }}>
           {view.sorted(swatches.filter((s) => (find.trim() ? s.name.toLowerCase().includes(find.trim().toLowerCase()) : s.folder === kit.here))).map((s) => (
             <li key={s.id} style={{ position: "relative" }}>
               <ModelMark mark={marks.get(s.id)} lead={lead === s.id} />
-              <button type="button" className={`card card-link swatch-pick swatch-pick-${view.mode}`} aria-pressed={s.id === current.id} draggable onDragStart={kit.dragThings([s.id])} onClick={() => { dirty.current = false; setPickedId(s.id); }}>
-                <span aria-hidden className="swatch-pick-colors">{s.colors.slice(0, 6).map((c) => <span key={c.role} style={{ background: c.hex }} />)}</span>
-                <span className="label" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{s.name}</span>
-                {view.mode === "list" && <span className="body-sm" style={{ color: "var(--ink-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.fonts.display.family}, {s.fonts.body.family}</span>}
-                {s.id === project?.swatchId && <Chip tone="ember">Active</Chip>}
-              </button>
+              <ContextMenu items={menuFor(s)}>
+                <div className={`card sw-row sw-row-${view.mode}`} data-on={s.id === current.id || undefined}>
+                  <button type="button" className={`swatch-pick swatch-pick-${view.mode}`} aria-pressed={s.id === current.id} draggable onDragStart={kit.dragThings([s.id])} onClick={() => open(s.id)}
+                    onKeyDown={(e) => {
+                      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+                      if (e.key === "m") { e.preventDefault(); kit.askMove([s], s.name); }
+                      else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); askDelete(s); }
+                    }}>
+                    <span aria-hidden className="swatch-pick-colors">{s.colors.slice(0, 6).map((c) => <span key={c.role} style={{ background: c.hex }} />)}</span>
+                    <span className="label" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{s.name}</span>
+                    {view.mode === "list" && <span className="body-sm" style={{ color: "var(--ink-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.fonts.display.family}, {s.fonts.body.family}</span>}
+                    {s.id === project?.swatchId && <Chip tone="ember">Active</Chip>}
+                  </button>
+                  <Menu trigger={<IconButton label={`Actions for ${s.name}`} className="sw-more"><MoreHorizontal size={16} /></IconButton>} items={menuFor(s)} />
+                </div>
+              </ContextMenu>
             </li>
           ))}
         </ul>
-        <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center", flexWrap: "wrap" }}>
-          <div style={{ flex: 1 }} />
-          <span className="body-sm" role="status" aria-live="polite" style={{ color: saving === "error" ? "var(--danger)" : "var(--ink-muted)" }}>
+
+        <div className="sw-name-row">
+          <Field label="Name" htmlFor="sw-name"><Input id="sw-name" value={draft.name} onChange={(e) => edit({ name: e.target.value })} /></Field>
+          <span className="body-sm sw-saving" role="status" aria-live="polite" data-error={saving === "error" || undefined}>
             {saving === "saving" ? "Saving..." : saving === "saved" ? "Saved" : saving === "error" ? "Not saved" : ""}
           </span>
+          {!isActive && <Button variant="primary" onClick={() => void activate(current)}>Use for this project</Button>}
         </div>
 
-        {/* One row of small buttons, with Delete apart at the end. */}
-        <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap", alignItems: "center" }}>
-          {!isActive && <Button size="sm" variant="primary" onClick={async () => { await api.swatches.activate(current.id); await refresh(); await refreshProject(); toast(`${current.name} is now this project's swatch`); }}>Use for this project</Button>}
-          <Button size="sm" onClick={async () => { const d = await api.swatches.duplicate(current.id); await refresh(); setPickedId(d.id); }}><Copy size={13} aria-hidden /> Duplicate</Button>
-          <Button size="sm" onClick={() => kit.askMove([current], current.name)}><FolderInput size={13} aria-hidden /> Move to folder</Button>
-          <Button size="sm" onClick={exportFile}><Download size={13} aria-hidden /> Export</Button>
-          <Button size="sm" onClick={() => importRef.current?.click()}><Upload size={13} aria-hidden /> Import file</Button>
-          <input ref={importRef} type="file" accept=".json,application/json" hidden aria-label="Choose a swatch file" onChange={async (e) => {
-            const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
-            try { const s = await api.swatches.import(projectId, JSON.parse(await f.text()), kit.here); await refresh(); setPickedId(s.id); toast(`Imported ${s.name}`); } catch (err) { toast.problem((err as Error).message); }
-          }} />
-          <Button size="sm" onClick={() => setDialog("site")}><Link2 size={13} aria-hidden /> From a website</Button>
-          <Button size="sm" variant="danger" style={{ marginLeft: "auto" }} disabled={swatches.length < 2} tip={swatches.length < 2 ? "A project keeps at least one swatch" : undefined} onClick={() => setDialog("delete")}><Trash2 size={13} aria-hidden /> Delete</Button>
-        </div>
+        <SetCard title="Colours" actions={<>
+          <Button size="sm" onClick={() => setDialog("yarn")} disabled={!images.length} tip={images.length ? "Take them from a photo or a logo" : "Add a picture to Yarn first"}><Wand2 size={13} aria-hidden /> Pick from Yarn</Button>
+          <Button size="sm" disabled={draft.colors.length >= 8} tip={draft.colors.length >= 8 ? "A swatch holds eight colours" : undefined} onClick={() => edit({ colors: [...draft.colors, { role: unusedRole, name: ROLE_LABEL[unusedRole], hex: "#888888" }] })}><Plus size={13} aria-hidden /> Add colour</Button>
+        </>}>
+          <div className="sw-body">
+            {draft.colors.map((c, i) => {
+              const valid = /^#[0-9a-fA-F]{6}$/.test(c.hex);
+              return (
+                <div key={i} className="sw-color">
+                  <input type="color" className="sw-well" aria-label={`Colour ${i + 1} colour picker`} value={valid ? c.hex : "#000000"} onChange={(e) => setColor(i, { hex: e.target.value })} />
+                  <Input aria-label={`Name of colour ${i + 1}`} value={c.name} onChange={(e) => setColor(i, { name: e.target.value })} />
+                  <Input mono aria-label={`Colour ${i + 1} hex`} aria-invalid={!valid} value={c.hex} maxLength={7} onChange={(e) => setColor(i, { hex: e.target.value })} />
+                  <Select aria-label={`Role of colour ${i + 1}`} value={c.role} onValueChange={(v) => setColor(i, { role: v as ColorRole })} options={COLOR_ROLES.map((r) => ({ value: r, label: `Used as ${ROLE_LABEL[r].toLowerCase()}` }))} />
+                  <IconButton label={`Remove colour ${i + 1}`} disabled={draft.colors.length <= 3} hint={draft.colors.length <= 3 ? "A swatch keeps at least three colours" : undefined} onClick={() => edit({ colors: draft.colors.filter((_, k) => k !== i) })}><Trash2 size={14} /></IconButton>
+                </div>
+              );
+            })}
+            {!draft.colors.some((c) => c.role === "primary") && <p className="field-error"><AlertTriangle size={13} aria-hidden /> A swatch needs a primary, a text and a background colour.</p>}
+          </div>
+        </SetCard>
 
-        <Field label="Name" htmlFor="sw-name"><Input id="sw-name" value={draft.name} onChange={(e) => edit({ name: e.target.value })} /></Field>
+        <SetCard title="Fonts">
+          <div className="sw-body">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "var(--space-4)" }}>
+              {(["display", "body", "mono"] as const).map((slot) => (
+                <Field key={slot} label={SLOT_LABEL[slot]}>
+                  <Select aria-label={`${slot} font`} value={fontValue(draft.fonts[slot])} onValueChange={(v) => pickFont(slot, v)} options={fontOptions} placeholder="Choose a font" />
+                  <span style={{ fontFamily: `"${draft.fonts[slot]?.family ?? "Geist"}", sans-serif`, fontSize: 22, fontWeight: slot === "display" ? 800 : 400, lineHeight: 1.2 }}>Make it knitted.</span>
+                </Field>
+              ))}
+            </div>
+            <p className="body-sm muted" style={{ margin: 0 }}>Every font here works offline. Upload your own as Yarn to use it too.</p>
+          </div>
+        </SetCard>
 
-        <section aria-label="Colours" style={{ display: "grid", gap: "var(--space-3)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <h3 className="h3">Colours</h3>
-            <div style={{ display: "flex", gap: "var(--space-2)" }}>
-              <Button size="sm" onClick={() => setDialog("yarn")} disabled={!images.length}><Wand2 size={13} aria-hidden /> Pick from Yarn</Button>
-              <Button size="sm" disabled={draft.colors.length >= 8} onClick={() => edit({ colors: [...draft.colors, { role: unusedRole, name: unusedRole, hex: "#888888" }] })}><Plus size={13} aria-hidden /> Add colour</Button>
+        <SetCard title="Logos" actions={
+          <Popover align="end" trigger={<Button size="sm" disabled={!images.length} tip={images.length ? undefined : "Upload a logo in the Yarn tab first"}><Plus size={13} aria-hidden /> Add a logo <ChevronDown size={13} aria-hidden /></Button>}>
+            <div className="make-pool">
+              <label className="move-find"><Search size={14} aria-hidden /><input value={logoFind} onChange={(e) => setLogoFind(e.target.value)} placeholder="Find a picture" aria-label="Find a picture" /></label>
+              {logoOffer.length === 0 ? <p className="body-sm muted" style={{ margin: 0 }}>{logoFind.trim() ? "No picture is called that." : "Every picture in Yarn is a logo here already."}</p> : (
+                <div className="make-pool-grid">
+                  {logoOffer.map((y) => <button key={y.id} type="button" className="make-pic" aria-label={`Use ${y.name} as a logo`} title={y.name} onClick={() => edit({ logos: [...draft.logos, { yarnId: y.id, use: draft.logos.length ? "mark" : "full" }] })}><img src={yarnThumbUrl(y)} alt="" /></button>)}
+                </div>
+              )}
+            </div>
+          </Popover>
+        }>
+          <div className="sw-body">
+            {draft.logos.length === 0 && <p className="body-sm muted" style={{ margin: 0 }}>{images.length ? "None yet. Add one from the pictures in Yarn." : "Upload a logo in the Yarn tab first."}</p>}
+            {draft.logos.map((l, i) => {
+              const y: Yarn | undefined = yarn?.find((x) => x.id === l.yarnId);
+              const small = y?.width && y.width < 1000 && y.mime !== "image/svg+xml";
+              return (
+                <div key={l.yarnId} className="sw-logo">
+                  {y ? <img src={yarnThumbUrl(y)} alt="" className="sw-logo-pic" /> : <span className="sw-logo-pic" aria-hidden />}
+                  <div className="sw-logo-words">
+                    <span className="label">{y?.name ?? "Deleted from Yarn"}</span>
+                    {small && <span className="field-error"><AlertTriangle size={13} aria-hidden /> {y!.width} px wide. One 1000 px wide prints sharp.</span>}
+                  </div>
+                  <Select aria-label={`Use of ${y?.name ?? "logo"}`} value={l.use} onValueChange={(v) => edit({ logos: draft.logos.map((x, k) => (k === i ? { ...x, use: v as typeof l.use } : x)) })} options={[{ value: "full", label: "Full logo" }, { value: "mark", label: "Mark only" }, { value: "mono-light", label: "Mono for light" }, { value: "mono-dark", label: "Mono for dark" }]} />
+                  <IconButton label={`Remove ${y?.name ?? "logo"}`} onClick={() => edit({ logos: draft.logos.filter((_, k) => k !== i) })}><Trash2 size={14} /></IconButton>
+                </div>
+              );
+            })}
+          </div>
+        </SetCard>
+
+        <SetCard title="Voice">
+          <div className="sw-body">
+            <Field label="How this brand sounds" hint="Your model reads this whenever it writes copy for you." htmlFor="sw-voice"><Textarea id="sw-voice" rows={2} value={draft.voice.summary} onChange={(e) => edit({ voice: { ...draft.voice, summary: e.target.value } })} /></Field>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "var(--space-4)" }}>
+              <Field label="Do (one per line)" htmlFor="sw-do"><Textarea id="sw-do" rows={3} defaultValue={draft.voice.do.join("\n")} key={`do-${current.id}`} onChange={(e) => edit({ voice: { ...draft.voice, do: lines(e.target.value) } })} /></Field>
+              <Field label="Do not (one per line)" htmlFor="sw-dont"><Textarea id="sw-dont" rows={3} defaultValue={draft.voice.dont.join("\n")} key={`dont-${current.id}`} onChange={(e) => edit({ voice: { ...draft.voice, dont: lines(e.target.value) } })} /></Field>
+              <Field label="Example lines" htmlFor="sw-ex"><Textarea id="sw-ex" rows={3} defaultValue={draft.voice.examples.join("\n")} key={`ex-${current.id}`} onChange={(e) => edit({ voice: { ...draft.voice, examples: lines(e.target.value) } })} /></Field>
             </div>
           </div>
-          {draft.colors.map((c, i) => (
-            <div key={i} style={{ display: "flex", gap: "var(--space-2)", alignItems: "center", flexWrap: "wrap" }}>
-              <div style={{ width: 130 }}><Select aria-label={`Role of colour ${i + 1}`} value={c.role} onValueChange={(v) => setColor(i, { role: v as ColorRole })} options={COLOR_ROLES.map((r) => ({ value: r, label: r }))} /></div>
-              <div style={{ width: 130 }}><Input aria-label={`Name of colour ${i + 1}`} value={c.name} onChange={(e) => setColor(i, { name: e.target.value })} /></div>
-              <ColorField label={`Colour ${i + 1}`} value={c.hex} onChange={(hex) => setColor(i, { hex })} />
-              <button className="icon-btn" aria-label={`Remove colour ${i + 1}`} disabled={draft.colors.length <= 3} onClick={() => edit({ colors: draft.colors.filter((_, k) => k !== i) })}><Trash2 size={14} /></button>
-            </div>
-          ))}
-          {!draft.colors.some((c) => c.role === "primary") && <p className="field-error"><AlertTriangle size={13} aria-hidden /> A swatch needs a primary, a text and a background colour.</p>}
-        </section>
+        </SetCard>
 
-        <section aria-label="Fonts" style={{ display: "grid", gap: "var(--space-3)" }}>
-          <h3 className="h3">Fonts</h3>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "var(--space-4)" }}>
-            {(["display", "body", "mono"] as const).map((slot) => (
-              <Field key={slot} label={slot === "display" ? "Headlines" : slot === "body" ? "Body text" : "Labels and code"}>
-                <Select aria-label={`${slot} font`} value={fontValue(draft.fonts[slot])} onValueChange={(v) => pickFont(slot, v)} options={fontOptions} placeholder="Choose a font" />
-                <span style={{ fontFamily: `"${draft.fonts[slot]?.family ?? "Geist"}", sans-serif`, fontSize: 22, fontWeight: slot === "display" ? 800 : 400, lineHeight: 1.2 }}>Make it knitted.</span>
-              </Field>
-            ))}
+        <SetCard title="Shape">
+          <div className="sw-body" style={{ maxWidth: 400 }}>
+            <Slider label="Corner radius" value={Math.round(draft.rules.cornerRadius * 1000) / 10} min={0} max={10} step={0.5} unit="%" onChange={(v) => edit({ rules: { ...draft.rules, cornerRadius: v / 100 } })} />
           </div>
-          <p className="body-sm" style={{ color: "var(--ink-muted)", margin: 0 }}>Every font here works offline. Upload your own as Yarn to use it too.</p>
-        </section>
-
-        <section aria-label="Logos" style={{ display: "grid", gap: "var(--space-3)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <h3 className="h3">Logos</h3>
-            <Select aria-label="Add a logo" value="" onValueChange={(id) => edit({ logos: [...draft.logos, { yarnId: id, use: draft.logos.length ? "mark" : "full" }] })}
-              options={byFolder(images.filter((y) => !draft.logos.some((l) => l.yarnId === y.id)), (y) => ({ value: y.id, label: y.name }))} placeholder="Add a logo from Yarn" />
-          </div>
-          {draft.logos.length === 0 && <p className="body-sm" style={{ color: "var(--ink-muted)", margin: 0 }}>{images.length ? "Pick an image from your Yarn." : "Upload a logo in the Yarn tab first."}</p>}
-          {draft.logos.map((l, i) => {
-            const y: Yarn | undefined = yarn?.find((x) => x.id === l.yarnId);
-            const small = y?.width && y.width < 1000 && y.mime !== "image/svg+xml";
-            return (
-              <div key={l.yarnId} style={{ display: "flex", gap: "var(--space-3)", alignItems: "center", flexWrap: "wrap" }}>
-                {y ? <img src={yarnThumbUrl(y)} alt="" style={{ width: 56, height: 40, objectFit: "contain", background: "var(--surface-sunken)", borderRadius: 6 }} /> : <span className="body-sm">Missing yarn</span>}
-                <span className="label" style={{ minWidth: 100 }}>{y?.name ?? "Deleted"}</span>
-                <div style={{ width: 150 }}><Select aria-label={`Use of ${y?.name ?? "logo"}`} value={l.use} onValueChange={(v) => edit({ logos: draft.logos.map((x, k) => (k === i ? { ...x, use: v as typeof l.use } : x)) })} options={[{ value: "full", label: "Full logo" }, { value: "mark", label: "Mark only" }, { value: "mono-light", label: "Mono for light" }, { value: "mono-dark", label: "Mono for dark" }]} /></div>
-                {small && <span className="field-error"><AlertTriangle size={13} aria-hidden /> {y!.width}px wide. Upload one at least 1000px wide to print sharp.</span>}
-                <button className="icon-btn" aria-label={`Remove ${y?.name ?? "logo"}`} onClick={() => edit({ logos: draft.logos.filter((_, k) => k !== i) })}><Trash2 size={14} /></button>
-              </div>
-            );
-          })}
-        </section>
-
-        <section aria-label="Voice" style={{ display: "grid", gap: "var(--space-3)" }}>
-          <h3 className="h3">Voice</h3>
-          <Field label="How this brand sounds" hint="Your model reads this whenever it writes copy for you." htmlFor="sw-voice"><Textarea id="sw-voice" rows={2} value={draft.voice.summary} onChange={(e) => edit({ voice: { ...draft.voice, summary: e.target.value } })} /></Field>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "var(--space-4)" }}>
-            <Field label="Do (one per line)" htmlFor="sw-do"><Textarea id="sw-do" rows={3} defaultValue={draft.voice.do.join("\n")} key={`do-${current.id}`} onChange={(e) => edit({ voice: { ...draft.voice, do: lines(e.target.value) } })} /></Field>
-            <Field label="Do not (one per line)" htmlFor="sw-dont"><Textarea id="sw-dont" rows={3} defaultValue={draft.voice.dont.join("\n")} key={`dont-${current.id}`} onChange={(e) => edit({ voice: { ...draft.voice, dont: lines(e.target.value) } })} /></Field>
-            <Field label="Example lines" htmlFor="sw-ex"><Textarea id="sw-ex" rows={3} defaultValue={draft.voice.examples.join("\n")} key={`ex-${current.id}`} onChange={(e) => edit({ voice: { ...draft.voice, examples: lines(e.target.value) } })} /></Field>
-          </div>
-        </section>
-
-        <section aria-label="Rules" style={{ maxWidth: 360 }}>
-          <h3 className="h3" style={{ marginBottom: "var(--space-3)" }}>Shape</h3>
-          <Slider label="Corner radius" value={Math.round(draft.rules.cornerRadius * 1000) / 10} min={0} max={10} step={0.5} unit="%" onChange={(v) => edit({ rules: { ...draft.rules, cornerRadius: v / 100 } })} />
-        </section>
+        </SetCard>
       </div>
 
       <aside style={{ position: "sticky", top: "var(--space-4)", display: "grid", gap: "var(--space-6)" }}>
@@ -230,11 +274,11 @@ export function SwatchView({ projectId }: { projectId: string }) {
         <ContrastPanel swatch={preview} onFix={(role, hex) => edit({ colors: draft.colors.map((c) => (c.role === role ? { ...c, hex } : c)) })} />
       </aside>
 
-      <NewSwatchDialog open={dialog === "new"} onOpenChange={(o) => !o && setDialog(null)} onCreate={async (template, name) => { const s = await api.swatches.create(projectId, { template, data: name ? { name } : undefined, folder: kit.here }); await refresh(); dirty.current = false; setPickedId(s.id); }} />
+      <NewSwatchDialog open={dialog === "new"} onOpenChange={(o) => !o && setDialog(null)} onCreate={async (template, name) => { const s = await api.swatches.create(projectId, { template, data: name ? { name } : undefined, folder: kit.here }); await refresh(); open(s.id); }} />
       <YarnColorsDialog open={dialog === "yarn"} onOpenChange={(o) => !o && setDialog(null)} images={images} onAccept={(hex, role) => { const has = draft.colors.some((c) => c.role === role); edit({ colors: has ? draft.colors.map((c) => (c.role === role ? { ...c, hex } : c)) : [...draft.colors, { role, name: role, hex }] }); }} />
-      <SiteDialog open={dialog === "site"} onOpenChange={(o) => !o && setDialog(null)} projectId={projectId} folder={kit.here} onCreated={async (s, notes) => { await refresh(); dirty.current = false; setPickedId(s.id); toast(notes.find((n) => /logo/i.test(n)) ?? `Created ${s.name}. Press Use for this project when it looks right.`); }} />
-      <ConfirmDialog open={dialog === "delete"} onOpenChange={(o) => !o && setDialog(null)} title={`Delete ${current.name}?`} description={isActive ? "It is this project's active swatch. Another one will take its place." : "Patterns using its colours will use this project's active swatch instead."} confirmLabel="Delete swatch"
-        onConfirm={async () => { await api.swatches.remove(current.id); dirty.current = false; setPickedId(null); await refresh(); await refreshProject(); }} />
+      <SiteDialog open={dialog === "site"} onOpenChange={(o) => !o && setDialog(null)} projectId={projectId} folder={kit.here} onCreated={async (s, notes) => { await refresh(); open(s.id); toast(notes.find((n) => /logo/i.test(n)) ?? `Created ${s.name}. Press Use for this project when it looks right.`); }} />
+      <ConfirmDialog open={dialog === "delete"} onOpenChange={(o) => { if (!o) { setDialog(null); setTarget(null); } }} title={`Delete ${deleting.name}?`} description={deletingActive ? "It is this project's active swatch. Another one will take its place." : "Patterns using its colours will use this project's active swatch instead."} confirmLabel="Delete swatch"
+        onConfirm={async () => { await api.swatches.remove(deleting.id); if (deleting.id === current.id) { dirty.current = false; setPickedId(null); } setTarget(null); await refresh(); await refreshProject(); }} />
       <FolderDialogs kit={kit} />
     </div>
   );
@@ -364,4 +408,3 @@ function SiteDialog({ open, onOpenChange, projectId, folder, onCreated }: { open
   );
 }
 
-void EmptyState;

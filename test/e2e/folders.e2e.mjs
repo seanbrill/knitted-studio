@@ -168,7 +168,8 @@ test("a swatch moves into a folder made on the spot, and the swatch list shows w
   const [swatch] = (await j("GET", `/api/projects/${projectId}/swatches`)).body;
   await page.goto(`${studio.url}/projects/${projectId}/swatch`);
   await page.getByRole("button", { name: swatch.name, pressed: true }).waitFor();
-  await page.getByRole("button", { name: "Move to folder" }).click();
+  await page.getByRole("button", { name: `Actions for ${swatch.name}` }).click();
+  await page.getByRole("menuitem", { name: /^Move to folder/ }).click();
   const dialog = page.getByRole("dialog", { name: `Move ${swatch.name}` });
   await dialog.getByRole("button", { name: "New folder in Swatches" }).click();
   await dialog.getByLabel("New folder in Swatches").fill("Clients/Acme");
@@ -193,11 +194,14 @@ test("in Parts, a starter part duplicated in a folder goes into it, and the star
   await dialog.getByRole("button", { name: "Make the folder" }).click();
   await page.getByRole("link", { name: "Lower thirds, folder, Empty" }).click();
   await page.getByText("Nothing in Lower thirds yet").waitFor();
-  await page.getByRole("region", { name: "Starter parts" }).getByRole("button", { name: "Duplicate" }).first().click();
+  await page.getByRole("region", { name: "Starter parts" }).getByRole("button", { name: /^Actions for / }).first().click();
+  await page.getByRole("menuitem", { name: "Duplicate A copy of your own, in Lower thirds" }).click();
   await page.getByText(/^Duplicated .* into Lower thirds$/).waitFor();
   const mine = (await j("GET", `/api/projects/${projectId}/parts`)).body.filter((p) => !p.builtin);
   assert.deepEqual(mine.map((p) => p.folder), ["Lower thirds"]);
-  await page.getByRole("region", { name: "Your parts" }).getByRole("button", { name: `Move to folder, ${mine[0].name}` }).waitFor();
+  await page.getByRole("region", { name: "Your parts" }).getByRole("button", { name: `Actions for ${mine[0].name}` }).click();
+  await page.getByRole("menuitem", { name: "Move to folder" }).waitFor();
+  await page.keyboard.press("Escape");
   assert.deepEqual(await problems(), []);
 });
 
