@@ -18,6 +18,39 @@ test("a chat is named for the first thing asked, on one line, cut at a word", ()
   assert.equal(chatTitle("   "), "New chat");
 });
 
+test("a chat asked from a button about something is named for what the person wants, not the context", () => {
+  const prompt = "This is the pattern Launch story, a story 1080 x 1920, with slots headline and photo.\n\nWhat I want: Make the logo smaller";
+  assert.equal(chatTitle(prompt), "Make the logo smaller");
+});
+
+test("a short ask is named for itself, without what the studio adds after it", () => {
+  const short = createChat(store, { projectId: project.id, title: "This is about the knit Spring sale.\n\nWhat I want: Bigger logo", system: "The rules." });
+  saveChatMessages(store, short.id, [{ role: "user", content: `This is about the knit Spring sale.\n\nWhat I want: Bigger logo\n\n(Project ${project.id}. No pattern is open.)` }]);
+  store.db.prepare("update chats set title = ? where id = ?").run("This is about the knit Spring sale. What I want: Bigger logo", short.id);
+  store.db.prepare("delete from meta where key = 'chat-titles'").run();
+  assert.equal(listChats(store).find((c) => c.id === short.id).title, "Bigger logo");
+  deleteChat(store, short.id);
+});
+
+test("chats named for their context before are named again once, from their first message; a title changed since is kept", () => {
+  const ask = "This is the knit Spring sale, a post 1080 x 1350, in the folder Posts.\n\nWhat I want: Knit it again in the story size";
+  const old = createChat(store, { projectId: project.id, title: ask, system: "The rules." });
+  const kept = createChat(store, { projectId: project.id, title: ask, system: "The rules." });
+  // As the studio sends it: with the project it is in after the person's words.
+  for (const c of [old, kept]) saveChatMessages(store, c.id, [{ role: "user", content: [{ type: "text", text: `${ask}\n\n(Project ${project.id}. No pattern is open.)` }] }]);
+  // As the earlier rule named them: the whole prompt on one line, cut near 60.
+  store.db.prepare("update chats set title = ? where id = ?").run("This is the knit Spring sale, a post 1080 x 1350, in the...", old.id);
+  store.db.prepare("update chats set title = ? where id = ?").run("The story size", kept.id);
+  store.db.prepare("delete from meta where key = 'chat-titles'").run();
+  const titles = Object.fromEntries(listChats(store).map((c) => [c.id, c.title]));
+  assert.equal(titles[old.id], "Knit it again in the story size");
+  assert.equal(titles[kept.id], "The story size");
+  // Once: a title set later is not touched again.
+  store.db.prepare("update chats set title = ? where id = ?").run("This is the knit Spring sale, a post 1080 x 1350, in the...", old.id);
+  assert.equal(listChats(store).find((c) => c.id === old.id).title, "This is the knit Spring sale, a post 1080 x 1350, in the...");
+  for (const c of [old, kept]) deleteChat(store, c.id);
+});
+
 test("a chat keeps its conversation exactly, and its runs in order", () => {
   const c = createChat(store, { projectId: project.id, patternId: pattern.id, title: "Headline", system: "The rules." });
   assert.match(c.id, /^ch_/);

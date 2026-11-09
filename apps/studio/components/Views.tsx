@@ -82,6 +82,7 @@ export const layout = (mode: ViewMode, min = 180): React.CSSProperties => mode =
  * Filter by a tag without a row of every tag: the most used few as chips, and the rest in a
  * Tags menu that can be searched. The tag picked is always shown, so it can be let go of.
  */
+/** Tags to filter by: the most used as chips, the rest behind a button. With `show` 0, all of them are behind one Tags button, and only the one picked shows beside it. */
 export function TagFilter({ tags, value, onChange, show = 5 }: { tags: string[][]; value?: string; onChange: (t: string | undefined) => void; show?: number }) {
   const [find, setFind] = useState("");
   const ranked = useMemo(() => {
@@ -98,7 +99,7 @@ export function TagFilter({ tags, value, onChange, show = 5 }: { tags: string[][
     <>
       {top.map((t) => <ToggleChip key={t} pressed={value === t} onClick={() => pick(t)}>{t}</ToggleChip>)}
       {ranked.length > top.length && (
-        <Popover trigger={<button className="chip chip-button" aria-label={`All ${ranked.length} tags`}><Tag size={13} aria-hidden /> {ranked.length - top.length} more</button>}>
+        <Popover trigger={<button className="chip chip-button" aria-label={`All ${ranked.length} tags`}><Tag size={13} aria-hidden /> {show === 0 ? "Tags" : `${ranked.length - top.length} more`}</button>}>
           <div style={{ display: "grid", gap: "var(--space-2)", width: 280 }}>
             <Input aria-label="Find a tag" placeholder="Find a tag" value={find} onChange={(e) => setFind(e.target.value)} />
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 240, overflowY: "auto" }}>

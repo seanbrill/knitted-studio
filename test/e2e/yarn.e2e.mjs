@@ -110,6 +110,21 @@ test("the detail drawer renames, tags, and shows the facts", async () => {
   await page.keyboard.press("Escape");
 });
 
+test("tags filter from one Tags button, and the one picked shows beside it", async () => {
+  await page.goto(`${studio.url}/projects/${projectId}/yarn`);
+  await page.getByRole("button", { name: /^Hero photo/ }).waitFor();
+  const others = await page.getByRole("button", { name: /^tone/ }).count();
+  assert.ok(others > 0, "something without the tag is shown first");
+  await page.getByRole("button", { name: /^All \d+ tags?$/ }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "product" }).click();
+  await page.getByRole("button", { name: /^tone/ }).waitFor({ state: "detached" });
+  await page.getByRole("button", { name: /^Hero photo/ }).waitFor();
+  await page.keyboard.press("Escape");
+  // Picked, it shows as a pressed chip beside the button, and pressing it again lets everything back.
+  await page.getByRole("button", { name: "product", pressed: true }).click();
+  await page.getByRole("button", { name: /^tone/ }).waitFor();
+});
+
 test("a small logo carries the theme's own warning", async () => {
   await page.getByLabel("Choose files to upload").setInputFiles(f("brand-logo.png"));
   await page.getByRole("button", { name: /^brand-logo/ }).click();
@@ -143,15 +158,19 @@ test("deleting yarn that a pattern uses names the pattern and leaves the stitch 
 
 test("saved text and a link import", async () => {
   await page.goto(`${studio.url}/projects/${projectId}/yarn`);
-  await page.getByRole("button", { name: "Save text" }).click();
+  // Every way in but Upload is behind Add.
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  assert.deepEqual(await page.getByRole("menuitem").allTextContents(), ["Make a photo or a video", "Free stock photos", "From a link", "Save text"]);
+  await page.getByRole("menuitem", { name: "Save text" }).click();
   await page.getByRole("dialog").getByLabel("Name").fill("Launch headlines");
   await page.getByRole("dialog").getByLabel("Text").fill("Make it knitted.\nPattern once.");
   await page.getByRole("dialog").getByRole("button", { name: "Save text" }).click();
   await page.getByRole("button", { name: /^Launch headlines/ }).waitFor();
 
-  await page.getByRole("button", { name: "From a link" }).click();
-  await page.getByRole("dialog").getByLabel("Link").fill("http://127.0.0.1:1/x.png");
   await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByRole("menuitem", { name: "From a link" }).click();
+  await page.getByRole("dialog").getByLabel("Link").fill("http://127.0.0.1:1/x.png");
+  await page.getByRole("dialog").getByRole("button", { name: "Add", exact: true }).click();
   await page.getByText(/your own computer or network/).waitFor();
   await page.keyboard.press("Escape");
 });

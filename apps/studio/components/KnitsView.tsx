@@ -66,7 +66,7 @@ export function KnitsView({ projectId }: { projectId: string }) {
   const [del, setDel] = useState<KnitRecord | null>(null);
   // Anything knitted after this page opened is new, and gets the signature "stitching in" reveal.
   const [openedAt] = useState(() => Date.now());
-  const kit = useFolders(projectId, "knits", knits, { onChanged: refresh });
+  const kit = useFolders(projectId, "knits", knits, { onChanged: refresh, peek: (t) => { const k = t as KnitRecord; return k.kind === "image" ? knitFileUrl(k) : null; } });
 
   const view = useView<KnitRecord>("knits", KNIT_SORTS);
   const [q, setQ] = useState("");
@@ -131,7 +131,7 @@ export function KnitsView({ projectId }: { projectId: string }) {
           {(kinds.size > 1 || kind !== "all") && <div style={{ minWidth: 150 }}><Select aria-label="Pictures or videos" value={kind} onValueChange={(x) => setKind(x as typeof kind)} options={[{ value: "all", label: "Pictures and videos" }, { value: "image", label: "Pictures" }, { value: "video", label: "Videos" }]} /></div>}
           {(sizes.length > 1 || size !== "all") && <div style={{ minWidth: 150 }}><Select aria-label="Size" value={size} onValueChange={setSize} options={[{ value: "all", label: "Every size" }, ...sizes.map((s) => ({ value: s, label: SIZE_LABELS[s] ?? s }))]} /></div>}
           <div style={{ minWidth: 150 }}><Select aria-label="Format" value={format} onValueChange={setFormat} options={[{ value: "all", label: "Every format" }, ...formats.map((f) => ({ value: f, label: f.toUpperCase() }))]} /></div>
-          <TagFilter tags={(knits ?? []).map((k) => k.tags)} value={tag} onChange={setTag} />
+          <TagFilter tags={(knits ?? []).map((k) => k.tags)} value={tag} onChange={setTag} show={0} />
           {unseen > 0 && <label className="body-sm" style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={onlyNew} onChange={(e) => setOnlyNew(e.target.checked)} /> Only new ({unseen})</label>}
           {(favorites > 0 || onlyFavorites) && <label className="body-sm" style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={onlyFavorites} onChange={(e) => setOnlyFavorites(e.target.checked)} /> Only favourites ({favorites})</label>}
           <ViewBar view={view} what="knits" />

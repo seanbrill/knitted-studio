@@ -88,28 +88,48 @@ export function ChatList({ chats, shown, href, onOpen, onDeleted }: {
   const look = { flex: 1, minWidth: 0, display: "grid", gap: 2, padding: "8px 10px", color: "inherit" } as const;
   return (
     <>
-      <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", alignContent: "start", gap: 2 }}>
-        {chats.length === 0 && <li className="body-sm" style={{ padding: "var(--space-2)", color: "var(--ink-muted)" }}>Your conversations show here.</li>}
-        {chats.map((c) => {
-          const on = c.id === shown;
-          const what = (<>
-            <span className="label" style={oneLine}>{c.title}</span>
-            <span className="body-sm" style={{ color: "var(--ink-muted)", ...oneLine }}>{c.running ? "Answering..." : timeAgo(c.updatedAt)}, {placeOf(c)}</span>
-          </>);
-          return (
-            <li key={c.id} style={{ display: "flex", alignItems: "center", gap: 4, borderRadius: "var(--radius-md)", background: on ? "var(--tint)" : undefined }}>
-              {href ? <Link href={href(c)} aria-current={on ? "page" : undefined} style={look}>{what}</Link>
-                : <button type="button" aria-current={on || undefined} onClick={() => onOpen?.(c)} style={{ ...look, background: "transparent", border: 0, borderRadius: "var(--radius-md)", textAlign: "left", font: "inherit", cursor: "pointer" }}>{what}</button>}
-              <IconButton label={`Delete the chat "${c.title}"`} onClick={() => setDoomed(c)} style={{ flexShrink: 0, marginRight: 4 }}><Trash2 size={14} aria-hidden /></IconButton>
-            </li>
-          );
-        })}
-      </ul>
+      {chats.length === 0 && <p className="body-sm" style={{ margin: 0, padding: "var(--space-2)", color: "var(--ink-muted)" }}>Your conversations show here.</p>}
+      {/* A list for each day: today, yesterday, this week, before. */}
+      {byDay(chats).map((g) => (
+        <div key={g.label} style={{ display: "grid", gap: 2, marginBottom: "var(--space-3)" }}>
+          <p className="eyebrow" style={{ margin: 0, padding: "4px 10px" }}>{g.label}</p>
+          <ul aria-label={`Chats, ${g.label.toLowerCase()}`} style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", alignContent: "start", gap: 2 }}>
+            {g.chats.map((c) => {
+              const on = c.id === shown;
+              const what = (<>
+                <span className="label" style={oneLine}>{c.title}</span>
+                <span className="body-sm" style={{ color: "var(--ink-muted)", ...oneLine }}>{c.running ? "Answering..." : timeAgo(c.updatedAt)}, {placeOf(c)}</span>
+              </>);
+              return (
+                <li key={c.id} style={{ display: "flex", alignItems: "center", gap: 4, borderRadius: "var(--radius-md)", background: on ? "var(--tint)" : undefined }}>
+                  {href ? <Link href={href(c)} aria-current={on ? "page" : undefined} style={look}>{what}</Link>
+                    : <button type="button" aria-current={on || undefined} onClick={() => onOpen?.(c)} style={{ ...look, background: "transparent", border: 0, borderRadius: "var(--radius-md)", textAlign: "left", font: "inherit", cursor: "pointer" }}>{what}</button>}
+                  <IconButton label={`Delete the chat "${c.title}"`} onClick={() => setDoomed(c)} style={{ flexShrink: 0, marginRight: 4 }}><Trash2 size={14} aria-hidden /></IconButton>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
       <ConfirmDialog open={!!doomed} onOpenChange={(o) => { if (!o) setDoomed(null); }} title="Delete this chat?" confirmLabel="Delete chat"
         description="The conversation goes. What your model made stays, and so does its history in each pattern."
         onConfirm={async () => { const c = doomed!; await api.chats.remove(c.id); if (c.id === current || c.id === shown) setCurrentChat(null); onDeleted?.(c); }} />
     </>
   );
+}
+
+/** Chats, newest first, in groups by the day they were last had. */
+function byDay(chats: ChatItem[], now = new Date()): { label: string; chats: ChatItem[] }[] {
+  const midnight = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const today = midnight(now);
+  const groups: { label: string; chats: ChatItem[] }[] = [];
+  for (const c of chats) {
+    const days = Math.round((today - midnight(new Date(c.updatedAt))) / 86_400_000);
+    const label = days <= 0 ? "Today" : days === 1 ? "Yesterday" : days < 7 ? "This week" : "Before";
+    const last = groups[groups.length - 1];
+    if (last?.label === label) last.chats.push(c); else groups.push({ label, chats: [c] });
+  }
+  return groups;
 }
 
 const EXAMPLES = {
@@ -195,11 +215,22 @@ export function Chat({ chatId, onStarted, projectId = null, patternId, compact =
   }, [running, sending, last?.status, queued.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (cfg && !cfg.key.present) {
+    // No key: what asking is like, and the two ways in.
+    const asks = EXAMPLES[patternId ? "pattern" : projectId ? "project" : "studio"];
     return (
-      <div style={{ display: "grid", gap: 8, padding: compact ? 0 : "var(--space-8)", alignContent: "start" }}>
+      <div className="arrive" style={{ display: "grid", gap: compact ? 8 : "var(--space-4)", padding: compact ? 0 : "var(--space-8)", alignContent: "start", maxWidth: 620 }}>
         {!compact && <h2 className="h3" style={{ margin: 0 }}>Ask your model</h2>}
         <p className="body-sm prose" style={{ color: "var(--ink-muted)", margin: 0 }}>Add your own Anthropic key and your model can write copy, change layouts and knit posts for you, here, as a conversation.</p>
-        <Link className="link body-sm" href="/settings?tab=model">Add a key in Settings</Link>
+        {compact ? <Link className="link body-sm" href="/settings?tab=model">Add a key in Settings</Link> : <>
+          <div><Link className="btn btn-primary" href="/settings?tab=model">Add a key in Settings</Link></div>
+          <div style={{ display: "grid", gap: 6 }}>
+            <p className="eyebrow" style={{ margin: 0 }}>What you could ask</p>
+            <ul aria-label="What you could ask" style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 6 }}>
+              {asks.map((a) => <li key={a} className="body-sm" style={{ padding: "8px 12px", borderRadius: "var(--radius-md)", border: "1px dashed var(--line-strong)", color: "var(--ink-muted)" }}>{a}</li>)}
+            </ul>
+          </div>
+          <p className="body-sm prose" style={{ color: "var(--ink-muted)", margin: 0 }}>Or use Claude Code with your own plan: connect it once and it works in this studio from your terminal, with the same tools and the same locks. <Link className="link" href="/settings?tab=model">Connect Claude Code</Link></p>
+        </>}
       </div>
     );
   }

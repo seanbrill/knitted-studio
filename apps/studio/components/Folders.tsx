@@ -47,7 +47,11 @@ export type FolderKit = ReturnType<typeof useFolders>;
  * editor's side panels it is the panel's own. `things` are the section's things, for
  * counting what each folder holds.
  */
-export function useFolders(projectId: string, section: FolderSection, things: Filed[] | null, { inAddress = true, start = "", onChanged }: { inAddress?: boolean; start?: string; onChanged?: () => void } = {}) {
+export function useFolders(projectId: string, section: FolderSection, things: Filed[] | null, { inAddress = true, start = "", onChanged, peek }: {
+  inAddress?: boolean; start?: string; onChanged?: () => void;
+  /** A small picture of a thing, for a peek at what a folder holds; null for one that has none. */
+  peek?: (t: Filed) => string | null;
+} = {}) {
   const toast = useToast();
   const router = useRouter();
   const pathname = usePathname();
@@ -93,6 +97,18 @@ export function useFolders(projectId: string, section: FolderSection, things: Fi
   }, [attempt, changed, projectId, section, toast]);
 
   const countIn = useCallback((path: string) => (things ?? []).filter((t) => isInside(t.folder, path)).length, [things]);
+  /** Up to three pictures of what is in a folder, or in the folders inside it. */
+  const peekIn = useCallback((path: string): string[] => {
+    if (!peek) return [];
+    const out: string[] = [];
+    for (const t of things ?? []) {
+      if (!isInside(t.folder, path)) continue;
+      const src = peek(t);
+      if (src) out.push(src);
+      if (out.length === 3) break;
+    }
+    return out;
+  }, [things, peek]);
 
   // Following a model that sorts this section, open the folder it works in, so what it files
   // or renames is in view. Once for each call, and only to a folder that is there.
@@ -138,7 +154,7 @@ export function useFolders(projectId: string, section: FolderSection, things: Fi
   ];
 
   return {
-    projectId, section, folders, here, inAddress, hrefFor, open, refresh, changed, attempt, move, moveFolder, countIn, dragThings, dragFolder, dropInto, menuFor, asked, ask,
+    projectId, section, folders, here, inAddress, hrefFor, open, refresh, changed, attempt, move, moveFolder, countIn, peekIn, peeks: !!peek, dragThings, dragFolder, dropInto, menuFor, asked, ask,
     /** The folder the person is in has gone: renamed or deleted, perhaps by their model. */
     gone: !!folders && !!here && !folders.includes(here),
     askMove: (moving: Filed[], label: string) => ask({ kind: "move", things: moving, label }),
@@ -219,7 +235,7 @@ function Tiles({ kit, compact }: { kit: FolderKit; compact?: boolean }) {
   const lead = leadOf(marks);
   return (
     <ul className="arrive-list" aria-label={`Folders in ${nameIn(kit.here, kit.section)}`}
-      style={{ listStyle: "none", margin: "0 0 var(--space-4)", padding: 0, display: "grid", gap: compact ? 6 : "var(--space-3)", gridTemplateColumns: compact ? "1fr" : "repeat(auto-fill, minmax(210px, 1fr))" }}>
+      style={{ listStyle: "none", margin: "0 0 var(--space-4)", padding: 0, display: "grid", gap: compact ? 6 : "var(--space-3)", gridTemplateColumns: compact ? "1fr" : `repeat(auto-fill, minmax(${kit.peeks ? 250 : 210}px, 1fr))` }}>
       {list.map((f) => <FolderTile key={f} kit={kit} path={f} mark={marks.get(f)} lead={lead === f} />)}
     </ul>
   );
@@ -230,6 +246,7 @@ function FolderTile({ kit, path, mark, lead }: { kit: FolderKit; path: string; m
   const inside = foldersIn(kit.folders ?? [], path).length;
   const facts = n || inside ? [inside && `${inside} folder${inside === 1 ? "" : "s"}`, n && counted(n, kit.section)].filter(Boolean).join(", ") : "Empty";
   const items = kit.menuFor(path);
+  const peeks = kit.peekIn(path);
   // One empty control covers the tile and carries its name, so what is announced and what is shown cannot disagree.
   const name = `${nameOf(path)}, folder, ${facts}`;
   const cover: React.CSSProperties = { position: "absolute", inset: 0, zIndex: 1, background: "transparent", border: 0, cursor: "pointer", borderRadius: "var(--radius-md)" };
@@ -244,6 +261,7 @@ function FolderTile({ kit, path, mark, lead }: { kit: FolderKit; path: string; m
             <span className="label" title={nameOf(path)} style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nameOf(path)}</span>
             <span className="body-sm" style={{ display: "block", marginTop: 2, color: "var(--ink-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{facts}</span>
           </span>
+          {peeks.length > 0 && <span aria-hidden className="folder-peek">{peeks.map((src) => <img key={src} src={src} alt="" loading="lazy" draggable={false} />)}</span>}
           <span style={{ position: "relative", zIndex: 2 }}>
             <Menu trigger={<IconButton label={`Actions for the folder ${nameOf(path)}`}><MoreHorizontal size={16} /></IconButton>} items={items} />
           </span>

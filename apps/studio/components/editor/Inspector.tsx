@@ -50,6 +50,7 @@ export function Inspector({ fonts, onSavePart }: { fonts: string[]; onSavePart?:
           <Field label="Name" htmlFor="pat-name"><Input id="pat-name" defaultValue={pattern.name} key={pattern.name} onBlur={(e) => e.target.value.trim() && e.target.value !== pattern.name && st.dispatch({ type: "setMeta", name: e.target.value }, { label: "Rename" })} /></Field>
           <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>{pattern.partId ? `${W} x ${H}` : `${pattern.size.name}, ${W} x ${H}`}. {pattern.stitches.length === 1 ? "1 stitch" : `${pattern.stitches.length} stitches`}.</p>
         </Section>
+        {!pattern.partId && <SlotList stitches={all} yarnName={(id) => yarn[id]?.name} onPick={(id) => st.select([id])} />}
       </aside>
     );
   }
@@ -219,3 +220,35 @@ export function Inspector({ fonts, onSavePart }: { fonts: string[]; onSavePart?:
 }
 
 void api;
+
+const KIND_WORD: Record<Stitch["kind"], string> = { text: "Text", image: "Picture", shape: "Shape", video: "Video", audio: "Sound", part: "Part" };
+
+/**
+ * With nothing selected: the pattern's slots, what Fill and a model can change. Free ones
+ * first, then the ones the brand locked. Each picks its stitch on the canvas.
+ */
+function SlotList({ stitches, yarnName, onPick }: { stitches: Stitch[]; yarnName: (id: string) => string | undefined; onPick: (id: string) => void }) {
+  const slots = stitches.filter((s) => s.slot && s.kind !== "part").sort((a, b) => Number(a.locked) - Number(b.locked));
+  if (!slots.length) return null;
+  const free = slots.filter((s) => !s.locked).length;
+  return (
+    <Section title="Slots" hint="What Fill and your model can change. A locked slot is the brand's: only you can unlock it.">
+      <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>{free} free, {slots.length - free} locked.</p>
+      <ul aria-label="Slots" className="slot-list">
+        {slots.map((s) => {
+          const shows = s.kind === "text" ? s.content?.split("\n").join(" ") : s.yarnId ? yarnName(s.yarnId) : undefined;
+          return (
+            <li key={s.id}>
+              {/* Named by what it shows, read as one line: "headline, Text, Free: Surprise bill?" */}
+              <button type="button" className="slot-row" onClick={() => onPick(s.id)}>
+                <span className="slot-row-name">{s.slot}<span><span className="sr-only">, </span>{KIND_WORD[s.kind]}</span></span>
+                <span className="slot-row-state" data-locked={s.locked || undefined}><span className="sr-only">, </span>{s.locked ? "Locked" : "Free"}</span>
+                {shows && <span className="slot-row-shows"><span className="sr-only">: </span>{shows}</span>}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </Section>
+  );
+}

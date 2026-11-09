@@ -138,18 +138,19 @@ export function SwatchView({ projectId }: { projectId: string }) {
           </span>
         </div>
 
-        <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
-          {!isActive && <Button variant="primary" onClick={async () => { await api.swatches.activate(current.id); await refresh(); await refreshProject(); toast(`${current.name} is now this project's swatch`); }}>Use for this project</Button>}
-          <Button onClick={async () => { const d = await api.swatches.duplicate(current.id); await refresh(); setPickedId(d.id); }}><Copy size={14} aria-hidden /> Duplicate</Button>
-          <Button onClick={() => kit.askMove([current], current.name)}><FolderInput size={14} aria-hidden /> Move to folder</Button>
-          <Button onClick={exportFile}><Download size={14} aria-hidden /> Export</Button>
-          <Button onClick={() => importRef.current?.click()}><Upload size={14} aria-hidden /> Import file</Button>
+        {/* One row of small buttons, with Delete apart at the end. */}
+        <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap", alignItems: "center" }}>
+          {!isActive && <Button size="sm" variant="primary" onClick={async () => { await api.swatches.activate(current.id); await refresh(); await refreshProject(); toast(`${current.name} is now this project's swatch`); }}>Use for this project</Button>}
+          <Button size="sm" onClick={async () => { const d = await api.swatches.duplicate(current.id); await refresh(); setPickedId(d.id); }}><Copy size={13} aria-hidden /> Duplicate</Button>
+          <Button size="sm" onClick={() => kit.askMove([current], current.name)}><FolderInput size={13} aria-hidden /> Move to folder</Button>
+          <Button size="sm" onClick={exportFile}><Download size={13} aria-hidden /> Export</Button>
+          <Button size="sm" onClick={() => importRef.current?.click()}><Upload size={13} aria-hidden /> Import file</Button>
           <input ref={importRef} type="file" accept=".json,application/json" hidden aria-label="Choose a swatch file" onChange={async (e) => {
             const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
             try { const s = await api.swatches.import(projectId, JSON.parse(await f.text()), kit.here); await refresh(); setPickedId(s.id); toast(`Imported ${s.name}`); } catch (err) { toast.problem((err as Error).message); }
           }} />
-          <Button onClick={() => setDialog("site")}><Link2 size={14} aria-hidden /> From a website</Button>
-          <Button variant="danger" disabled={swatches.length < 2} onClick={() => setDialog("delete")}><Trash2 size={14} aria-hidden /> Delete</Button>
+          <Button size="sm" onClick={() => setDialog("site")}><Link2 size={13} aria-hidden /> From a website</Button>
+          <Button size="sm" variant="danger" style={{ marginLeft: "auto" }} disabled={swatches.length < 2} tip={swatches.length < 2 ? "A project keeps at least one swatch" : undefined} onClick={() => setDialog("delete")}><Trash2 size={13} aria-hidden /> Delete</Button>
         </div>
 
         <Field label="Name" htmlFor="sw-name"><Input id="sw-name" value={draft.name} onChange={(e) => edit({ name: e.target.value })} /></Field>

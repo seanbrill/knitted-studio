@@ -241,6 +241,20 @@
 
 .inspector { display: block; }
 .inspector details > summary::-webkit-details-marker { display: none; }
+/* A peek at what a folder holds: up to three small pictures, fanned. */
+.folder-peek { display: flex; flex-shrink: 0; padding-right: 2px; }
+.folder-peek img { width: 24px; height: 32px; object-fit: cover; object-position: top; border-radius: 4px; background: var(--surface-sunken); box-shadow: 0 0 0 2px var(--surface-raised); }
+.folder-peek img + img { margin-left: -12px; }
+/* The slots of a pattern, in the inspector when nothing is selected. */
+.slot-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.slot-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; align-items: center; width: 100%; padding: 8px 10px; border: 0; border-radius: var(--radius-md); background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background var(--t-ui) var(--ease); }
+.slot-row:hover { background: var(--tint); }
+.slot-row:focus-visible { outline: 2px solid var(--ember); outline-offset: -2px; }
+.slot-row-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.slot-row-name span { margin-left: 6px; font-weight: 400; color: var(--ink-muted); }
+.slot-row-state { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: var(--radius-pill); border: 1px solid var(--line-strong); color: var(--ink); }
+.slot-row-state[data-locked] { border-style: dashed; color: var(--ink-muted); }
+.slot-row-shows { grid-column: 1 / -1; font-size: 12px; color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .contrast-sample { width: 34px; height: 22px; border-radius: 4px; display: grid; place-items: center; font-weight: 800; font-size: 12px; box-shadow: 0 0 0 1px var(--line-strong); }
 .contrast-sample::before { content: attr(data-sample); }

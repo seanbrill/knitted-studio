@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, pdfPageUrl, uploadYarn, yarnFileUrl, yarnThumbUrl } from "@knitted/core/client";
 import { isInside, nameOf, needsCredit, GEN_SOURCES, LIBRARY_ID, STOCK_SOURCES, type CropBox, type Shelf, type Yarn, type YarnKind } from "@knitted/core";
@@ -18,7 +19,7 @@ import { AskModelButton, aboutDrawing, aboutYarn } from "./AskModel";
 import { MakeDialog, type MakeStart } from "./MakeDialog";
 import { PickBox, SelectionBar, TagDialog, picking, useSelection } from "./Selection";
 
-const { Upload, Plus, Search, FileText, Music, Film, Type, Image: ImageIcon, X, AlertTriangle, Trash2, Download, Link2: LinkIcon, RotateCcw, FolderInput, FilePdf, Crop, BookOpen, Monitor, Smartphone, ChevronLeft, ChevronRight, Play, Library, Images, Copy, ExternalLink, Wand2 } = icons;
+const { Upload, Plus, Search, FileText, Music, Film, Type, Image: ImageIcon, X, AlertTriangle, Trash2, Download, Link2: LinkIcon, RotateCcw, FolderInput, FilePdf, Crop, BookOpen, Monitor, Smartphone, ChevronLeft, ChevronRight, Play, Library, Images, Copy, ExternalLink, Wand2, ChevronDown } = icons;
 const spoken = (path: string) => path.split("/").join(" / ");
 
 const KINDS: { value: "all" | YarnKind; label: string }[] = [
@@ -118,6 +119,7 @@ function UploadTray({ items, onCancel, onClear }: { items: UploadItem[]; onCance
 export function YarnView({ projectId, shelf = "yarn", heading = true }: { projectId: string; shelf?: Shelf; heading?: boolean }) {
   const toast = useToast();
   const words = SHELF[shelf];
+  const router = useRouter();
   const section = shelf === "reference" ? "reference" : "yarn";
   const view = useView<Yarn>(section, YARN_SORTS, { sort: "newest" });
   const [cropping, setCropping] = useState<Yarn | null>(null);
@@ -143,7 +145,7 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
   const { data: all, refresh: refreshAll } = useLive(() => api.yarn.list(projectId, { shelf: asked, library: false }), [projectId, shelf]);
   const { data: shared } = useLive(() => (isLibrary || shelf !== "yarn" ? Promise.resolve(null) : api.yarn.list(LIBRARY_ID)), [isLibrary, shelf]);
   const reload = useCallback(async () => { await Promise.all([refresh(), refreshAll()]); }, [refresh, refreshAll]);
-  const kit = useFolders(projectId, section, all, { onChanged: reload });
+  const kit = useFolders(projectId, section, all, { onChanged: reload, peek: (t) => { const y = t as Yarn; return y.meta.thumb ? (y.kind === "image" ? yarnThumbUrl(y, "tile") : yarnThumbUrl(y)) : null; } });
   const uploads = useUploads(projectId, reload, shelf);
   const allTags = useMemo(() => (all ?? []).map((y) => y.tags), [all]);
   // A search or a filter looks in the folder the person is in and every folder inside it;
@@ -198,10 +200,13 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
         <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
           <NewFolderButton kit={kit} />
           {shelf === "yarn" && projectId !== LIBRARY_ID && <AskModelButton about={aboutDrawing(projectId, kit.here || undefined)} />}
-          {shelf === "yarn" && projectId !== LIBRARY_ID && <Button tip="Make a photo or a short video with your own provider key, from what you say and your pictures" onClick={() => setMaking({})}><Wand2 size={14} aria-hidden /> Make</Button>}
-          {shelf === "yarn" && <Link className="btn btn-secondary" href={`/stock?to=${projectId}`}><Images size={14} aria-hidden /> Free stock</Link>}
-          <Button tip="Fetch one file from a public web address" onClick={() => setUrlOpen(true)}><LinkIcon size={14} aria-hidden /> From a link</Button>
-          <Button tip={shelf === "reference" ? "Write down something to know about the business" : "Save words to use again: headlines, captions, taglines, hashtags"} onClick={() => setCopyOpen(true)}><FileText size={14} aria-hidden /> {words.copy}</Button>
+          {/* Every other way in, behind one button: Upload stays the one to press. */}
+          <Menu trigger={<Button tip="Make one, find free stock, fetch a file from a link, or save text"><Plus size={14} aria-hidden /> Add <ChevronDown size={13} aria-hidden /></Button>} items={[
+            ...(shelf === "yarn" && projectId !== LIBRARY_ID ? [{ label: "Make a photo or a video", icon: <Wand2 size={14} aria-hidden />, onSelect: () => setMaking({}) }] : []),
+            ...(shelf === "yarn" ? [{ label: "Free stock photos", icon: <Images size={14} aria-hidden />, onSelect: () => router.push(`/stock?to=${projectId}`) }] : []),
+            { label: "From a link", icon: <LinkIcon size={14} aria-hidden />, onSelect: () => setUrlOpen(true) },
+            { label: words.copy, icon: <FileText size={14} aria-hidden />, onSelect: () => setCopyOpen(true) },
+          ]} />
           <Button variant="primary" tip="Pictures, video, sound, fonts, PDFs or text, from this computer. You can also drop or paste them here." onClick={() => fileInput.current?.click()}><Upload size={14} aria-hidden /> Upload</Button>
           <input ref={fileInput} type="file" multiple hidden aria-label="Choose files to upload" onChange={(e) => { uploads.add([...(e.target.files ?? [])], kit.here); e.target.value = ""; }} />
         </div>
@@ -219,7 +224,7 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
           <Search size={15} aria-hidden style={{ position: "absolute", left: 10, top: 10, color: "var(--ink-muted)" }} />
           <Input aria-label={kit.here ? `Search ${nameOf(kit.here)} and the folders in it` : words.search} placeholder={kit.here ? `Search ${nameOf(kit.here)}` : words.search} value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 32 }} />
         </div>
-        <TagFilter tags={allTags} value={tag} onChange={setTag} />
+        <TagFilter tags={allTags} value={tag} onChange={setTag} show={0} />
         <ViewBar view={view} what={shelf === "reference" ? "the reference" : "Yarn"} />
       </div>
 
@@ -557,7 +562,7 @@ function CropDialog({ y, onOpenChange, onDone }: { y: Yarn | null; onOpenChange:
   );
 }
 
-void Plus; void Menu; void Tip;
+void Tip;
 
 // Where a stock file came from, its licence, and the line to give with it where it is used.
 function StockCredit({ credit: c }: { credit: NonNullable<Yarn["meta"]["stock"]> }) {

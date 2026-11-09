@@ -35,12 +35,51 @@ const summary = (r: Row): ChatSummary => ({
   jobIds: JSON.parse(r.job_ids as string), createdAt: r.created_at as string, updatedAt: r.updated_at as string,
 });
 
-/** What a chat is called in the list: the first thing the person asked, on one line. */
-export function chatTitle(prompt: string): string {
-  const line = prompt.replace(/\s+/g, " ").trim();
+/** One line, cut at a word near 60 characters. */
+function oneLine(text: string): string {
+  const line = text.replace(/\s+/g, " ").trim();
   if (line.length <= 60) return line || "New chat";
   const cut = line.slice(0, 60);
   return `${cut.slice(0, cut.lastIndexOf(" ") > 30 ? cut.lastIndexOf(" ") : 60)}...`;
+}
+
+/**
+ * What a chat is called in the list: what the person asked, on one line. Asked from a button
+ * about something, the prompt is that thing's context, then "What I want:" and their words:
+ * the chat is named for their words, not for the context.
+ */
+export function chatTitle(prompt: string): string {
+  const at = prompt.lastIndexOf("\n\nWhat I want: ");
+  return oneLine(at < 0 ? prompt : prompt.slice(at + "\n\nWhat I want: ".length));
+}
+
+/** The first thing the person sent, as text. */
+function firstAsk(messages: unknown[]): string | null {
+  const m = messages[0] as { role?: string; content?: unknown } | undefined;
+  if (!m || m.role !== "user") return null;
+  if (typeof m.content === "string") return m.content;
+  if (!Array.isArray(m.content)) return null;
+  const text = m.content.filter((b: { type?: string }) => b?.type === "text").map((b: { text?: string }) => b.text ?? "").join("\n\n");
+  return text || null;
+}
+
+/**
+ * Chats started before titles named what was asked are named for their context. Once, name
+ * each again from its first message, unless its title is no longer the one it was given.
+ */
+function retitleOnce(store: Store) {
+  const done = store.db.prepare("select value from meta where key = 'chat-titles'").get() as { value: string } | undefined;
+  if (done?.value === "2") return;
+  store.write(() => {
+    for (const r of store.db.prepare("select id, title, messages from chats").all() as Row[]) {
+      // Without what the studio adds after the person's words: the pattern open, or the project.
+      const ask = firstAsk(JSON.parse(r.messages as string))?.split(/\n\n(?:You are working on this pattern \(|\(Project |\(No project is open\.)/)[0];
+      if (!ask || oneLine(ask) !== r.title) continue;
+      const title = chatTitle(ask);
+      if (title !== r.title) store.db.prepare("update chats set title = ? where id = ?").run(title, r.id as string);
+    }
+    store.db.prepare("insert into meta (key, value) values ('chat-titles', '2') on conflict(key) do update set value = excluded.value").run();
+  });
 }
 
 export function createChat(store: Store, c: { projectId?: string | null; patternId?: string | null; title: string; system: string }): Chat {
@@ -67,6 +106,7 @@ export function chatSummary(store: Store, id: string): ChatSummary {
 
 /** Newest first, without the conversations themselves. */
 export function listChats(store: Store, f: { projectId?: string; patternId?: string; limit?: number } = {}): ChatSummary[] {
+  retitleOnce(store);
   const where: string[] = []; const args: (string | number)[] = [];
   if (f.projectId) { where.push("project_id = ?"); args.push(f.projectId); }
   if (f.patternId) { where.push("pattern_id = ?"); args.push(f.patternId); }

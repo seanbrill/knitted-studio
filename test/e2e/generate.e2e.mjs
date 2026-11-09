@@ -67,7 +67,8 @@ const dialog = () => page.getByRole("dialog", { name: "Make a photo or video" })
 
 test("with no key, Make says which key to add, and where", async () => {
   await page.goto(`${studio.url}/projects/${projectId}/yarn`);
-  await page.getByRole("button", { name: "Make", exact: true }).click();
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Make a photo or a video" }).click();
   await dialog().getByText(/Making photos needs an OpenAI or Google Gemini key/).waitFor();
   assert.equal(await dialog().getByRole("button", { name: /^Make it/ }).isDisabled(), true);
   await dialog().getByRole("link", { name: "Open Settings" }).click();
@@ -91,7 +92,8 @@ test("Settings, Generate: a Google key is saved and tested, and never comes back
 
 test("two photos are made from the Make dialog, priced before, and kept in Yarn with how they were made", async () => {
   await page.goto(`${studio.url}/projects/${projectId}/yarn`);
-  await page.getByRole("button", { name: "Make", exact: true }).click();
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Make a photo or a video" }).click();
   await dialog().getByText("A square photo, good quality, with Nano Banana 2.1, for about $0.05.").waitFor();
   await dialog().getByLabel("What to make").fill("A latte on a marble counter, morning light");
   await dialog().getByRole("radio", { name: "Feed 4:5" }).click();
@@ -147,7 +149,8 @@ for (const theme of ["day", "night"]) {
     assert.deepEqual(await axeProblems(page), []);
     await page.goto(`${studio.url}/projects/${projectId}/yarn`);
     await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
-    await page.getByRole("button", { name: "Make", exact: true }).click();
+    await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Make a photo or a video" }).click();
     await dialog().getByText(/with Nano Banana 2\.1, for about/).waitFor();
     await page.waitForTimeout(400);
     assert.deepEqual(await axeProblems(page), []);
