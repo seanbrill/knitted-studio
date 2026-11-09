@@ -100,8 +100,10 @@
   --inspector-w: 300px;
   --topbar-h: 48px;
 
-  /* ── Motion: 160ms for UI, 320ms for panels ───────────────────────────── */
+  /* ── Motion: 120ms to leave, 160ms for UI, 240ms to arrive, 320ms for panels ── */
+  --t-leave: 120ms;
   --t-ui: 160ms;
+  --t-arrive: 240ms;
   --t-panel: 320ms;
   --ease: cubic-bezier(0.2, 0, 0, 1);
 
@@ -275,7 +277,9 @@ button.link:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px
   from { clip-path: inset(0 0 100% 0); opacity: 0.4; }
   to   { clip-path: inset(0 0 0 0);    opacity: 1; }
 }
-.stitching-in { animation: stitch-in 320ms var(--ease) both; }
+/* Backwards, not both: once in, nothing is left clipping it, so its ring, its shadow and
+ * a model's outline show in full. */
+.stitching-in { animation: stitch-in 320ms var(--ease) backwards; }
 
 @keyframes heat-shimmer {
   0%   { background-position: 0% 50%; }

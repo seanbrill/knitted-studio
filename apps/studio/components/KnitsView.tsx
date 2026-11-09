@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { api, knitFileUrl, type KnitRecord } from "@knitted/core/client";
 import { KNIT_SIZES, foldersIn, isInside, nameOf, sizeNamed } from "@knitted/core";
-import { Button, Chip, ConfirmDialog, Dialog, EmptyState, Input, Select, Skeleton, icons, useToast } from "@knitted/ui";
+import { Button, Chip, ConfirmDialog, Dialog, EmptyState, Input, Select, SkeletonSection, icons, useToast } from "@knitted/ui";
 import { formatBytes, timeAgo, useLive } from "@/lib/hooks";
 import { FolderCrumbs, FolderDialogs, FolderList, NewFolderButton, useFolders } from "./Folders";
 import { KnitPost } from "./KnitPost";
@@ -60,7 +60,7 @@ export function KnitsView({ projectId }: { projectId: string }) {
   const favorites = (knits ?? []).filter((k) => k.favorite).length;
   const [onlyFavorites, setOnlyFavorites] = useState(false);
   const favorite = async (k: KnitRecord, on = !k.favorite) => {
-    try { const next = await api.knit.favorite(k.id, on); setOpen((o) => (o?.id === k.id ? next : o)); await refresh(); } catch (e) { toast((e as Error).message); }
+    try { const next = await api.knit.favorite(k.id, on); setOpen((o) => (o?.id === k.id ? next : o)); await refresh(); } catch (e) { toast.problem((e as Error).message); }
   };
   const retag = async (tags: string[]) => { if (!open) return; setOpen(await api.knit.tag(open.id, tags)); await refresh(); };
   const [del, setDel] = useState<KnitRecord | null>(null);
@@ -147,7 +147,7 @@ export function KnitsView({ projectId }: { projectId: string }) {
         <Button size="sm" variant="danger" onClick={() => setBulkDelete(true)}><Trash2 size={13} aria-hidden /> Delete</Button>
       </SelectionBar>
       {filtering ? (kit.here && <p className="body-sm" style={{ margin: "0 0 var(--space-3)", color: "var(--ink-muted)" }}>Looking in {nameOf(kit.here)} and the folders in it.</p>) : <FolderList kit={kit} />}
-      {!knits || !kit.folders ? <Skeleton height={200} /> : knits.length === 0 && kit.folders.length === 0 ? (
+      {!knits || !kit.folders ? <SkeletonSection filters={!knits} tiles={kit.folders ? 0 : 3} min={190} list={view.mode === "list"} /> : knits.length === 0 && kit.folders.length === 0 ? (
         <EmptyState title="Nothing knitted yet" body="Open a pattern and press Knit. Everything you make from this project shows up here." />
       ) : here.length === 0 ? (
         filtering ? (onlyFavorites && !favorites ? <EmptyState title="No favourites yet" body="Press the star on a knit you like, and it shows here." /> : <EmptyState title="Nothing matches" body={onlyFavorites ? "None of your favourites matches. Try another search or filter." : "Try another search or filter."} />) : kit.here && !kit.gone && foldersIn(kit.folders, kit.here).length === 0 && <EmptyState title={`Nothing in ${nameOf(kit.here)} yet`} body="Drag knits onto this folder, or open one and choose Move to folder." />
@@ -162,7 +162,7 @@ export function KnitsView({ projectId }: { projectId: string }) {
                   <button type="button" className="link" onClick={() => kit.askMove(group, `the batch of ${group.length}`)}>Move batch</button>
                 </h3>
               )}
-              <ul style={layout(view.mode, 190)}>
+              <ul className="arrive-list" style={layout(view.mode, 190)}>
                 {group.map((k) => {
                   const fresh = Date.parse(k.createdAt) > openedAt;
                   const warn = (k.report.issues ?? []).filter((i) => i.level === "warning").length;

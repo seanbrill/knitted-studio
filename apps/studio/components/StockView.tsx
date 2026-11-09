@@ -64,7 +64,7 @@ export function StockView() {
       const r = await api.stock.search({ q, kind, page: pages + 1 });
       setPages(pages + 1);
       setFound((f) => f && { items: [...f.items, ...r.items.filter((i) => !f.items.some((x) => x.id === i.id))], sources: r.sources });
-    } catch (e) { toast((e as Error).message); } finally { setBusy(false); }
+    } catch (e) { toast.problem((e as Error).message); } finally { setBusy(false); }
   };
   const add = async (item: StockItem) => {
     setAdded((a) => ({ ...a, [item.id]: "adding" }));
@@ -73,7 +73,7 @@ export function StockView() {
       try { localStorage.setItem(TO_KEY, to); } catch {}
       setAdded((a) => ({ ...a, [item.id]: r.yarn.id }));
       toast(r.existing ? `${r.yarn.name} was already in ${toName}.` : `Added ${r.yarn.name} to ${toName}.`);
-    } catch (e) { setAdded((a) => { const n = { ...a }; delete n[item.id]; return n; }); toast((e as Error).message); }
+    } catch (e) { setAdded((a) => { const n = { ...a }; delete n[item.id]; return n; }); toast.problem((e as Error).message); }
   };
   const yarnHref = to === LIBRARY_ID ? "/library" : `/projects/${to}/yarn`;
   const asked = found?.sources.filter((s) => s.state !== "none") ?? [];
@@ -117,7 +117,7 @@ export function StockView() {
             {found.items.map((item) => <Result key={item.id} item={item} state={added[item.id]} toName={toName} yarnHref={yarnHref} onLook={() => setLooking(item)} onAdd={() => add(item)} />)}
           </ul>
           <div style={{ display: "flex", justifyContent: "center", marginTop: "var(--space-6)" }}>
-            {found.sources.some((s) => s.more) && <Button disabled={busy} onClick={more}>{busy ? "Looking..." : "More"}</Button>}
+            {found.sources.some((s) => s.more) && <Button busy={busy} onClick={more}>{busy ? "Looking..." : "More"}</Button>}
           </div>
         </>
       )}

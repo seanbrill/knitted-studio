@@ -46,7 +46,7 @@ function OwnKey() {
       <Slider label="Steps per request" value={cfg.maxTurns} min={5} max={100} step={1} unit="" onCommit={(maxTurns) => save({ maxTurns })} />
       <Slider label="Files it may knit per request" value={cfg.maxKnits} min={0} max={100} step={1} unit="" onCommit={(maxKnits) => save({ maxKnits })} />
       <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-        <Button variant="primary" onClick={test} disabled={busy || !cfg.key.present}>{busy ? "Checking..." : "Test connection"}</Button>
+        <Button variant="primary" onClick={test} busy={busy} disabled={!cfg.key.present}>{busy ? "Checking..." : "Test connection"}</Button>
         {good && <span className="body-sm" style={{ color: "var(--success)", display: "flex", gap: 4, alignItems: "center" }}><Check size={14} aria-hidden /> Connected</span>}
         {err && <span className="field-error" role="alert"><AlertTriangle size={14} aria-hidden /> {err}</span>}
       </div>

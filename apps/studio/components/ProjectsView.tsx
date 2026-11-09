@@ -6,7 +6,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { api, uploadYarn, yarnPictureUrl, yarnThumbUrl, type JobItem, type ProjectSummary } from "@knitted/core/client";
 import {
   Button, Chip, ConfirmDialog, ContextMenu, Dialog, EmptyState, Field, IconButton, Input, Menu, SegmentedControl,
-  Select, Skeleton, StitchRow, Textarea, icons, useToast, type MenuItems,
+  Select, SkeletonSection, StitchRow, Textarea, icons, useToast, type MenuItems,
 } from "@knitted/ui";
 import { PageHeader } from "./AppShell";
 import { SyncChoices } from "./SyncChoices";
@@ -114,7 +114,7 @@ function ProjectsInner() {
   }, [data, q, sort]);
 
   const act = async (fn: () => Promise<unknown>, msg?: string) => {
-    try { await fn(); await refresh(); if (msg) toast(msg); } catch (e) { toast((e as Error).message); }
+    try { await fn(); await refresh(); if (msg) toast(msg); } catch (e) { toast.problem((e as Error).message); }
   };
 
   const menuFor = (p: ProjectSummary): MenuItems => [
@@ -153,9 +153,7 @@ function ProjectsInner() {
 
       {error && <p role="alert" className="field-error">{error}</p>}
       {!data ? (
-        <div style={{ display: "grid", gap: "var(--space-4)", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
-          {[0, 1, 2].map((i) => <Skeleton key={i} height={180} />)}
-        </div>
+        <SkeletonSection tiles={0} cards={4} min={240} ratio="16 / 10" list={view === "list"} />
       ) : list.length === 0 ? (
         q ? (
           <EmptyState title="No projects match" body={`Nothing is called "${q}". Try a shorter search.`} />
@@ -165,7 +163,7 @@ function ProjectsInner() {
           <EmptyState title="No projects yet" body="A project holds the Yarn, Swatch and Patterns for one brand." action={<Button variant="primary" onClick={() => setCreating(true)}>Create your first project</Button>} />
         )
       ) : (
-        <div style={{ display: "grid", gap: "var(--space-4)", gridTemplateColumns: view === "grid" ? "repeat(auto-fill, minmax(240px, 1fr))" : "1fr" }}>
+        <div className="arrive-list" style={{ display: "grid", gap: "var(--space-4)", gridTemplateColumns: view === "grid" ? "repeat(auto-fill, minmax(240px, 1fr))" : "1fr" }}>
           {list.map((p) => (
             <ProjectCard
               key={p.id}
@@ -258,7 +256,7 @@ export function NewProjectDialog({ open, onOpenChange, onCreated }: { open: bool
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange} title="New project" description="One project per brand: it holds that brand's Yarn, Swatch, Brief and Patterns."
-      actions={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" disabled={busy} onClick={submit}>{url ? "Create and sync" : "Create project"}</Button></>}>
+      actions={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" busy={busy} onClick={submit}>{url ? "Create and sync" : "Create project"}</Button></>}>
       <form onSubmit={(e) => { e.preventDefault(); void submit(); }} style={{ display: "grid", gap: "var(--space-4)" }}>
         <Field label="Name" error={err} htmlFor="np-name"><Input id="np-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Launch week" /></Field>
         <Field label="Description (optional)" htmlFor="np-desc"><Textarea id="np-desc" value={desc} onChange={(e) => setDesc(e.target.value)} rows={2} /></Field>
@@ -290,11 +288,11 @@ function PictureDialog({ project, onOpenChange, onDone }: { project: ProjectSumm
   }, [project]);
   const pictures = (yarn ?? []).filter((y) => (y.kind === "image" || y.kind === "video") && y.meta.thumb);
   const save = async (coverYarnId: string | null) => {
-    try { await api.projects.update(project!.id, { coverYarnId }); onOpenChange(false); onDone(); toast(coverYarnId ? "Picture set." : "Picture taken away."); } catch (e) { toast((e as Error).message); }
+    try { await api.projects.update(project!.id, { coverYarnId }); onOpenChange(false); onDone(); toast(coverYarnId ? "Picture set." : "Picture taken away."); } catch (e) { toast.problem((e as Error).message); }
   };
   const upload = async (f: File) => {
     setProgress(0);
-    try { const r = await uploadYarn(project!.id, f, setProgress).promise; await refresh(); setSel(r.yarn.id); } catch (e) { toast((e as Error).message); } finally { setProgress(null); }
+    try { const r = await uploadYarn(project!.id, f, setProgress).promise; await refresh(); setSel(r.yarn.id); } catch (e) { toast.problem((e as Error).message); } finally { setProgress(null); }
   };
   return (
     <Dialog open={!!project} onOpenChange={onOpenChange} wide title="Project picture" description="It shows on the project's card. Choose one of its images, or upload one, which also adds it to the project's Yarn."

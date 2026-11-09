@@ -89,7 +89,7 @@ export function YarnPanel({ projectId, onYarnChanged }: { projectId: string; onY
 
   const upload = async (files: File[]) => {
     for (const f of files) {
-      try { await uploadYarn(projectId, f, () => {}, { folder: kit.here }).promise; } catch (e) { toast((e as Error).message); }
+      try { await uploadYarn(projectId, f, () => {}, { folder: kit.here }).promise; } catch (e) { toast.problem((e as Error).message); }
     }
     onYarnChanged();
   };

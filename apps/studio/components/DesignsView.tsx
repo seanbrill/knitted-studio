@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api } from "@knitted/core/client";
 import type { Design, Swatch } from "@knitted/core";
-import { Button, Dialog, EmptyState, Field, IconButton, Input, Menu, Skeleton, useToast, icons } from "@knitted/ui";
+import { Button, Dialog, EmptyState, Field, IconButton, Input, Menu, SkeletonSection, useToast, icons } from "@knitted/ui";
 import { timeAgo, useLive } from "@/lib/hooks";
 import { leadOf, useMarks } from "@/lib/agent";
 import { ModelMark } from "./ModelMark";
@@ -42,7 +42,7 @@ export function DesignsView({ projectId }: { projectId: string }) {
   const commentsWords = (n: number) => `${n} open comment${n === 1 ? "" : "s"}`;
 
   const act = async (fn: () => Promise<unknown>, msg?: string, undo?: () => Promise<unknown>) => {
-    try { await fn(); await refresh(); if (msg) toast(msg, undo ? { label: "Undo", onClick: () => void undo().then(refresh) } : undefined); } catch (e) { toast((e as Error).message); }
+    try { await fn(); await refresh(); if (msg) toast(msg, undo ? { label: "Undo", onClick: () => void undo().then(refresh) } : undefined); } catch (e) { toast.problem((e as Error).message); }
   };
 
   return (
@@ -52,10 +52,10 @@ export function DesignsView({ projectId }: { projectId: string }) {
         <AskModelButton about={aboutDesign(projectId)} />
         <Button variant="primary" onClick={() => setCreating(true)}><Plus size={14} aria-hidden /> New design</Button>
       </div>
-      {!designs || !swatch ? <Skeleton height={240} />
+      {!designs || !swatch ? <SkeletonSection tiles={0} cards={3} min={280} ratio="16 / 10" />
         : !designs.length ? <EmptyState title="No designs yet" body="A design sheet is a whole site on one board, like a Figma file: its colours and type, the pieces every page shares, and each page on a computer and a phone, in labelled sections. Start one from your brand, or ask your model to design one." action={<Button variant="primary" onClick={() => setCreating(true)}><Plus size={14} aria-hidden /> New design</Button>} />
         : (
-          <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "var(--space-4)" }}>
+          <ul className="arrive-list" style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "var(--space-4)" }}>
             {designs.map((d) => (
               <li key={d.id} className="card card-link" style={{ padding: "var(--space-3)", position: "relative" }}>
                 <Link href={`/projects/${projectId}/designs/${d.id}`} aria-label={`Open ${d.name}${noted(d.id) ? `, ${commentsWords(noted(d.id))}` : ""}`} style={{ position: "absolute", inset: 0, zIndex: 1, borderRadius: "var(--radius-md)" }} />
@@ -108,7 +108,7 @@ function NewDesign({ projectId, open, onOpenChange }: { projectId: string; open:
   };
   return (
     <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) { setErr(undefined); setBusy(false); } }} title="New design" description="A whole site on one board, in your brand."
-      actions={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" disabled={busy} onClick={make}>{busy ? "Starting..." : "Start it"}</Button></>}>
+      actions={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" busy={busy} onClick={make}>{busy ? "Starting..." : "Start it"}</Button></>}>
       <form onSubmit={(e) => { e.preventDefault(); void make(); }} style={{ display: "grid", gap: "var(--space-4)" }}>
         <Field label="Name" htmlFor="design-name" error={err}><Input id="design-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} /></Field>
         <fieldset style={{ border: 0, margin: 0, padding: 0, display: "grid", gap: "var(--space-2)" }}>

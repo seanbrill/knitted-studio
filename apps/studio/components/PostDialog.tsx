@@ -62,7 +62,7 @@ export function PostDialog({ projectId, knits, open, onOpenChange }: { projectId
       toast(when === "draft" ? `Saved ${made.length === 1 ? "a draft" : `${made.length} drafts`}.` : when === "at" ? `Scheduled for ${new Date(at).toLocaleString()}.` : "Posting now. See it in Posts.");
       onOpenChange(false);
       setPicked([]);
-    } catch (e) { toast((e as Error).message); } finally { setBusy(false); }
+    } catch (e) { toast.problem((e as Error).message); } finally { setBusy(false); }
   };
 
   const none = accounts && accounts.length === 0;
@@ -70,7 +70,7 @@ export function PostDialog({ projectId, knits, open, onOpenChange }: { projectId
     <Dialog open={open} onOpenChange={onOpenChange} wide title={knits.length > 1 ? `Post ${knits.length} knits together` : `Post ${first?.label ?? "this knit"}`}
       actions={!none && <>
         <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-        <Button variant="primary" disabled={busy || !picked.length || (when !== "draft" && problems.length > 0)} onClick={submit}>
+        <Button variant="primary" busy={busy} disabled={!picked.length || (when !== "draft" && problems.length > 0)} onClick={submit}>
           {when === "now" ? <><Send size={14} aria-hidden /> Post now</> : when === "at" ? <><CalendarClock size={14} aria-hidden /> Schedule</> : "Save draft"}
         </Button>
       </>}>

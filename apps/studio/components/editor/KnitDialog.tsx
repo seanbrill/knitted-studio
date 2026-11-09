@@ -76,7 +76,7 @@ export function KnitDialog({ open, onOpenChange, pattern, projectId }: { open: b
         setJob(fresh);
         if (["done", "failed", "cancelled", "interrupted"].includes(fresh.status)) clearInterval(watch.current);
       }, 500);
-    } catch (e) { toast((e as Error).message); }
+    } catch (e) { toast.problem((e as Error).message); }
     finally { setBusy(false); }
   };
 
@@ -89,7 +89,7 @@ export function KnitDialog({ open, onOpenChange, pattern, projectId }: { open: b
       actions={job ? (
         finished ? <><Button variant="ghost" onClick={() => close(false)}>Close</Button><Link href={`/projects/${projectId}/knits`} className="btn btn-primary">See your knits</Link></>
           : <Button variant="danger" onClick={() => api.knit.cancel(job.id)}>Cancel</Button>
-      ) : (<><Button variant="ghost" onClick={() => close(false)}>Cancel</Button><Button variant="primary" disabled={busy || !canDraw || errors.length > 0 || (batch && parsed.rows.length === 0)} onClick={go}>Knit {total} {total === 1 ? "file" : "files"}</Button></>)}>
+      ) : (<><Button variant="ghost" onClick={() => close(false)}>Cancel</Button><Button variant="primary" busy={busy} disabled={!canDraw || errors.length > 0 || (batch && parsed.rows.length === 0)} onClick={go}>Knit {total} {total === 1 ? "file" : "files"}</Button></>)}>
       {!job ? (
         <div style={{ display: "grid", gap: "var(--space-5)" }}>
           <RendererCard missingOnly onReady={setCanDraw} />

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { api } from "@knitted/core/client";
 import { FALLBACK_SWATCH, SIZES, foldersIn, isInside, nameOf, type ActivityAction, type Pattern, type Size } from "@knitted/core";
-import { Button, ConfirmDialog, ContextMenu, Dialog, EmptyState, Field, IconButton, Input, Menu, Select, Skeleton, icons, useToast, type MenuItems } from "@knitted/ui";
+import { Button, ConfirmDialog, ContextMenu, Dialog, EmptyState, Field, IconButton, Input, Menu, Select, Skeleton, SkeletonSection, icons, useToast, type MenuItems } from "@knitted/ui";
 import { PatternThumb, thumbContext } from "./PatternThumb";
 import { RenameDialog } from "./ProjectsView";
 import { FolderCrumbs, FolderDialogs, FolderList, NewFolderButton, useFolders } from "./Folders";
@@ -89,7 +89,7 @@ export function PatternsView({ projectId }: { projectId: string }) {
   const [deleting, setDeleting] = useState<Pattern | null>(null);
 
   const act = async (fn: () => Promise<unknown>, msg?: string) => {
-    try { await fn(); await refresh(); if (msg) toast(msg); } catch (e) { toast((e as Error).message); }
+    try { await fn(); await refresh(); if (msg) toast(msg); } catch (e) { toast.problem((e as Error).message); }
   };
   const view = useView<Pattern>("patterns", PATTERN_SORTS);
   const [q, setQ] = useState("");
@@ -140,14 +140,14 @@ export function PatternsView({ projectId }: { projectId: string }) {
           <Button size="sm" variant="danger" onClick={() => setBulkDelete(true)}><Trash2 size={13} aria-hidden /> Delete</Button>
         </SelectionBar>
         {filtering ? (kit.here && <p className="body-sm" style={{ margin: "0 0 var(--space-3)", color: "var(--ink-muted)" }}>Looking in {nameOf(kit.here)} and the folders in it.</p>) : <FolderList kit={kit} />}
-        {!patterns || !kit.folders ? <Skeleton height={240} /> : patterns.length === 0 && kit.folders.length === 0 ? (
+        {!patterns || !kit.folders ? <SkeletonSection tiles={kit.folders ? 0 : 3} min={190} list={view.mode === "list"} /> : patterns.length === 0 && kit.folders.length === 0 ? (
           <EmptyState title="No patterns yet" body="A pattern is a layout you set once and knit from again and again." action={<Button variant="primary" onClick={() => setCreating(true)}>New pattern</Button>} />
         ) : here.length === 0 ? (
           filtering ? <EmptyState title="Nothing matches" body="Try another search or size." /> : kit.here && !kit.gone && foldersIn(kit.folders, kit.here).length === 0 && (
             <EmptyState title={`Nothing in ${nameOf(kit.here)} yet`} body="Drag patterns onto this folder, or choose Move to folder on one. A pattern made here goes in it." action={<Button variant="primary" onClick={() => setCreating(true)}>New pattern</Button>} />
           )
         ) : (
-          <div style={layout(view.mode, 190)}>
+          <div className="arrive-list" style={layout(view.mode, 190)}>
             {here.map((p) => view.mode === "list" ? (
               <ContextMenu key={p.id} items={menu(p)}>
                 <div className="pickable" data-selected={sel.has(p.id)}>

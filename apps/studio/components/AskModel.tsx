@@ -130,7 +130,7 @@ export function AskModelDialog({ about, onOpenChange }: { about: About | null; o
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange} title={make ? make.title : `Ask your model to change ${about?.what ?? "it"}`} description={about ? `${make ? make.description : about.name}. Say what you want; your model does it in a chat of its own, and you can keep working.` : undefined}
-      actions={<><ModelPicker /><span style={{ flex: 1 }} /><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" disabled={busy} onClick={send}><Sparkles size={14} aria-hidden /> {busy ? "Starting..." : "Ask"}</Button></>}>
+      actions={<><ModelPicker /><span style={{ flex: 1 }} /><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" busy={busy} onClick={send}><Sparkles size={14} aria-hidden /> {busy ? "Starting..." : "Ask"}</Button></>}>
       <form onSubmit={(e) => { e.preventDefault(); void send(); }} style={{ display: "grid", gap: "var(--space-3)" }}>
         <Field label={make ? make.field : "What should change?"} htmlFor="ask-change" error={err}>
           <Textarea id="ask-change" autoFocus rows={4} value={text} onChange={(e) => setText(e.target.value)}

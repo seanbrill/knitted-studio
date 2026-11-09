@@ -70,7 +70,7 @@ export function MakeDialog({ projectId, folder, start, onClose, onMade }: { proj
             const n = now.result.yarn.length;
             toast(`${n === 1 ? now.result.yarn[0].name : `${n} new files`} ${n === 1 ? "is" : "are"} in Yarn. It cost $${now.result.cost.toFixed(2)}.`);
             onMade();
-          } else toast(now.error ?? "It could not be made.");
+          } else toast.problem(now.error ?? "It could not be made.");
         }
       } finally { looking.current = false; }
     }, 2000);
@@ -92,7 +92,7 @@ export function MakeDialog({ projectId, folder, start, onClose, onMade }: { proj
   const noKey = why && /Settings, Generate/.test(why);
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()} wide title="Make a photo or video" description="Made by your own provider, from what you say and your pictures, and kept in Yarn. It is charged to your key."
-      actions={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" disabled={busy || !plan} onClick={make}><Wand2 size={14} aria-hidden /> {busy ? "Starting..." : plan ? `Make it, about $${plan.cost.toFixed(2)}` : "Make it"}</Button></>}>
+      actions={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" busy={busy} disabled={!plan} onClick={make}><Wand2 size={14} aria-hidden /> {busy ? "Starting..." : plan ? `Make it, about $${plan.cost.toFixed(2)}` : "Make it"}</Button></>}>
       <form onSubmit={(e) => { e.preventDefault(); void make(); }} style={{ display: "grid", gap: "var(--space-4)" }}>
         <SegmentedControl<GenKind> label="Make a" value={kind} onChange={(k) => { setKind(k); setAspect(k === "video" ? "9:16" : "1:1"); if (k === "video") setFrom((f) => f.slice(0, 2)); }} options={KINDS} />
         <Field label="What to make" htmlFor="make-what" hint={kind === "video" ? "What happens, how the camera moves, the light, and the sound." : "The subject, the setting, the light and the framing. Leave words out: set them in the pattern."}>

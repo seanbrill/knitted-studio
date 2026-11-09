@@ -22,7 +22,7 @@ export function KnitPost({ knit, onChanged }: { knit: KnitRecord; onChanged: (k:
   const write = async (what?: string) => {
     setBusy(true);
     try { onChanged(await api.knit.writePost(knit.id, what?.trim() || undefined)); setAsk(""); }
-    catch (e) { toast((e as Error).message || "Your model could not write it. Try again."); }
+    catch (e) { toast.problem((e as Error).message || "Your model could not write it. Try again."); }
     finally { setBusy(false); }
   };
   const save = async (change: Parameters<typeof api.knit.setPost>[1]) => onChanged(await api.knit.setPost(knit.id, change));
@@ -58,8 +58,8 @@ export function KnitPost({ knit, onChanged }: { knit: KnitRecord; onChanged: (k:
             onChange={(e) => setAsk(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !busy) void write(ask); }} />
         </div>
         {has && ask.trim()
-          ? <Button disabled={busy} onClick={() => void write(ask)}><Sparkles size={14} aria-hidden /> {busy ? "Writing..." : "Change it"}</Button>
-          : <Button disabled={busy} onClick={() => void write()}>{has ? <RotateCw size={14} aria-hidden /> : <Sparkles size={14} aria-hidden />} {busy ? "Writing..." : has ? "Write again" : "Write caption and hashtags"}</Button>}
+          ? <Button busy={busy} onClick={() => void write(ask)}><Sparkles size={14} aria-hidden /> {busy ? "Writing..." : "Change it"}</Button>
+          : <Button busy={busy} onClick={() => void write()}>{has ? <RotateCw size={14} aria-hidden /> : <Sparkles size={14} aria-hidden />} {busy ? "Writing..." : has ? "Write again" : "Write caption and hashtags"}</Button>}
       </div>
     </section>
   );

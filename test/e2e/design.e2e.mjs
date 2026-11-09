@@ -49,6 +49,20 @@ test("a sheet starts from the brand: Foundations, Components and Pages, on a boa
   await page.waitForFunction(() => Number.parseInt(document.querySelector('iframe[title="Home"]').style.height) > 1200);
 });
 
+test("a sheet opened straight from its address loads without an error, and every frame that fits what is in it is measured", async () => {
+  // The server sends the board with its frames already in it, and a frame can finish
+  // loading before the window listens for that: it must still be measured, not left at a guess.
+  const fresh = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+  const problems = [];
+  fresh.on("console", (m) => { if (m.type() === "error") problems.push(m.text().slice(0, 200)); });
+  fresh.on("pageerror", (e) => problems.push(e.message.slice(0, 200)));
+  await fresh.goto(`${studio.url}/projects/${projectId}/designs/${designId}`);
+  await fresh.frameLocator('iframe[title="Header"]').getByText("Get started").waitFor();
+  await fresh.waitForFunction(() => ["Header", "Footer"].every((t) => Number.parseInt(document.querySelector(`iframe[title="${t}"]`).style.height) < 300));
+  assert.deepEqual(problems.filter((p) => /hydrat|did not match|didn't match/i.test(p)), []);
+  await fresh.context().close();
+});
+
 test("a frame's code is changed in the inspector, shows on the board, and Undo takes it back", async () => {
   await page.getByRole("button", { name: "Home, Desktop 1440" }).click();
   const inspector = page.getByRole("complementary", { name: "Frame: Home" });

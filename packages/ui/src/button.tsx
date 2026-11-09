@@ -13,11 +13,13 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
   block?: boolean;
   /** One line on what it does, shown when the pointer rests on it. Its words say what it is. */
   tip?: string;
+  /** It started something that is still going: it cannot be pressed again, and spins where its icon was. */
+  busy?: boolean;
 }
 
 /** One `primary` per view: that is a design rule, and the reason ember is not a general background. */
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { variant = "secondary", size = "md", block, className, type = "button", tip, ...rest },
+  { variant = "secondary", size = "md", block, className, type = "button", tip, busy, disabled, ...rest },
   ref,
 ) {
   return (
@@ -26,6 +28,8 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function 
         ref={ref}
         type={type}
         className={cx("btn", `btn-${variant}`, size !== "md" && `btn-${size}`, block && "btn-block", className)}
+        disabled={disabled || busy}
+        aria-busy={busy || undefined}
         {...rest}
       />
     </Tip>

@@ -13,7 +13,7 @@ export function ModelPicker() {
   return (
     <Tip text={choice === "auto" ? "Auto starts each task on the least model it needs, and steps up if the task turns out harder. You can pick one model instead." : "This model answers everything. Auto would pick one for each task, to cost less."}>
       <span className="model-picker">
-        <Select aria-label="Model" value={choice} onValueChange={(v) => { void choose(v).catch((e) => toast((e as Error).message)); }}
+        <Select aria-label="Model" value={choice} onValueChange={(v) => { void choose(v).catch((e) => toast.problem((e as Error).message)); }}
           options={choices.map((c) => ({ value: c.id, label: c.label }))} shown={shortName(choice, choices)} />
       </span>
     </Tip>

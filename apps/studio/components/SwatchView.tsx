@@ -78,7 +78,7 @@ export function SwatchView({ projectId }: { projectId: string }) {
         await refresh();
       } catch (e) {
         setSaving("error");
-        toast((e as Error).message);
+        toast.problem((e as Error).message);
       }
     }, 500);
   }, [current?.id, refresh, toast]);
@@ -146,7 +146,7 @@ export function SwatchView({ projectId }: { projectId: string }) {
           <Button onClick={() => importRef.current?.click()}><Upload size={14} aria-hidden /> Import file</Button>
           <input ref={importRef} type="file" accept=".json,application/json" hidden aria-label="Choose a swatch file" onChange={async (e) => {
             const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
-            try { const s = await api.swatches.import(projectId, JSON.parse(await f.text()), kit.here); await refresh(); setPickedId(s.id); toast(`Imported ${s.name}`); } catch (err) { toast((err as Error).message); }
+            try { const s = await api.swatches.import(projectId, JSON.parse(await f.text()), kit.here); await refresh(); setPickedId(s.id); toast(`Imported ${s.name}`); } catch (err) { toast.problem((err as Error).message); }
           }} />
           <Button onClick={() => setDialog("site")}><Link2 size={14} aria-hidden /> From a website</Button>
           <Button variant="danger" disabled={swatches.length < 2} onClick={() => setDialog("delete")}><Trash2 size={14} aria-hidden /> Delete</Button>

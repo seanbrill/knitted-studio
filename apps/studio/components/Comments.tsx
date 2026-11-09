@@ -69,7 +69,7 @@ function useAskToFix(on: CommentsOn) {
     try {
       const { chat } = await api.chats.start({ projectId: on.projectId, patternId: on.kind === "knit" ? on.patternId ?? undefined : undefined, prompt: fixPrompt(on, threads), model: currentChoice() });
       toast(`Your model is on it: ${threads.length === 1 ? `comment ${threads[0]!.n}` : `${threads.length} comments`}`, { label: "Open the chat", onClick: () => router.push(`/ask?chat=${chat.id}`) }, 10_000);
-    } catch (e) { toast((e as Error).message); }
+    } catch (e) { toast.problem((e as Error).message); }
   };
 }
 
@@ -142,7 +142,7 @@ export function CommentThreads({ on, threads, c, refresh, wholeWords, hint, onGo
     } catch (e) { setErr((e as Error).message); }
     finally { busy.current = false; }
   };
-  const act = async (p: Promise<unknown>, said?: string) => { try { await p; await refresh(); if (said) toast(said); } catch (e) { toast((e as Error).message); } };
+  const act = async (p: Promise<unknown>, said?: string) => { try { await p; await refresh(); if (said) toast(said); } catch (e) { toast.problem((e as Error).message); } };
   const pick = (t: CommentThread) => { c.setActive(t.id === c.active ? null : t.id); setReply(""); if (t.id !== c.active) onGo?.(t); };
 
   return (

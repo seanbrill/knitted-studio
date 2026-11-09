@@ -87,6 +87,8 @@ export async function launchBrowser() {
 /** Serious and critical axe violations on the current page, as readable strings. */
 export async function axeProblems(page) {
   const { default: AxeBuilder } = await import("@axe-core/playwright");
+  // Things arrive with a short fade: mid-fade, text is not its colour yet. Wait for the ones that end.
+  await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a.effect?.getComputedTiming().endTime !== Infinity).map((a) => a.finished.catch(() => {}))));
   const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
   return r.violations
     .filter((v) => v.impact === "serious" || v.impact === "critical")

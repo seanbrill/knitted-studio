@@ -3,9 +3,10 @@
 
 import { framePage, type DesignFrame, type Swatch } from "@knitted/core";
 
+// Addresses from the root, the same on the server as in the window, so the page the server
+// sends matches the one the window makes. A frame's srcdoc reads them against the studio's page.
 export function frameDoc(f: Pick<DesignFrame, "name" | "width" | "height" | "html" | "css">, swatch: Swatch, projectId: string): string {
-  const origin = typeof window === "undefined" ? "" : window.location.origin;
-  return framePage(f, { swatch, fontsHref: `${origin}/api/projects/${projectId}/fonts.css`, yarnUrl: (id) => `${origin}/api/yarn/${id}/file` });
+  return framePage(f, { swatch, fontsHref: `/api/projects/${projectId}/fonts.css`, yarnUrl: (id) => `/api/yarn/${id}/file` });
 }
 
 /** Wait for a frame's fonts and pictures, then how tall what is in it is. */

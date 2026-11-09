@@ -281,10 +281,10 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
       setSaving("idle");
       if (said) toast(said, { label: "Undo", onClick: () => void api.designs.undo(design.id).then(refresh) });
       return r;
-    } catch (e) { setSaving("error"); toast((e as Error).message); return null; }
+    } catch (e) { setSaving("error"); toast.problem((e as Error).message); return null; }
   }, [design.id, refresh, toast]);
 
-  const undo = async () => { try { await api.designs.undo(design.id); await refresh(); } catch (e) { toast((e as Error).message); } };
+  const undo = async () => { try { await api.designs.undo(design.id); await refresh(); } catch (e) { toast.problem((e as Error).message); } };
   const save = async () => {
     if (!where || !draft) return;
     const r = await change([{ op: "setFrame", section: where.section.id, frameId: where.frame.id, name: draft.name, width: draft.width, height: draft.height, note: draft.note, html: draft.html, css: draft.css }]);
@@ -425,13 +425,21 @@ function FrameView({ f, doc, height, selected, mark, lead, onSelect, onZoom, onH
 }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const h = f.height ?? height ?? Math.round(f.width * 0.625);
+  const measure = async () => { if (!f.height && ref.current) { const m = await frameHeight(ref.current); if (m) onHeight(m); } };
+  // A frame in the page the server sent can finish loading before its onLoad is listened
+  // for, and would keep the guessed height: measure it now if its own page is already in.
+  useEffect(() => {
+    const d = ref.current?.contentDocument;
+    if (d?.URL === "about:srcdoc" && d.readyState === "complete") void measure();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc]);
   return (
     <figure className="design-frame" style={{ width: f.width }}>
       <figcaption title={`${f.name}, ${frameSize(f)}${f.by === "model" ? ", by your model" : ""}`}>{f.name}<span>{frameSize(f)}</span>{f.by === "model" && <span>by your model</span>}</figcaption>
       <div className="design-frame-box" data-frame-box={f.id} style={{ width: f.width, height: h }}>
         {/* Drawn and nothing more: no scripts run in it, and nothing in it can be focused or clicked. */}
         <iframe ref={ref} title={f.name} inert sandbox="allow-same-origin" srcDoc={doc} style={{ width: f.width, height: h }}
-          onLoad={async () => { if (!f.height && ref.current) { const m = await frameHeight(ref.current); if (m) onHeight(m); } }} />
+          onLoad={() => void measure()} />
         {/* data-pan-ok: with a frame focused, Space still drags the board about. */}
         <button type="button" className="design-frame-hit" data-pan-ok aria-label={`${f.name}, ${frameSize(f)}`} aria-pressed={selected} onClick={onSelect} onDoubleClick={onZoom} />
         <ModelMark mark={mark} lead={lead} />

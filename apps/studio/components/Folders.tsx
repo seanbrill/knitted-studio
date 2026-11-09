@@ -67,7 +67,7 @@ export function useFolders(projectId: string, section: FolderSection, things: Fi
   const open = useCallback((path: string) => { if (inAddress) router.push(hrefFor(path), { scroll: false }); else setOwn(path); }, [inAddress, hrefFor, router]);
 
   const changed = useCallback(async () => { await refresh(); onChanged?.(); }, [refresh, onChanged]);
-  const attempt = useCallback(async (fn: () => Promise<unknown>) => { try { await fn(); return true; } catch (e) { toast((e as Error).message); return false; } }, [toast]);
+  const attempt = useCallback(async (fn: () => Promise<unknown>) => { try { await fn(); return true; } catch (e) { toast.problem((e as Error).message); return false; } }, [toast]);
 
   /** File things in `to`, with Undo putting each back where it was. */
   const move = useCallback(async (moving: Filed[], to: string) => {
@@ -218,7 +218,7 @@ function Tiles({ kit, compact }: { kit: FolderKit; compact?: boolean }) {
   for (const f of list) for (const [path, m] of worked) if (isInside(path, f) && (!marks.has(f) || marks.get(f)!.at < m.at)) marks.set(f, m);
   const lead = leadOf(marks);
   return (
-    <ul aria-label={`Folders in ${nameIn(kit.here, kit.section)}`}
+    <ul className="arrive-list" aria-label={`Folders in ${nameIn(kit.here, kit.section)}`}
       style={{ listStyle: "none", margin: "0 0 var(--space-4)", padding: 0, display: "grid", gap: compact ? 6 : "var(--space-3)", gridTemplateColumns: compact ? "1fr" : "repeat(auto-fill, minmax(210px, 1fr))" }}>
       {list.map((f) => <FolderTile key={f} kit={kit} path={f} mark={marks.get(f)} lead={lead === f} />)}
     </ul>
@@ -237,12 +237,12 @@ function FolderTile({ kit, path, mark, lead }: { kit: FolderKit; path: string; m
     <li>
       <ContextMenu items={items}>
         <div className="card card-link" draggable onDragStart={kit.dragFolder(path)} {...kit.dropInto(path)}
-          style={{ position: "relative", display: "flex", alignItems: "center", gap: 10, padding: "8px 6px 8px 12px" }}>
+          style={{ position: "relative", display: "flex", alignItems: "center", gap: 10, height: 58, padding: "0 6px 0 12px" }}>
           {kit.inAddress ? <Link href={kit.hrefFor(path)} scroll={false} aria-label={name} draggable={false} style={cover} /> : <button type="button" aria-label={name} onClick={() => kit.open(path)} style={cover} />}
           <Folder size={18} aria-hidden style={{ color: "var(--ember-ink)", flexShrink: 0 }} />
           <span aria-hidden style={{ minWidth: 0, flex: 1 }}>
-            <span className="label" style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nameOf(path)}</span>
-            <span className="eyebrow" style={{ display: "block", marginTop: 1 }}>{facts}</span>
+            <span className="label" title={nameOf(path)} style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nameOf(path)}</span>
+            <span className="body-sm" style={{ display: "block", marginTop: 2, color: "var(--ink-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{facts}</span>
           </span>
           <span style={{ position: "relative", zIndex: 2 }}>
             <Menu trigger={<IconButton label={`Actions for the folder ${nameOf(path)}`}><MoreHorizontal size={16} /></IconButton>} items={items} />
@@ -365,7 +365,7 @@ function MoveDialog({ open, onOpenChange, kit, title, from, moving, onMove }: {
   const go = async () => { setBusy(true); try { await onMove(to); onOpenChange(false); } finally { setBusy(false); } };
   return (
     <Dialog open={open} onOpenChange={onOpenChange} title={title} description="Choose the folder it goes in."
-      actions={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" disabled={busy || to === from || blocked(to)} onClick={go}>Move here</Button></>}>
+      actions={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" busy={busy} disabled={to === from || blocked(to)} onClick={go}>Move here</Button></>}>
       <fieldset style={{ border: 0, margin: 0, padding: 0 }}>
         <legend className="sr-only">Folder to move it to</legend>
         <ul style={{ listStyle: "none", margin: 0, padding: 4, display: "grid", gap: 2, maxHeight: 280, overflow: "auto", border: "1px solid var(--line)", borderRadius: "var(--radius-md)" }}>

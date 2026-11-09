@@ -67,7 +67,7 @@ export function ProjectShell({ id, children }: { id: string; children: React.Rea
     <TrailContext.Provider value={setTrail}>
       <div style={{ padding: "var(--space-8)", maxWidth: 1200 }}>
         <Breadcrumbs items={trail} linkAs={Link} navigate={(h) => router.push(h)} keep={5} style={{ marginBottom: "var(--space-4)" }} />
-        <header style={{ display: "flex", alignItems: "center", gap: "var(--space-4)", flexWrap: "wrap", marginBottom: "var(--space-6)" }}>
+        <header style={{ display: "flex", alignItems: "center", gap: "var(--space-4)", flexWrap: "wrap", minHeight: 40, marginBottom: "var(--space-6)" }}>
           {project ? (
             <>
               <h1 className="h1" style={{ margin: 0 }}>{project.name}</h1>

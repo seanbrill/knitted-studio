@@ -143,10 +143,52 @@
 .dropzone { border: 1.5px dashed var(--line-strong); border-radius: var(--radius-lg); padding: var(--space-8); text-align: center; color: var(--ink-muted); transition: background var(--t-ui) var(--ease), border-color var(--t-ui) var(--ease); }
 .dropzone[data-over="true"] { background: var(--tint); border-color: var(--ember); color: var(--ink); }
 
-/* Toasts */
-.toasts { position: fixed; right: var(--space-4); bottom: var(--space-4); z-index: 80; display: grid; gap: var(--space-2); width: min(360px, calc(100vw - 32px)); }
-.toast { display: flex; gap: var(--space-3); align-items: flex-start; background: var(--rail); color: var(--on-rail); padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); box-shadow: var(--shadow-lift); font-size: 13px; animation: stitch-in 320ms var(--ease) both; }
-.toast-action { margin-left: auto; background: transparent; border: 0; color: var(--rail-active-ink); font: inherit; font-weight: 600; cursor: pointer; }
+/* Toasts: bottom right, newest at the bottom, at most three. A problem wears the danger
+ * colour and stays longer; each has the next thing to do as its button. */
+.toasts { position: fixed; right: var(--space-4); bottom: var(--space-4); z-index: 80; display: grid; gap: var(--space-2); width: min(380px, calc(100vw - 32px)); }
+.toast { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: var(--space-3); align-items: center; background: var(--surface-raised); color: var(--ink); border: 1px solid var(--line-strong); padding: var(--space-3) var(--space-2) var(--space-3) var(--space-3); border-radius: var(--radius-md); box-shadow: var(--shadow-lift); font-size: 13px; line-height: 1.45; animation: arrive var(--t-arrive) var(--ease) both; }
+.toast-mark { width: 8px; height: 8px; margin: 0 2px; border-radius: 50%; background: var(--ember); }
+.toast[data-tone="problem"] { border-color: var(--danger); }
+.toast[data-tone="problem"] .toast-mark { width: 18px; height: 18px; margin: 0; display: grid; place-items: center; background: var(--danger); color: var(--surface-raised); font: 700 11px/1 var(--font-ui); }
+.toast-action { background: transparent; border: 0; color: var(--ember-ink); font: inherit; font-weight: 600; cursor: pointer; padding: 4px 6px; border-radius: var(--radius-sm); }
+.toast-action:hover { background: var(--tint); }
+.toast-close { width: 24px; height: 24px; display: grid; place-items: center; background: transparent; border: 0; border-radius: var(--radius-sm); color: var(--ink-muted); cursor: pointer; padding: 0; }
+.toast-close:hover { background: var(--tint); color: var(--ink); }
+
+/* ── Arriving: a card, a row, a toast fades in and rises 6px, each list item 24ms after
+ * the one before for the first eight. Only on arrival: what stays put never moves again. */
+@keyframes arrive { from { opacity: 0; transform: translateY(6px); } }
+.arrive, .arrive-list > * { animation: arrive var(--t-arrive) var(--ease) backwards; }
+.arrive-list > :nth-child(2) { animation-delay: 24ms; }
+.arrive-list > :nth-child(3) { animation-delay: 48ms; }
+.arrive-list > :nth-child(4) { animation-delay: 72ms; }
+.arrive-list > :nth-child(5) { animation-delay: 96ms; }
+.arrive-list > :nth-child(6) { animation-delay: 120ms; }
+.arrive-list > :nth-child(7) { animation-delay: 144ms; }
+.arrive-list > :nth-child(n + 8) { animation-delay: 168ms; }
+
+/* ── Waiting: skeletons the size and shape of what is coming ─────────────── */
+.sk-tiles { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); margin: 0 0 var(--space-4); }
+.sk-tile { height: 58px; display: flex; align-items: center; gap: var(--space-3); padding: 0 var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-md); }
+.sk-cards { display: grid; gap: var(--space-4); }
+.sk-card { display: grid; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-md); align-content: start; }
+.sk-rows { display: grid; gap: var(--space-2); }
+.sk-row { height: 56px; display: flex; align-items: center; gap: var(--space-3); padding: 0 var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-md); }
+
+/* ── The page you go to: a thin line across the top while it loads, after 150ms ── */
+.load-bar { position: fixed; top: 0; left: 0; right: 0; height: 2px; z-index: 95; pointer-events: none; opacity: 0; animation: fade-in var(--t-ui) var(--ease) 150ms forwards; }
+.load-bar::before { content: ""; display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--ember), var(--glow)); box-shadow: 0 0 8px var(--ember); border-radius: 0 2px 2px 0; animation: load-go 8s cubic-bezier(0.1, 0.6, 0.2, 1) forwards; }
+.load-bar[data-phase="done"] { opacity: 1; animation: load-out 260ms var(--ease) forwards; }
+.load-bar[data-phase="done"]::before { width: 100%; animation: none; }
+@keyframes load-go { 0% { width: 0; } 25% { width: 55%; } 100% { width: 92%; } }
+@keyframes load-out { 0%, 40% { opacity: 1; } 100% { opacity: 0; } }
+
+/* ── A button that started something keeps its width, and spins where its icon was ── */
+@keyframes spin { to { transform: rotate(360deg); } }
+.btn[aria-busy="true"] { cursor: progress; }
+.btn[aria-busy="true"]:disabled { opacity: 0.85; }
+.btn[aria-busy="true"] > svg:first-child { display: none; }
+.btn[aria-busy="true"]::before { content: ""; width: 13px; height: 13px; flex-shrink: 0; border-radius: 50%; border: 2px solid currentColor; border-top-color: transparent; opacity: 0.8; animation: spin 0.8s linear infinite; }
 
 /* Command palette */
 .cmdk { width: min(560px, calc(100vw - 32px)); }
@@ -163,6 +205,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .toast, .dialog, .menu, .select-content, .popover, .overlay { animation: fade-in 0.01ms both !important; }
+  .arrive, .arrive-list > * { animation-name: fade-in; animation-delay: 0ms !important; }
+  .btn[aria-busy="true"]::before { animation: none; border-top-color: currentColor; opacity: 0.5; }
 }
 
 .drawer {

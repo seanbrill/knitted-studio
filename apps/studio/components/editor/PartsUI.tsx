@@ -142,7 +142,7 @@ export function PartInstanceInspector({ stitch }: { stitch: Stitch }) {
     st.dispatch({ type: "updateStitch", id: stitch.id, patch: { partVersion: part.version, partSlots: part.slots, ...(Math.abs(h - stitch.h) > 1e-3 ? { h } : {}) } }, { label: "Accept part update" });
   };
   const edit = async () => {
-    try { const p = await api.parts.edit(part.id, st.pattern.projectId); router.push(`/projects/${p.projectId}/patterns/${p.id}`); } catch (e) { toast((e as Error).message); }
+    try { const p = await api.parts.edit(part.id, st.pattern.projectId); router.push(`/projects/${p.projectId}/patterns/${p.id}`); } catch (e) { toast.problem((e as Error).message); }
   };
   return (
     <div style={{ display: "grid", gap: "var(--space-3)" }}>

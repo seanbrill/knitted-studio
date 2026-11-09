@@ -92,7 +92,7 @@ export function BriefView({ projectId }: { projectId: string }) {
           <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center", flexWrap: "wrap" }}>
             <SourceLine brief={brief} />
             {brief.canUndo && !editing && (
-              <Button size="sm" variant="ghost" tip="Put back the profile from before your model's last change" onClick={async () => { try { await api.brief.undo(projectId); await refresh(); toast("Put back the profile from before"); } catch (e) { toast((e as Error).message); } }}>
+              <Button size="sm" variant="ghost" tip="Put back the profile from before your model's last change" onClick={async () => { try { await api.brief.undo(projectId); await refresh(); toast("Put back the profile from before"); } catch (e) { toast.problem((e as Error).message); } }}>
                 <Undo2 size={13} aria-hidden /> Undo
               </Button>
             )}
@@ -162,7 +162,7 @@ function ProfileEditor({ brief, onCancel, onSaved }: { brief: Brief; onCancel: (
       </Field>
       <div style={{ display: "flex", gap: "var(--space-2)", justifyContent: "end" }}>
         <Button variant="ghost" onClick={onCancel}>Cancel</Button>
-        <Button variant="primary" disabled={busy} onClick={save}>{busy ? "Saving..." : "Save profile"}</Button>
+        <Button variant="primary" busy={busy} onClick={save}>{busy ? "Saving..." : "Save profile"}</Button>
       </div>
     </div>
   );
@@ -175,7 +175,7 @@ function NotesCard({ brief, projectId, onSaved }: { brief: Brief; projectId: str
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setText(brief.notes);
   }, [brief.notes]);
-  const save = async () => { if (text === brief.notes) return; try { await api.brief.save(projectId, { notes: text }); onSaved(); toast("Saved the notes"); } catch (e) { toast((e as Error).message); } };
+  const save = async () => { if (text === brief.notes) return; try { await api.brief.save(projectId, { notes: text }); onSaved(); toast("Saved the notes"); } catch (e) { toast.problem((e as Error).message); } };
   return (
     <section aria-labelledby="brief-notes" className="card" style={{ padding: "var(--space-5)" }}>
       <h3 id="brief-notes" className="h3" style={{ margin: "0 0 4px" }}>Notes for your model</h3>
@@ -253,7 +253,7 @@ function SyncDialog({ open, onOpenChange, brief, projectId, onStarted }: { open:
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange} title={brief.site.url ? "Sync again" : "Sync with a website"} description="Read the business's website and bring the Brief up to date. Run it again whenever the site changes."
-      actions={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" disabled={busy} onClick={go}><RefreshCw size={14} aria-hidden /> {busy ? "Starting..." : "Sync"}</Button></>}>
+      actions={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" busy={busy} onClick={go}><RefreshCw size={14} aria-hidden /> {busy ? "Starting..." : "Sync"}</Button></>}>
       <SyncChoices value={opts} onChange={setOpts} hasKey={hasKey} hasProfile={!!brief.profile} />
       {err && <p className="field-error" role="alert" style={{ margin: "var(--space-3) 0 0" }}>{err}</p>}
     </Dialog>

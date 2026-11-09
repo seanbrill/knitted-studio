@@ -70,7 +70,7 @@ export function VoiceSettings() {
       <Slider label="Speed" value={cfg.speed} min={0.7} max={1.4} step={0.05} unit="x" onCommit={(speed) => save({ speed })} />
 
       <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-        <Button variant="primary" onClick={test} disabled={busy}>{busy ? "Speaking..." : "Hear it"}</Button>
+        <Button variant="primary" onClick={test} busy={busy}>{busy ? "Speaking..." : "Hear it"}</Button>
         {heard && <><audio controls autoPlay src={heard.url} aria-label="Test voice" /><span className="body-sm" style={{ color: "var(--success)", display: "flex", gap: 4, alignItems: "center" }}><Check size={14} aria-hidden /> Worked, {(heard.durationMs / 1000).toFixed(1)}s</span></>}
       </div>
       {err && cfg.provider !== "openai" && <p className="field-error" role="alert"><AlertTriangle size={14} aria-hidden /> {err}</p>}

@@ -38,7 +38,7 @@ function Choose({ cfg, onChanged }: { cfg: GenConfig; onChanged: () => void }) {
         <Select id={`gen-${kind}`} value={now ? `${now.provider}/${now.model}` : FIRST}
           onValueChange={async (v) => {
             const [provider, model] = v.split("/");
-            try { await api.generate.choose({ [kind]: v === FIRST ? null : { provider: provider as GenProvider, model } }); onChanged(); toast("Saved."); } catch (e) { toast((e as Error).message); }
+            try { await api.generate.choose({ [kind]: v === FIRST ? null : { provider: provider as GenProvider, model } }); onChanged(); toast("Saved."); } catch (e) { toast.problem((e as Error).message); }
           }}
           options={[{ value: FIRST, label: "The first with a key" }, ...options]} />
       </Field>

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, pdfPageUrl, uploadYarn, yarnFileUrl, yarnThumbUrl } from "@knitted/core/client";
 import { isInside, nameOf, needsCredit, GEN_SOURCES, LIBRARY_ID, STOCK_SOURCES, type CropBox, type Shelf, type Yarn, type YarnKind } from "@knitted/core";
 import {
-  Button, Chip, ConfirmDialog, Dialog, Drawer, DropZone, EmptyState, Field, IconButton, Input, Menu, SegmentedControl, Select, Skeleton, Textarea,
+  Button, Chip, ConfirmDialog, Dialog, Drawer, DropZone, EmptyState, Field, IconButton, Input, Menu, SegmentedControl, Select, SkeletonSection, Textarea,
   Tip, icons, useToast,
 } from "@knitted/ui";
 import { formatBytes, timeAgo, useLive } from "@/lib/hooks";
@@ -172,7 +172,7 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
 
   const share = async (list: Yarn[], to: string, where: string) => {
     let moved = 0;
-    for (const y of list) { try { await api.yarn.share(y.id, to); moved++; } catch (e) { toast((e as Error).message); } }
+    for (const y of list) { try { await api.yarn.share(y.id, to); moved++; } catch (e) { toast.problem((e as Error).message); } }
     sel.clear(); setDetail(null); await reload();
     if (moved) toast(`Moved ${list.length === 1 ? list[0].name : counted(moved, section)} ${where}`);
   };
@@ -236,7 +236,7 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
       {filtering ? (kit.here && <p className="body-sm" style={{ margin: "0 0 var(--space-3)", color: "var(--ink-muted)" }}>Looking in {nameOf(kit.here)} and the folders in it.</p>) : <FolderList kit={kit} />}
 
       {!data || !all || !kit.folders ? (
-        <div style={{ display: "grid", gap: "var(--space-4)", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}>{[0, 1, 2, 3].map((i) => <Skeleton key={i} height={170} />)}</div>
+        <SkeletonSection tiles={kit.folders ? 0 : 3} min={180} ratio="1" list={view.mode === "list"} />
       ) : shown.length === 0 ? (
         filtering ? <EmptyState title="Nothing matches" body={kit.here ? `Nothing in ${nameOf(kit.here)} or the folders in it matches. Try a different filter or search.` : "Try a different filter or search."} />
         : all.length === 0 && kit.folders.length === 0 ? (
@@ -397,12 +397,12 @@ function YarnDrawer({ id, projectId, onClose, onChanged, onDelete, onMove, onCro
             <Button onClick={() => replace.current?.click()}><RotateCcw size={14} aria-hidden /> Replace file</Button>
             <input ref={replace} type="file" hidden aria-label="Choose a replacement file" onChange={async (e) => {
               const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
-              try { await uploadYarn(projectId, f, () => {}, { replaceId: y.id }).promise; await refresh(); onChanged(); toast("Replaced. Every pattern using it now shows the new file."); } catch (err) { toast((err as Error).message); }
+              try { await uploadYarn(projectId, f, () => {}, { replaceId: y.id }).promise; await refresh(); onChanged(); toast("Replaced. Every pattern using it now shows the new file."); } catch (err) { toast.problem((err as Error).message); }
             }} />
             <a className="btn btn-secondary" href={yarnFileUrl(y)} download={y.originalName}><Download size={14} aria-hidden /> Download</a>
             <AskModelButton about={aboutYarn(y)} />
             {!isLibrary && (y.kind === "image" || y.kind === "video") && y.meta.thumb && (
-              <Button onClick={async () => { try { await api.projects.update(projectId, { coverYarnId: y.id }); toast("It is now the project's picture, on its card in Projects."); } catch (err) { toast((err as Error).message); } }}>
+              <Button onClick={async () => { try { await api.projects.update(projectId, { coverYarnId: y.id }); toast("It is now the project's picture, on its card in Projects."); } catch (err) { toast.problem((err as Error).message); } }}>
                 <ImageIcon size={14} aria-hidden /> Use as project picture
               </Button>
             )}
@@ -450,7 +450,7 @@ function FromUrlDialog({ open, onOpenChange, projectId, folder, shelf, onDone }:
   const go = async () => { setBusy(true); try { await api.yarn.fromUrl(projectId, url, folder, shelf); onOpenChange(false); setUrl(""); setErr(undefined); onDone(); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); } };
   return (
     <Dialog open={open} onOpenChange={onOpenChange} title="Add from a link" description="knitted fetches this one file when you press Add. Nothing else is contacted."
-      actions={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" disabled={busy || !url} onClick={go}>{busy ? "Fetching..." : "Add"}</Button></>}>
+      actions={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" busy={busy} disabled={!url} onClick={go}>{busy ? "Fetching..." : "Add"}</Button></>}>
       <Field label="Link" htmlFor="fu-url" error={err}><Input id="fu-url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/logo.png" onKeyDown={(e) => e.key === "Enter" && url && go()} /></Field>
     </Dialog>
   );
@@ -526,7 +526,7 @@ function CropDialog({ y, onOpenChange, onDone }: { y: Yarn | null; onOpenChange:
   };
   return (
     <Dialog open={!!y} onOpenChange={onOpenChange} wide title={`Cut out a part of ${y.name}`} description="Drag over the part to keep. The original stays as it is."
-      actions={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" disabled={busy} onClick={save}><Crop size={14} aria-hidden /> {busy ? "Cutting..." : "Cut it out"}</Button></>}>
+      actions={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" busy={busy} onClick={save}><Crop size={14} aria-hidden /> {busy ? "Cutting..." : "Cut it out"}</Button></>}>
       <div style={{ display: "grid", gap: "var(--space-4)" }}>
         {n > 1 && (
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>

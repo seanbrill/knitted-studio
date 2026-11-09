@@ -31,7 +31,7 @@ export function SocialSettings() {
   const [err, setErr] = useState<string | undefined>();
   if (!cfg) return null;
   const save = async (b: Parameters<typeof api.social.save>[0]) => {
-    try { await api.social.save(b); await refresh(); setErr(undefined); return true; } catch (e) { setErr((e as Error).message); toast((e as Error).message); return false; }
+    try { await api.social.save(b); await refresh(); setErr(undefined); return true; } catch (e) { setErr((e as Error).message); toast.problem((e as Error).message); return false; }
   };
   return (
     <div style={{ display: "grid", gap: "var(--space-6)", maxWidth: 680 }}>
@@ -100,12 +100,12 @@ function PlatformCard({ platform, cfg, accounts, save }: { platform: Platform; c
   const connect = async () => {
     setBusy(true);
     try { const { url } = await api.social.connect(platform); window.open(url, "_blank", "noopener"); setWaiting(true); }
-    catch (e) { toast((e as Error).message); } finally { setBusy(false); }
+    catch (e) { toast.problem((e as Error).message); } finally { setBusy(false); }
   };
   const finish = async () => {
     setBusy(true);
     try { const a = await api.social.paste(pasted); setPasted(""); setWaiting(false); toast(`${info.name} is connected${a.handle ? ` as @${a.handle}` : ""}.`); }
-    catch (e) { toast((e as Error).message); } finally { setBusy(false); }
+    catch (e) { toast.problem((e as Error).message); } finally { setBusy(false); }
   };
   const status = accounts.length ? `${accounts.length} connected` : ready ? "Ready to connect" : "Not set up";
   return (
@@ -124,7 +124,7 @@ function PlatformCard({ platform, cfg, accounts, save }: { platform: Platform; c
             ? <span className="body-sm" style={{ color: "var(--danger)", display: "flex", gap: 4, alignItems: "center" }}><AlertTriangle size={13} aria-hidden /> {a.note ?? "Connect it again."}</span>
             : <span className="body-sm" style={{ color: "var(--success)", display: "flex", gap: 4, alignItems: "center" }}><Check size={13} aria-hidden /> Connected{a.expiresAt ? `, until ${new Date(a.expiresAt).toLocaleDateString()}` : ""}</span>}
           <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-            {(a.status === "reconnect" || a.expiresAt) && ready && <Button size="sm" onClick={connect} disabled={busy}>Connect again</Button>}
+            {(a.status === "reconnect" || a.expiresAt) && ready && <Button size="sm" onClick={connect} busy={busy}>Connect again</Button>}
             <Button size="sm" variant="ghost" onClick={() => setGone(a)}>Disconnect</Button>
           </span>
         </div>

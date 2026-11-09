@@ -69,7 +69,7 @@ function PostRow({ p, knit, count, account, onMove }: { p: SocialPost; knit?: Kn
   const [del, setDel] = useState(false);
   const name = PLATFORMS[p.platform].name;
   const who = account ? (account.handle ? `@${account.handle}` : account.name) : "a disconnected account";
-  const act = async (f: () => Promise<unknown>, done: string) => { try { await f(); toast(done); } catch (e) { toast((e as Error).message); } };
+  const act = async (f: () => Promise<unknown>, done: string) => { try { await f(); toast(done); } catch (e) { toast.problem((e as Error).message); } };
   const time = p.status === "posted" ? `Posted ${timeAgo(p.postedAt ?? p.updatedAt)}` : p.scheduledAt ? `${p.status === "scheduled" ? "Goes out" : "Was due"} ${new Date(p.scheduledAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}` : `Made ${timeAgo(p.createdAt)}`;
   const failed = p.status === "failed" || p.status === "missed";
   return (
@@ -105,7 +105,7 @@ function Numbers({ p }: { p: SocialPost }) {
   const check = async () => {
     setBusy(true);
     try { const r = await api.posts.checkMetrics(p.id); toast(r.metricsNote && !r.metrics ? r.metricsNote : "Up to date."); }
-    catch (e) { toast((e as Error).message); }
+    catch (e) { toast.problem((e as Error).message); }
     finally { setBusy(false); }
   };
   return (
@@ -113,7 +113,7 @@ function Numbers({ p }: { p: SocialPost }) {
       {line ? <span style={{ fontVariantNumeric: "tabular-nums" }}>{line}</span> : !p.metricsNote && <span style={{ color: "var(--ink-muted)" }}>No numbers yet: knitted asks an hour after it goes out.</span>}
       {p.metricsAt && line && <span style={{ color: "var(--ink-muted)" }}>as of {timeAgo(p.metricsAt)}</span>}
       {p.metricsNote && <span style={{ color: "var(--ink-muted)" }}>{p.metricsNote}</span>}
-      <Button size="sm" variant="ghost" disabled={busy} onClick={check} aria-label={`Check now how this ${PLATFORMS[p.platform].name} post is doing`}><RefreshCw size={13} aria-hidden /> {busy ? "Checking..." : "Check now"}</Button>
+      <Button size="sm" variant="ghost" busy={busy} onClick={check} aria-label={`Check now how this ${PLATFORMS[p.platform].name} post is doing`}><RefreshCw size={13} aria-hidden /> {busy ? "Checking..." : "Check now"}</Button>
     </div>
   );
 }
@@ -124,7 +124,7 @@ function MoveDialog({ post, onClose }: { post: SocialPost | null; onClose: () =>
   const open = !!post;
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()} title={post?.status === "scheduled" ? "Move it" : "Schedule it"}
-      actions={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" disabled={!at} onClick={async () => { try { await api.posts.update(post!.id, { at: new Date(at).toISOString() }); toast(`Scheduled for ${new Date(at).toLocaleString()}.`); onClose(); } catch (e) { toast((e as Error).message); } }}>Schedule</Button></>}>
+      actions={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" disabled={!at} onClick={async () => { try { await api.posts.update(post!.id, { at: new Date(at).toISOString() }); toast(`Scheduled for ${new Date(at).toLocaleString()}.`); onClose(); } catch (e) { toast.problem((e as Error).message); } }}>Schedule</Button></>}>
       {post && <Field label="Post at" htmlFor="move-at" hint="Your computer's time."><Input id="move-at" type="datetime-local" key={post.id} defaultValue={localInput(post.scheduledAt)} onChange={(e) => setAt(e.target.value)} ref={(el) => { if (el && !at) setAt(el.value); }} style={{ maxWidth: 260 }} /></Field>}
     </Dialog>
   );

@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@knitted/core/client";
 import { foldersIn, hasLintErrors, isInside, lintCodePart, nameOf, type Part, type PartCategory } from "@knitted/core";
-import { Button, Chip, ConfirmDialog, Dialog, EmptyState, Field, Input, Select, Skeleton, Textarea, icons, useToast } from "@knitted/ui";
+import { Button, Chip, ConfirmDialog, Dialog, EmptyState, Field, Input, Select, SkeletonSection, Textarea, icons, useToast } from "@knitted/ui";
 import { useLive } from "@/lib/hooks";
 import { leadOf, useMarks } from "@/lib/agent";
 import { ModelMark } from "./ModelMark";
@@ -38,7 +38,7 @@ export function PartsManager({ projectId }: { projectId: string }) {
   const [q, setQ] = useState("");
   const [cat, setCat] = useState<"all" | PartCategory>("all");
 
-  const act = async (fn: () => Promise<unknown>, msg?: string) => { try { await fn(); await refresh(); if (msg) toast(msg); } catch (e) { toast((e as Error).message); } };
+  const act = async (fn: () => Promise<unknown>, msg?: string) => { try { await fn(); await refresh(); if (msg) toast(msg); } catch (e) { toast.problem((e as Error).message); } };
   // A Part of stitches opens in the editor, where every change is the Part's. One in code opens
   // as code. A starter is never changed: a copy of it is made, in the folder the person is in.
   const edit = async (p: Part) => {
@@ -48,7 +48,7 @@ export function PartsManager({ projectId }: { projectId: string }) {
       if (mine.kind === "code") { setCoding(mine); return; }
       const pat = await api.parts.edit(mine.id, projectId);
       router.push(`/projects/${pat.projectId}/patterns/${pat.id}`);
-    } catch (e) { toast((e as Error).message); }
+    } catch (e) { toast.problem((e as Error).message); }
   };
   const download = async (p: Part) => {
     const j = await api.parts.action(p.id, "export");
@@ -57,7 +57,7 @@ export function PartsManager({ projectId }: { projectId: string }) {
     URL.revokeObjectURL(url);
   };
 
-  if (!parts || !swatch || !kit.folders) return <Skeleton height={300} />;
+  if (!parts || !swatch || !kit.folders) return <SkeletonSection tiles={0} cards={6} min={240} ratio="16 / 9" list={view.mode === "list"} />;
   // A search or a kind looks in the folder the person is in and every folder inside it, and the starters too.
   const filtering = !!q.trim() || cat !== "all";
   const matches = (p: Part) => (cat === "all" || p.category === cat) && `${p.name} ${p.description}`.toLowerCase().includes(q.trim().toLowerCase());
@@ -65,7 +65,7 @@ export function PartsManager({ projectId }: { projectId: string }) {
   const builtin = view.sorted(parts.filter((p) => p.builtin && (!filtering || matches(p))));
 
   const grid = (list: Part[], editable: boolean) => (
-    <ul style={layout(view.mode, 240)}>
+    <ul className="arrive-list" style={layout(view.mode, 240)}>
       {list.map((p) => (
         <li key={p.id} className="card" draggable={editable} onDragStart={editable ? kit.dragThings([p.id]) : undefined}
           style={view.mode === "grid" ? { padding: "var(--space-3)", display: "grid", gap: 8, position: "relative" } : { padding: "var(--space-2) var(--space-3)", display: "grid", gridTemplateColumns: "120px minmax(0, 1fr) auto", gap: "var(--space-3)", alignItems: "center", position: "relative" }}>

@@ -51,7 +51,7 @@ export function VoicePanel({ projectId }: { projectId: string }) {
   const warnings = job?.status === "done" ? (job.progress?.units ?? []).flatMap((u) => u.issues ?? []).map((i) => i.message) : [];
   const go = async () => {
     try { setJob(await api.voice.generate(st.pattern.id, { lines, voice: voice ?? cfg?.voice, speed, startMs: Math.max(500, Math.round(st.playhead)), captions })); setScript(""); }
-    catch (e) { toast((e as Error).message); }
+    catch (e) { toast.problem((e as Error).message); }
   };
   const remove = (id: string) => st.dispatch({ type: "setAudio", audio: audio.filter((a) => a.id !== id) }, { label: "Remove sound" });
   const unavailable = v && !v.available;
