@@ -1,19 +1,21 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
-  "next": {
-    "title": "Tidier screens, from the design sheets",
-    "items": [
-      "Yarn has one Add button for every other way in: make a photo or a video, free stock, from a link, or save text. Upload stays the button to press.",
-      "Tags in Yarn and Knits are behind one Tags button, so the filters fit on one line. The tag picked shows beside it.",
-      "Folder tiles in Yarn and Knits show a peek of up to three pictures from inside.",
-      "With nothing selected, the editor lists the pattern's slots, free ones first, with what each holds. Pick one to select it on the canvas.",
-      "A chat started from an Ask your model button is named for what you asked, not for what the studio told your model about the page. Chats named that way before are named again once, unless you changed the name.",
-      "Chats are grouped by day: today, yesterday, this week and before.",
-      "Without a key, Ask shows what you could ask, and links to adding a key or connecting Claude Code.",
-      "A swatch's buttons fit on one row, with Delete apart at the end."
-    ]
-  },
   "entries": [
+    {
+      "version": "0.1.35",
+      "date": "2026-11-08",
+      "title": "Tidier screens, from the design sheets",
+      "items": [
+        "Yarn has one Add button for every other way in: make a photo or a video, free stock, from a link, or save text. Upload stays the button to press.",
+        "Tags in Yarn and Knits are behind one Tags button, so the filters fit on one line. The tag picked shows beside it.",
+        "Folder tiles in Yarn and Knits show a peek of up to three pictures from inside.",
+        "With nothing selected, the editor lists the pattern's slots, free ones first, with what each holds. Pick one to select it on the canvas.",
+        "A chat started from an Ask your model button is named for what you asked, not for what the studio told your model about the page. Chats named that way before are named again once, unless you changed the name.",
+        "Chats are grouped by day: today, yesterday, this week and before.",
+        "Without a key, Ask shows what you could ask, and links to adding a key or connecting Claude Code.",
+        "A swatch's buttons fit on one row, with Delete apart at the end."
+      ]
+    },
     {
       "version": "0.1.34",
       "date": "2026-11-08",
