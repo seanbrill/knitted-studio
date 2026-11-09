@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { useMemo, useRef } from "react";
 import { api, uploadYarn, yarnThumbUrl } from "@knitted/core/client";
-import { colorFor, COLOR_ROLES, foldersIn, nameOf, LIBRARY_ID, type Stitch, type Yarn } from "@knitted/core";
+import { colorFor, COLOR_ROLES, foldersIn, nameOf, LIBRARY_ID, type Pattern, type Stitch, type Yarn } from "@knitted/core";
 import { Button, EmptyState, icons, useToast } from "@knitted/ui";
 import { useEditor } from "@/lib/editor/store";
 import { useLive } from "@/lib/hooks";
 import { FolderCrumbs, FolderDialogs, FolderList, useFolders, type FolderKit } from "../Folders";
 import { Layers } from "./Layers";
+import { PatternThumb, thumbContext, type ThumbContext } from "../PatternThumb";
 
 const { Plus, Upload } = icons;
 const rid = () => `st_${Math.random().toString(36).slice(2, 9)}`;
@@ -40,9 +41,13 @@ export type PanelPattern = { id: string; name: string; size: string; folder: str
 const brief = (p: { id: string; name: string; size: { name: string; w: number; h: number }; folder: string }): PanelPattern => ({ id: p.id, name: p.name, size: `${p.size.name} ${p.size.w}x${p.size.h}`, folder: p.folder });
 
 export function PatternsPanel({ projectId, current, list }: { projectId: string; current: string; list: PanelPattern[] }) {
+  const st = useEditor();
   // Kept fresh, so a pattern filed somewhere else, or a folder renamed here, shows where it is now.
-  const { data } = useLive(() => api.patterns.list(projectId).then((ps) => ps.map(brief)), [projectId]);
-  const items = data ?? list;
+  const { data } = useLive(() => api.patterns.list(projectId), [projectId]);
+  const items = useMemo(() => (data ? data.map(brief) : list), [data, list]);
+  const full = useMemo(() => new Map((data ?? []).map((p) => [p.id, p])), [data]);
+  // Each card drawn small, with what the canvas is drawn with: this project's swatch, Yarn and Parts.
+  const ctx = useMemo(() => thumbContext(projectId, { swatch: st.swatch, yarn: Object.values(st.yarn), parts: Object.values(st.parts) }), [projectId, st.swatch, st.yarn, st.parts]);
   // It opens in the folder of the pattern being edited.
   const kit = useFolders(projectId, "patterns", items, { inAddress: false, start: list.find((p) => p.id === current)?.folder ?? "" });
   const here = items.filter((p) => p.folder === kit.here);
@@ -52,14 +57,25 @@ export function PatternsPanel({ projectId, current, list }: { projectId: string;
       <PanelFolders kit={kit} empty={here.length === 0} />
       <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 4 }}>
         {here.map((p) => (
-          <li key={p.id}><Link href={`/projects/${projectId}/patterns/${p.id}`} aria-current={p.id === current ? "page" : undefined} className="card card-link" draggable onDragStart={kit.dragThings([p.id])} style={{ padding: "8px 10px", display: "block", borderColor: p.id === current ? "var(--ember)" : undefined }}>
-            <span className="label">{p.name}</span><br /><span className="eyebrow">{p.size}</span>
+          <li key={p.id}><Link href={`/projects/${projectId}/patterns/${p.id}`} aria-current={p.id === current ? "page" : undefined} className="card card-link panel-pattern" draggable onDragStart={kit.dragThings([p.id])} style={{ borderColor: p.id === current ? "var(--ember)" : undefined }}>
+            <PanelThumb pattern={full.get(p.id)} ctx={ctx} />
+            <span><span className="label">{p.name}</span><br /><span className="eyebrow">{p.size}</span></span>
           </Link></li>
         ))}
       </ul>
       <h2 className="eyebrow" style={{ margin: "var(--space-6) 0 var(--space-2)" }}>Layers</h2>
       <Layers />
     </div>
+  );
+}
+
+/** A pattern's card picture in the panel: in a square, at the pattern's shape. Until the list is in, the square keeps its place. */
+function PanelThumb({ pattern, ctx }: { pattern: Pattern | undefined; ctx: ThumbContext }) {
+  const tall = pattern && pattern.size.h > pattern.size.w;
+  return (
+    <span className="panel-pattern-thumb" aria-hidden>
+      {pattern && <span style={{ width: tall ? `${(pattern.size.w / pattern.size.h) * 100}%` : "100%" }}><PatternThumb pattern={pattern} ctx={ctx} /></span>}
+    </span>
   );
 }
 

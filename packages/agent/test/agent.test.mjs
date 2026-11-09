@@ -44,6 +44,7 @@ test("the model fills a free slot, is REFUSED on a locked one, is told so, and s
   assert.equal(r.refusals.length, 1);
   assert.match(r.refusals[0].why, /locked/);
   assert.ok(events.some((e) => e.type === "refusal" && e.slot === "eyebrow"), "the refusal is shown to the person as it happens");
+  assert.equal(events.find((e) => e.type === "tool_call").say, `Filling headline and eyebrow on ${p.name}`, "each step comes with its words, for the chat to show");
   // And the MODEL was told, in the tool result it reads next turn.
   const toolResult = f.seen[1].body.messages.at(-1).content[0];
   assert.equal(toolResult.type, "tool_result");

@@ -64,3 +64,5 @@ export async function runTool(name, args, ctx) {
 }
 
 export { TOOLS };
+// A call in words, for a run's steps in the studio: "Filling headline on Story".
+export { describeCall };

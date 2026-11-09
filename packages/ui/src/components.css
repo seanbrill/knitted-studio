@@ -255,6 +255,20 @@
 .slot-row-state { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: var(--radius-pill); border: 1px solid var(--line-strong); color: var(--ink); }
 .slot-row-state[data-locked] { border-style: dashed; color: var(--ink-muted); }
 .slot-row-shows { grid-column: 1 / -1; font-size: 12px; color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The editor's pattern list: each card with its pattern drawn small. */
+.panel-pattern { display: flex; align-items: center; gap: 10px; padding: 6px 10px 6px 6px; }
+.panel-pattern-thumb { flex-shrink: 0; width: 44px; height: 44px; padding: 2px; display: grid; place-items: center; border-radius: var(--radius-sm); background: var(--surface-sunken); }
+.panel-pattern-thumb > span { display: block; }
+/* What stops a knit, in the same rows: a mark, then what is wrong. */
+.check-row { grid-template-columns: auto minmax(0, 1fr); align-items: start; }
+.check-row[data-static] { cursor: default; }
+.check-row[data-static]:hover { background: transparent; }
+.check-row-level { display: flex; padding-top: 2px; color: var(--ink-muted); }
+.check-row-level[data-level="error"] { color: var(--danger); }
+.check-row-text { font-size: 12px; line-height: 1.45; }
+.check-row-text strong { font-weight: 600; }
+.knit-ready { display: flex; align-items: flex-start; gap: 6px; margin: 0; color: var(--success); }
+.knit-ready svg { flex-shrink: 0; margin-top: 3px; }
 
 .contrast-sample { width: 34px; height: 22px; border-radius: 4px; display: grid; place-items: center; font-weight: 800; font-size: 12px; box-shadow: 0 0 0 1px var(--line-strong); }
 .contrast-sample::before { content: attr(data-sample); }
@@ -296,8 +310,15 @@
 .chat-note { color: var(--ink-muted); }
 .chat-live[data-cut] { -webkit-mask-image: linear-gradient(to bottom, transparent, #000 2.5em); mask-image: linear-gradient(to bottom, transparent, #000 2.5em); }
 .chat-working { margin: 0; display: flex; gap: 8px; align-items: center; font-size: 12.5px; color: var(--ink-muted); }
+/* What a run did, in a card: each step in words, how it went, and a bar under a knit while it runs. */
+.chat-steps { border: 1px solid var(--line); border-radius: var(--radius-md); padding: 8px 12px; background: var(--surface-raised); }
+.chat-steps[data-running] { border-color: var(--line-strong); }
 .chat-steps > summary { cursor: pointer; font-size: 12.5px; color: var(--ink-muted); }
-.chat-steps ol { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 5px; font-size: 12.5px; }
+.chat-step-body { display: grid; gap: 2px; min-width: 0; }
+.chat-step-detail { font-size: 12px; color: var(--ink-muted); overflow-wrap: anywhere; }
+.chat-steps li[data-state="failed"] .chat-step-detail { color: inherit; }
+.chat-step-bar { height: 4px; margin-top: 4px; }
+.chat-steps ol { list-style: none; margin: 8px 0 2px; padding: 0; display: grid; gap: 8px; font-size: 12.5px; }
 .chat-steps li { display: grid; grid-template-columns: 14px 1fr; gap: 6px; align-items: start; line-height: 1.45; }
 .chat-steps li[data-kind="say"] { color: var(--ink-muted); }
 .chat-steps li[data-kind="refused"], .chat-steps li[data-state="failed"] { color: var(--danger); }

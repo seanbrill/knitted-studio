@@ -11,12 +11,13 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { api, type AgentEvent, type AgentJob, type ChatDetail, type ChatItem } from "@knitted/core/client";
+import { api, type AgentEvent, type AgentJob, type ChatDetail, type ChatItem, type JobItem } from "@knitted/core/client";
 import { Button, ConfirmDialog, IconButton, Markdown, Textarea, icons, useToast } from "@knitted/ui";
 import { showingChat, useAgent } from "@/lib/agent";
 import { setCurrentChat, useCurrentChat } from "@/lib/current-chat";
 import { timeAgo, useLive } from "@/lib/hooks";
 import { currentChoice, modelName } from "@/lib/model-choice";
+import { knitShare } from "./KnitQueue";
 import { ModelPicker } from "./ModelPicker";
 
 const { AlertTriangle, Check, Sparkles, Trash2, X } = icons;
@@ -40,16 +41,30 @@ const watched = new Set<string>();
 // A chat just started, as its start answered: shown at once, while the chat itself loads.
 const seeded = new Map<string, ChatDetail>();
 
-type Step = { kind: "say" | "tool" | "refused" | "model"; text: string; state?: "running" | "done" | "failed" };
-/** What a run did, a line a step: what the model said along the way, each tool and how it went, what a lock refused. */
+type Step = { kind: "say" | "tool" | "refused" | "model"; text: string; state?: "running" | "done" | "failed"; tool?: string; input?: Record<string, unknown>; detail?: string };
+// A step's words once it is done: "Filling headline on Story" becomes "Filled headline on Story".
+const DONE: Record<string, string> = { Adding: "Added", Animating: "Animated", Answering: "Answered", Arranging: "Arranged", Bringing: "Brought", Changing: "Changed", Checking: "Checked", Choosing: "Chose", Copying: "Copied", Cutting: "Cut", Designing: "Designed", Drawing: "Drew", Editing: "Edited", Filing: "Filed", Filling: "Filled", Knitting: "Knitted", Looking: "Looked", Making: "Made", Marking: "Marked", Moving: "Moved", Opening: "Opened", Pricing: "Priced", Proposing: "Proposed", Reading: "Read", Recording: "Recorded", Removing: "Removed", Renaming: "Renamed", Saving: "Saved", Searching: "Searched", Starting: "Started", Stopping: "Stopped", Tagging: "Tagged", Taking: "Took", Writing: "Wrote" };
+const doneWords = (say: string) => say.replace(/^[A-Z][a-z]+/, (w) => DONE[w] ?? w);
+const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+/**
+ * What a run did, a line a step: what the model said along the way, each tool in words and how
+ * it went, what a lock refused. A run from before steps had words names its tools.
+ */
 function stepsOf(events: AgentEvent[], answer?: string): Step[] {
   const out: Step[] = [];
   for (const e of events) {
     if (e.type === "text" || e.type === "note") { if (e.text !== answer) out.push({ kind: "say", text: e.text }); }
-    else if (e.type === "tool_call") out.push({ kind: "tool", text: words(e.name), state: "running" });
+    else if (e.type === "tool_call") out.push({ kind: "tool", tool: e.name, text: e.say ?? sentence(words(e.name)), input: (e.input ?? {}) as Record<string, unknown>, state: "running" });
     else if (e.type === "tool_result") {
-      const t = [...out].reverse().find((s) => s.kind === "tool" && s.state === "running" && s.text === words(e.name));
-      if (t) { t.state = e.summary.startsWith("failed") ? "failed" : "done"; if (t.state === "failed") t.text += `: ${e.summary.replace(/^failed: /, "")}`; }
+      const t = [...out].reverse().find((s) => s.kind === "tool" && s.state === "running" && s.tool === e.name);
+      if (!t) continue;
+      t.state = e.summary.startsWith("failed") ? "failed" : "done";
+      if (t.state === "failed") t.detail = e.summary.replace(/^failed: /, "");
+      else {
+        t.text = doneWords(t.text);
+        const held = /^(\d+) refused$/.exec(e.summary);
+        if (held) t.detail = `${held[1]} ${held[1] === "1" ? "change" : "changes"} held back by a lock`;
+      }
     }
     else if (e.type === "refusal") out.push({ kind: "refused", text: `Could not change ${e.slot}: ${e.why}` });
     // Which model, when Auto picked it or it changed part way.
@@ -301,10 +316,43 @@ export function Chat({ chatId, onStarted, projectId = null, patternId, compact =
   );
 }
 
+/**
+ * How far the knit a step waits on has got, as the knit queue shows it: the one this pattern
+ * is knitting, or the job it checks on. Looked at again while the step runs.
+ */
+function StepProgress({ step }: { step: Step }) {
+  const [job, setJob] = useState<JobItem | null>(null);
+  const patternId = typeof step.input?.patternId === "string" ? step.input.patternId : undefined;
+  const jobId = typeof step.input?.jobId === "string" ? step.input.jobId : undefined;
+  useEffect(() => {
+    let live = true;
+    const look = async () => {
+      const j = jobId ? await api.knit.job(jobId).catch(() => null)
+        : (await api.knit.active().catch(() => [] as JobItem[])).find((x) => x.status === "running" && (!patternId || x.input?.patternId === patternId)) ?? null;
+      if (live) setJob(j);
+    };
+    void look();
+    const t = setInterval(() => void look(), 700);
+    return () => { live = false; clearInterval(t); };
+  }, [jobId, patternId]);
+  const p = job?.progress;
+  if (!job || !p?.total) return null;
+  const pct = Math.round(knitShare(job) * 100);
+  const of = p.total > 1 ? `File ${Math.min(p.total, p.done + 1)} of ${p.total}` : null;
+  const frames = p.frames?.total ? `frame ${p.frames.done} of ${p.frames.total}` : null;
+  return (
+    <>
+      <span className="chat-step-detail">{[of, p.step, frames].filter(Boolean).join(" · ") || `${pct}%`}</span>
+      <span className="knit-bar chat-step-bar" role="progressbar" aria-label={step.text} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}><span style={{ width: `${pct}%` }} /></span>
+    </>
+  );
+}
+
 /** What the model is writing as it writes it: its notes as it thinks, then its answer, until the answer is in. */
 function LiveWords({ jobId }: { jobId: string }) {
   const live = useAgent()?.live?.find((l) => l.jobId === jobId);
-  if (!live?.text) return null;
+  // A note once finished is a line in What it did, under this: shown here too, it would be there twice.
+  if (!live?.text || (live.kind === "note" && live.done)) return null;
   // Long, it starts at a word: what came before went by already.
   const cut = live.text.length >= 600;
   const text = cut ? live.text.slice(live.text.search(/\s/) + 1) : live.text;
@@ -348,11 +396,11 @@ function Turn({ job, latest, compact, projectId, patternId, onChanged }: { job: 
         {running && (
           <p className="chat-working">
             <span aria-hidden className="working" style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0 }} />
-            {now ? `Working: ${now.text}` : "Thinking..."}
+            {now ? `${now.text}...` : "Thinking..."}
           </p>
         )}
         {steps.length > 0 && (
-          <details open={running || undefined} className="chat-steps">
+          <details open={running || undefined} className="chat-steps" data-running={running || undefined}>
             <summary>What it did{tools ? ` (${tools} step${tools === 1 ? "" : "s"})` : ""}</summary>
             <ol>
               {steps.map((s, i) => (
@@ -361,7 +409,13 @@ function Turn({ job, latest, compact, projectId, patternId, onChanged }: { job: 
                     {s.kind === "tool" ? (s.state === "done" ? <Check size={12} /> : s.state === "failed" ? <AlertTriangle size={12} /> : <span className="working" />) : s.kind === "refused" ? <X size={12} /> : null}
                   </span>
                   {s.kind === "tool" && <span className="sr-only">{s.state === "done" ? "Done: " : s.state === "failed" ? "Failed: " : "Working: "}</span>}
-                  {s.kind === "say" ? <Markdown text={s.text} className="chat-note" /> : <span>{s.text}</span>}
+                  {s.kind === "say" ? <Markdown text={s.text} className="chat-note" /> : (
+                    <span className="chat-step-body">
+                      <span>{s.text}</span>
+                      {s.detail && <span className="chat-step-detail">{s.detail}</span>}
+                      {running && s.state === "running" && (s.tool === "knit_pattern" || s.tool === "get_job") && <StepProgress step={s} />}
+                    </span>
+                  )}
                 </li>
               ))}
             </ol>

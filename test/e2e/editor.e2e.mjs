@@ -342,6 +342,34 @@ test("the trail says where the pattern is, renames it in place, and goes back up
   await openEditor();
 });
 
+test("the pattern list shows each pattern drawn small, and the one open is drawn in it", async () => {
+  await openEditor();
+  const rail = page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Patterns", exact: true });
+  if ((await rail.getAttribute("aria-pressed")) !== "true") await rail.click();
+  const open = page.locator('a[aria-current="page"].panel-pattern');
+  await open.locator(".panel-pattern-thumb iframe").waitFor({ state: "attached" });
+  // Drawn by the real renderer, from this pattern: its headline is in the picture.
+  const head = await stitch("headline");
+  await open.frameLocator(".panel-pattern-thumb iframe").locator(`[data-stitch-id="${head.id}"]`).waitFor({ state: "attached" });
+});
+
+test("with nothing selected, the inspector checks it before it knits, and a problem picks its stitch", async () => {
+  await openEditor();
+  const inspector = page.getByRole("complementary", { name: "Inspector" });
+  await inspector.getByText("Before it knits").waitFor();
+  // A model empties the headline from another process: the check is run again on what was saved.
+  const was = (await stitch("headline")).content;
+  const edit = (text) => spawnSync(process.execPath, [fileURLToPath(new URL("./fixtures/model-edit.mjs", import.meta.url)), patternId, "headline", text], { env: { ...process.env, KNITTED_HOME: studio.home }, encoding: "utf8" });
+  assert.equal(edit("").status, 0);
+  const problem = inspector.getByRole("list", { name: "Before it knits" }).getByRole("button", { name: /The headline text is empty/ });
+  await problem.waitFor({ timeout: 10000 });
+  assert.match(await inspector.getByRole("status").filter({ hasText: /to look at|to fix/ }).innerText(), /\d+ to look at/);
+  await problem.click();
+  assert.equal(await page.getByLabel("Slot name").inputValue(), "headline", "the problem picks the stitch it is about");
+  assert.equal(edit(was).status, 0);
+  await serverHas(studio, `/api/patterns/${patternId}`, (p) => p.stitches.find((s) => s.slot === "headline").content === was);
+});
+
 for (const theme of ["day", "night"]) {
   test(`no serious accessibility violations in the editor in ${theme}`, async () => {
     await openEditor();

@@ -123,6 +123,9 @@ test("asking from the editor edits the pattern, and Undo all puts it back", asyn
   await convo.getByText("Headline written.").waitFor({ timeout: 30000 });
   assert.equal(await headline(), "Written by the model");
   assert.equal(await convo.getByText("write a headline").count(), 1, "what was asked stays in the conversation");
+  // Each step in words, and once done, as done: what it did, and on which pattern.
+  await convo.getByText(/^What it did/).last().click();
+  await convo.getByText(`Filled headline on ${(await pattern()).name}`).last().waitFor();
   await undoAll(was);
   await page.getByText("Put back the way it was.").first().waitFor();
   assert.ok(sent.every((b) => b.model && b.tools.length > 20));

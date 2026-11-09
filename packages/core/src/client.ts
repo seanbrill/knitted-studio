@@ -414,7 +414,7 @@ export interface ModelConfig {
   key: { present: boolean; source: "environment" | "keychain" | "none"; backend: string | null; canStore: boolean };
 }
 /** `note`: what the model says between its tool calls, about what it found and will do next. */
-export type AgentEvent = { type: "text"; text: string } | { type: "note"; text: string } | { type: "tool_call"; name: string; input: unknown } | { type: "tool_result"; name: string; summary: string } | { type: "refusal"; slot: string; why: string } | { type: "stopped"; why: string } | { type: "model"; model: string; name: string; why?: string; switched?: boolean };
+export type AgentEvent = { type: "text"; text: string } | { type: "note"; text: string } | { type: "tool_call"; name: string; input: unknown; say?: string } | { type: "tool_result"; name: string; summary: string } | { type: "refusal"; slot: string; why: string } | { type: "stopped"; why: string } | { type: "model"; model: string; name: string; why?: string; switched?: boolean };
 /** A pattern a run changed (or made, `made`), with its revision from before the run: what Undo all puts back. */
 export interface ChangedPattern { patternId: string; projectId: string; name: string; baselineRevisionId: string | null; count: number; made: boolean; }
 export interface AgentJob {

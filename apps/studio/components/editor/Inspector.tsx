@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api, yarnThumbUrl } from "@knitted/core/client";
-import { resolveStyle, toPx, toFrac, type Command, type Stitch } from "@knitted/core";
+import { resolveStyle, toPx, toFrac, type Command, type KnitIssue, type Stitch } from "@knitted/core";
 import { Button, Field, Input, SegmentedControl, Select, Slider, Switch, Textarea, icons } from "@knitted/ui";
 import { liveStitches, useEditor } from "@/lib/editor/store";
 import { NumberField, Section, TokenColor } from "./controls";
@@ -27,7 +27,7 @@ function animateAll(stitches: Stitch[], preset: Preset) {
   st.dispatch({ type: "batch", commands: cmds }, { label: `Animate ${order.length}: ${info.label}` });
 }
 
-const { AlignHorizontalJustifyStart, Trash2, Lock, Unlock } = icons as unknown as Record<string, React.ComponentType<{ size?: number }>>;
+const { AlignHorizontalJustifyStart, Trash2, Lock, Unlock, AlertTriangle, Check } = icons as unknown as Record<string, React.ComponentType<{ size?: number; "aria-hidden"?: boolean }>>;
 void AlignHorizontalJustifyStart; void Lock; void Unlock;
 
 const WEIGHTS = [300, 400, 500, 600, 700, 800, 900].map((w) => ({ value: String(w), label: String(w) }));
@@ -50,6 +50,7 @@ export function Inspector({ fonts, onSavePart }: { fonts: string[]; onSavePart?:
           <Field label="Name" htmlFor="pat-name"><Input id="pat-name" defaultValue={pattern.name} key={pattern.name} onBlur={(e) => e.target.value.trim() && e.target.value !== pattern.name && st.dispatch({ type: "setMeta", name: e.target.value }, { label: "Rename" })} /></Field>
           <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>{pattern.partId ? `${W} x ${H}` : `${pattern.size.name}, ${W} x ${H}`}. {pattern.stitches.length === 1 ? "1 stitch" : `${pattern.stitches.length} stitches`}.</p>
         </Section>
+        {!pattern.partId && <KnitCheck patternId={pattern.id} version={st.serverVersion} names={(id) => all.find((s) => s.id === id)?.slot ?? undefined} onPick={(id) => st.select([id])} />}
         {!pattern.partId && <SlotList stitches={all} yarnName={(id) => yarn[id]?.name} onPick={(id) => st.select([id])} />}
       </aside>
     );
@@ -219,7 +220,49 @@ export function Inspector({ fonts, onSavePart }: { fonts: string[]; onSavePart?:
   );
 }
 
-void api;
+/**
+ * With nothing selected: the checks Knit runs, on the pattern as it was last saved, so what
+ * stops a knit shows while it is being made, not after. Each one that is about a stitch picks it.
+ */
+function KnitCheck({ patternId, version, names, onPick }: { patternId: string; version: number; names: (id: string) => string | undefined; onPick: (id: string) => void }) {
+  const [issues, setIssues] = useState<KnitIssue[] | null | "failed">(null);
+  useEffect(() => {
+    let live = true;
+    // After a save settles: a run of edits checks once.
+    const t = setTimeout(() => {
+      api.knit.preview(patternId, {}).then((r) => {
+        if (!live) return;
+        // The same problem in more than one size reads once.
+        const seen = new Set<string>();
+        setIssues(r.units.flatMap((u) => u.issues).filter((i) => { const k = `${i.level}|${i.stitchId ?? ""}|${i.message}`; return seen.has(k) ? false : (seen.add(k), true); }).sort((a, b) => Number(a.level === "warning") - Number(b.level === "warning")));
+      }).catch(() => live && setIssues("failed"));
+    }, 400);
+    return () => { live = false; clearTimeout(t); };
+  }, [patternId, version]);
+  const errors = Array.isArray(issues) ? issues.filter((i) => i.level === "error").length : 0;
+  const warnings = Array.isArray(issues) ? issues.length - errors : 0;
+  return (
+    <Section title="Before it knits" hint="The checks Knit runs: missing files, low contrast, text that will not fit, animation that is too busy.">
+      {issues === null ? <div className="skeleton" aria-label="Checking" style={{ height: 18, width: "70%", borderRadius: 4 }} />
+        : issues === "failed" ? <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>Could not check it just now. Knit checks it again.</p>
+        : issues.length === 0 ? <p className="body-sm knit-ready" role="status"><Check size={14} aria-hidden /> Ready to knit. Nothing missing, and the text fits.</p>
+        : (
+          <>
+            <p className="body-sm" role="status" style={{ margin: 0, color: "var(--ink-muted)" }}>{[errors && `${errors} to fix before it knits`, warnings && `${warnings} to look at`].filter(Boolean).join(", ")}.</p>
+            <ul aria-label="Before it knits" className="slot-list">
+              {issues.map((i, n) => {
+                const body = (<>
+                  <span className="check-row-level" data-level={i.level}><AlertTriangle size={13} aria-hidden /><span className="sr-only">{i.level === "error" ? "To fix" : "To look at"}: </span></span>
+                  <span className="check-row-text">{i.stitchId && names(i.stitchId) ? <strong>{names(i.stitchId)} </strong> : null}{i.message}</span>
+                </>);
+                return <li key={n}>{i.stitchId ? <button type="button" className="slot-row check-row" onClick={() => onPick(i.stitchId!)}>{body}</button> : <div className="slot-row check-row" data-static>{body}</div>}</li>;
+              })}
+            </ul>
+          </>
+        )}
+    </Section>
+  );
+}
 
 const KIND_WORD: Record<Stitch["kind"], string> = { text: "Text", image: "Picture", shape: "Shape", video: "Video", audio: "Sound", part: "Part" };
 

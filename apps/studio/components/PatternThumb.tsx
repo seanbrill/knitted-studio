@@ -45,8 +45,10 @@ export function PatternThumb({ pattern, ctx }: { pattern: Pattern; ctx: ThumbCon
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  // The same page for the same pattern and look, so a refetch that changed nothing leaves the frame as it is.
-  const doc = useMemo(() => (ctx ? pageFor(pattern, ctx) : null), [pattern, ctx]);
+  // The same page for the same saved pattern and look: a list fetched again after a change
+  // somewhere else hands over new objects, and only a pattern saved since is drawn again.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const doc = useMemo(() => (ctx ? pageFor(pattern, ctx) : null), [pattern.id, pattern.version, ctx]);
   const at = stillMs(pattern);
   return (
     <div ref={box} aria-hidden style={{ position: "relative", width: "100%", aspectRatio: `${W} / ${H}`, overflow: "hidden", borderRadius: "var(--radius-sm)", background: ctx ? colorFor(ctx.swatch, "background") : "var(--surface-raised)" }}>

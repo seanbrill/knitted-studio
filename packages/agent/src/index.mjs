@@ -14,7 +14,7 @@
 //     was and adds to the end, never edits it (packages/core/src/chats.ts says why).
 
 import { activeSwatch, addChatRun, agentLive, createChat, getChat, getSecret, imageForModel, recordUsage, saveChatMessages, spendCheck } from "@knitted/core/node";
-import { runTool, toolContext, TOOLS } from "@knitted/mcp/context";
+import { describeCall, runTool, toolContext, TOOLS } from "@knitted/mcp/context";
 import { READ_ONLY } from "@knitted/mcp/tools";
 import { readMessage, StreamError } from "./stream.mjs";
 import { costOf } from "./prices.mjs";
@@ -338,7 +338,10 @@ export async function runAgent({ store, projectId = null, patternId, prompt, mod
     for (const b of uses) {
       if (signal?.aborted) break;
       trace.toolCalls++;
-      onEvent({ type: "tool_call", name: b.name, input: b.input });
+      // In words, as the studio shows it while it runs. Words that cannot be found are only plainer.
+      let say;
+      try { say = describeCall(b.name, b.input ?? {}, store).summary; } catch { /* the name will do */ }
+      onEvent({ type: "tool_call", name: b.name, input: b.input, ...(say ? { say } : {}) });
       const pid = b.input?.patternId;
       if (!READ_ONLY.has(b.name) && typeof pid === "string" && !before.has(pid)) { try { before.set(pid, store.revisions(pid, 1)[0]?.id ?? null); } catch { /* no such pattern: the tool says so */ } }
       try {
