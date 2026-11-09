@@ -158,7 +158,7 @@ export const api = {
   },
   knit: {
     start: (patternId: string, params: KnitParams) => call<JobItem>("POST", `/api/patterns/${patternId}/knit`, { params }),
-    preview: (patternId: string, params: KnitParams) => call<{ units: { label: string; size: Size; issues: KnitIssue[] }[] }>("POST", `/api/patterns/${patternId}/knit`, { params, dryRun: true }),
+    preview: (patternId: string, params: KnitParams) => call<{ units: KnitUnitPreview[] }>("POST", `/api/patterns/${patternId}/knit`, { params, dryRun: true }),
     job: (id: string) => call<JobItem>("GET", `/api/jobs/${id}`),
     /** What is knitting or waiting to, in one project or in all of them. */
     active: (projectId?: string) => call<JobItem[]>("GET", `/api/jobs?kind=knit&active=1${projectId ? `&project=${projectId}` : ""}`),
@@ -411,6 +411,13 @@ type KeyStatus = { present: boolean; source: "environment" | "keychain" | "none"
 export interface GenConfig { sources: (GenSource & { key: KeyStatus })[]; choice: { image: { provider: GenProvider; model: string } | null; video: { provider: GenProvider; model: string } | null } }
 export interface GenRequest { kind: GenKind; prompt: string; from?: string[]; count?: number; aspect?: GenAspect; quality?: GenQuality; seconds?: number; transparent?: boolean; name?: string; folder?: string; tags?: string[] }
 export interface GenJob { id: string; status: JobItem["status"]; error: string | null; progress: { step: "asking" | "keeping" | "done"; say: string } | null; result: { yarn: { id: string; name: string }[]; cost: number } | null }
+/**
+ * One file a knit would make, before it is made: its checks, and what it comes back as.
+ * `versions` the knit has now (0 when it is new); `look`, the version that already looks like
+ * this, if one does; `current`, the version shown; `same`, when this very file is there already;
+ * `kept`, when it is used again and not drawn (it is the same, and reuse is on).
+ */
+export interface KnitUnitPreview { label: string; size: Size; issues: KnitIssue[]; versions: number; look: number | null; current: number | null; same: boolean; kept: boolean }
 export interface GenPlanView { kind: GenKind; provider: GenProvider; model: string; count: number; aspect: GenAspect; quality: GenQuality; seconds: number; cost: number; say: string }
 export interface StockConfig { sources: (StockSource & { key: KeyStatus | null })[] }
 /** What a search found, and how each source answered: `state` none means it was not asked (no key, or not that kind). */

@@ -19,6 +19,7 @@ export const GROUPS: Group[] = [
     { what: "This list", keys: [["?"]] },
     { what: "Close a window or a menu", keys: [["Esc"]] },
     { what: "Find anything, outside the editor", keys: [["mod", "K"]] },
+    { what: "Ask, in Ask your model", keys: [["mod", "Enter"]] },
   ] },
   { name: "In a list", rows: [
     { what: "Open", keys: [["Enter"]] },

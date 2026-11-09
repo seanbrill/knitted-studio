@@ -9,12 +9,13 @@
 // bytes. The hash below is how we know "the same inputs".
 
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import sharp from "sharp";
 import { applyCommand, fontFor, hasErrors, overflowIssues, postflight, preflight, resolveStyle, safeZoneIssues, SIZES, videoFps } from "@knitted/core";
-import { activeSwatch, chooseKnit, findKnitByHash, getPart, insertKnit, knitPath, listYarn, unitKey } from "@knitted/core/node";
+import { activeSwatch, chooseKnit, findKnitByHash, getPart, insertKnit, knitPath, listYarn, unitKey, versionsOf } from "@knitted/core/node";
 import { fontFaceCss, fontPath, manifest as fontManifest } from "@knitted/fonts";
 import { familiesUsed, pageFor } from "@knitted/render";
 import { FPS, frameTimes, run } from "./knit.mjs";
@@ -184,7 +185,31 @@ export function previewKnit(store, { projectId, patternId, params = {} }) {
   const yarn = listYarn(store, projectId);
   const yarnMap = Object.fromEntries(yarn.map((y) => [y.id, y]));
   const scale = params.scale === 2 ? 2 : 1;
-  return unitsFor(pattern, params, yarn).map((u) => ({ label: u.label, size: u.size, issues: [...u.problems, ...preflight(u.pattern, swatch, { scale, yarn: yarnMap, fps: params.fps }), ...missingFontIssues(u.pattern, swatch, yarn)] }));
+  const format = FORMATS[params.format ?? "png"] ? (params.format === "jpg" ? "jpeg" : params.format ?? "png") : "png";
+  const fmt = pattern.durationMs > 0 ? "mp4" : format;
+  return unitsFor(pattern, params, yarn).map((u) => {
+    const fps = fmt === "mp4" ? videoFps(u.pattern, yarnMap, params.fps) : FPS;
+    return { label: u.label, size: u.size, issues: [...u.problems, ...preflight(u.pattern, swatch, { scale, yarn: yarnMap, fps: params.fps }), ...missingFontIssues(u.pattern, swatch, yarn)],
+      ...comesAs(store, projectId, unitOf(patternId, pattern, u), lookFor(store, u, swatch, yarnMap), hashFor(store, u, swatch, yarnMap, fmt, scale, fps), params.reuse !== false) };
+  });
+}
+
+/**
+ * What a knit of one unit would come back as, said before it is made: `versions` the knit has
+ * now (0 when it is new); `look`, the number of the version that already looks like this, if
+ * one does; `current`, the number of the one shown; `same`, when this very file is there
+ * already; and `kept`, when it is used again rather than drawn, as it is unless reuse is off.
+ */
+function comesAs(store, projectId, unit, look, hash, reuse) {
+  const rows = store.db.prepare("select id, look, created_at, chosen_at from knits where project_id = ? and unit = ?").all(projectId, unit)
+    .map((r) => ({ id: r.id, look: r.look ?? null, createdAt: r.created_at, chosenAt: r.chosen_at ?? null }));
+  if (!rows.length) return { versions: 0, look: null, current: null, same: false, kept: false };
+  const { versions, current } = versionsOf(rows);
+  const prior = findKnitByHash(store, projectId, hash, unit);
+  const same = !!prior && existsSync(knitPath(store, prior));
+  // A file made before looks were kept as they are now has another look: the very file says which version it is.
+  const like = versions.find((v) => v.look === look) ?? (same ? versions.find((v) => v.files.some((f) => f.id === prior.id)) : undefined);
+  return { versions: versions.length, look: like?.no ?? null, current: current.no, same, kept: same && reuse };
 }
 
 /**

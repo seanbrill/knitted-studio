@@ -70,7 +70,7 @@ test("with no key, Make says which key to add, and where", async () => {
   await page.getByRole("button", { name: "Add", exact: true }).click();
   await page.getByRole("menuitem", { name: "Make a photo or a video" }).click();
   await dialog().getByText(/Making photos needs an OpenAI or Google Gemini key/).waitFor();
-  assert.equal(await dialog().getByRole("button", { name: /^Make it/ }).isDisabled(), true);
+  assert.equal(await dialog().getByRole("button", { name: /^Make a photo/ }).isDisabled(), true);
   await dialog().getByRole("link", { name: "Open Settings" }).click();
   await page.waitForURL(/settings\?tab=generate/);
 });
@@ -97,9 +97,13 @@ test("two photos are made from the Make dialog, priced before, and kept in Yarn 
   await dialog().getByText("A square photo, good quality, with Nano Banana 2.1, for about $0.05.").waitFor();
   await dialog().getByLabel("What to make").fill("A latte on a marble counter, morning light");
   await dialog().getByRole("radio", { name: "Feed 4:5" }).click();
-  await dialog().getByRole("combobox", { name: "How many" }).click();
-  await page.getByRole("option", { name: "2", exact: true }).click();
-  await dialog().getByRole("button", { name: "Make it, about $0.10" }).click();
+  await dialog().getByRole("radiogroup", { name: "How many" }).getByRole("radio", { name: "2" }).click();
+  // The price is beside the choices that change it: each, and at the other qualities.
+  const cost = dialog().getByRole("complementary", { name: "What it costs" });
+  await cost.getByText("$0.10", { exact: true }).waitFor();
+  await cost.getByText("$0.05 each. Draft is $0.03 each; Best is $0.11.").waitFor();
+  await dialog().getByText(/^This month: \$[\d.]+, with no monthly limit$/).waitFor();
+  await dialog().getByRole("button", { name: "Make 2 photos, about $0.10" }).click();
   await page.getByText(/^Making two 4:5 photos, good quality, with Nano Banana 2\.1, for about \$0\.10\./).waitFor();
   await page.getByText("2 new files are in Yarn. It cost $0.10.").waitFor({ timeout: 20_000 });
   const yarn = await serverHas(studio, `/api/projects/${projectId}/yarn`, (l) => l.filter((y) => y.meta.made?.by === "provider").length === 2);
@@ -119,8 +123,14 @@ test("two photos are made from the Make dialog, priced before, and kept in Yarn 
 
 test("Make a photo from this starts from the picture", async () => {
   await page.getByRole("button", { name: "Make a photo from this" }).click();
-  await dialog().getByText("Working from").waitFor();
+  await dialog().getByText("Work from", { exact: false }).first().waitFor();
   await dialog().getByRole("button", { name: "Do not work from A latte on a marble counter, morning light 1" }).waitFor();
+  // More to work from, picked from Yarn by eye.
+  await dialog().getByRole("button", { name: "Add a picture to work from" }).click();
+  await page.getByLabel("Find a picture").fill("light 2");
+  await page.getByRole("button", { name: "Work from A latte on a marble counter, morning light 2" }).click();
+  await dialog().getByRole("button", { name: "Do not work from A latte on a marble counter, morning light 2" }).waitFor();
+  await page.keyboard.press("Escape");
   await dialog().getByRole("button", { name: "Cancel" }).click();
 });
 

@@ -2,12 +2,29 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, knitFileUrl, type JobItem, type KnitParams } from "@knitted/core/client";
-import { SIZES, type Pattern, type KnitIssue } from "@knitted/core";
+import { api, knitFileUrl, type JobItem, type KnitParams, type KnitUnitPreview } from "@knitted/core/client";
+import { SIZES, type Pattern } from "@knitted/core";
 import { Button, Dialog, Field, SegmentedControl, Skeleton, StitchProgress, Switch, Textarea, icons, useToast } from "@knitted/ui";
+import { useEditor } from "@/lib/editor/store";
+import { SizeShape } from "../SizeTiles";
 import { RendererCard } from "../RendererCard";
 
-const { AlertTriangle, Check } = icons;
+const { AlertTriangle, Check, X } = icons;
+const TYPE: Record<string, string> = { png: "PNG", jpeg: "JPEG", webp: "WebP", mp4: "MP4" };
+const ROWS_SHOWN = 8;
+
+/** What a file comes back as, in a few words, before it is made. */
+export function comesBackAs(u: Pick<KnitUnitPreview, "versions" | "look" | "current" | "same" | "kept">): string {
+  if (!u.versions) return "new";
+  const which = u.look === u.current ? "the one there" : u.look != null ? `version ${u.look}` : "a file there";
+  if (u.kept) return u.look === u.current ? "the same as the one there: kept" : `the same as ${which}: shown again, not drawn`;
+  if (u.same) return `the same as ${which}, drawn again`;
+  if (u.look != null) return u.look === u.current ? "another format of the one there" : `another format of version ${u.look}`;
+  return `version ${u.versions + 1} of this knit`;
+}
+/** A file that is already there as it is, so knitting it does nothing. */
+const keptAsIs = (u: KnitUnitPreview) => u.kept && u.look === u.current;
+
 
 /** Parse pasted spreadsheet text (tab or comma separated) into rows keyed by the header line. */
 export function parseRows(text: string): { rows: Record<string, string>[]; headers: string[] } {
@@ -39,7 +56,7 @@ export function KnitDialog({ open, onOpenChange, pattern, projectId }: { open: b
   const [reuse, setReuse] = useState(true);
   const [batch, setBatch] = useState(false);
   const [text, setText] = useState("");
-  const [units, setUnits] = useState<{ label: string; issues: KnitIssue[] }[] | null>(null);
+  const [units, setUnits] = useState<KnitUnitPreview[] | null>(null);
   const [job, setJob] = useState<JobItem | null>(null);
   const [busy, setBusy] = useState(false);
   // The first knit on a new computer: the browser it draws with is downloaded here, first.
@@ -81,31 +98,81 @@ export function KnitDialog({ open, onOpenChange, pattern, projectId }: { open: b
   };
 
   const errors = units?.flatMap((u) => u.issues.filter((i) => i.level === "error")) ?? [];
-  const warnings = units?.flatMap((u) => u.issues.filter((i) => i.level === "warning")) ?? [];
   const finished = !!job && ["done", "failed", "cancelled", "interrupted"].includes(job.status);
+  // The files it will draw: not the ones there already as they are.
+  const kept = units?.filter(keptAsIs).length ?? 0;
+  const making = units ? units.length - kept : total;
+  const anyNew = units?.some((u) => !u.versions) ?? false, anyOld = units?.some((u) => u.versions > 0 && !keptAsIs(u)) ?? false;
+  const note = errors.length ? "Fix what is marked first"
+    : !units ? undefined
+    : making === 0 ? "Each is the same as the one there. Turn off Reuse to draw them again."
+    : [anyNew && anyOld ? "New ones come into Knits as knits of their own, the rest as their newest version" : anyOld ? `${making === 1 ? "It comes" : "Each comes"} into Knits as the newest version` : `${making === 1 ? "It comes" : "They come"} into Knits as new`, kept ? `${kept} kept as ${kept === 1 ? "it is" : "they are"}` : ""].filter(Boolean).join(" · ");
+  const type = motion ? "mp4" : format;
+  const custom = !SIZES.some((s) => s.name === pattern.size.name && s.w === pattern.size.w && s.h === pattern.size.h);
+  const tiles = [...SIZES, ...(custom ? [pattern.size] : [])];
+  const show = (stitchId: string) => { useEditor.getState().select([stitchId]); close(false); };
 
   return (
-    <Dialog open={open} onOpenChange={close} wide title={job ? (finished ? "Knit finished" : "Knitting...") : "Knit"} description={job ? undefined : `Make real files from ${pattern.name}.`}
+    <Dialog open={open} onOpenChange={close} size="lg" title={job ? (finished ? "Knit finished" : "Knitting...") : `Knit ${pattern.name}`} description={job ? undefined : "Real files from the pattern as it is now"}
+      note={job ? undefined : note}
       actions={job ? (
         finished ? <><Button variant="ghost" onClick={() => close(false)}>Close</Button><Link href={`/projects/${projectId}/knits`} className="btn btn-primary">See your knits</Link></>
           : <Button variant="danger" onClick={() => api.knit.cancel(job.id)}>Cancel</Button>
-      ) : (<><Button variant="ghost" onClick={() => close(false)}>Cancel</Button><Button variant="primary" busy={busy} disabled={!canDraw || errors.length > 0 || (batch && parsed.rows.length === 0)} onClick={go}>Knit {total} {total === 1 ? "file" : "files"}</Button></>)}>
+      ) : (<><Button variant="ghost" onClick={() => close(false)}>Cancel</Button><Button variant="primary" busy={busy} disabled={!canDraw || errors.length > 0 || making === 0 || (batch && parsed.rows.length === 0)} onClick={go}>{making === 0 ? "Nothing new to knit" : `Knit ${making} ${making === 1 ? "file" : "files"}`}</Button></>)}>
       {!job ? (
-        <div style={{ display: "grid", gap: "var(--space-5)" }}>
+        <div style={{ display: "grid", gap: "var(--space-4)" }}>
           <RendererCard missingOnly onReady={setCanDraw} />
-          <div style={{ display: "flex", gap: "var(--space-6)", flexWrap: "wrap" }}>
-            <Field label="Format">
-              <SegmentedControl label="Format" value={motion ? "mp4" : format} onChange={setFormat} options={motion ? [{ value: "mp4", label: "MP4 video" }] : [{ value: "png", label: "PNG" }, { value: "jpeg", label: "JPEG" }, { value: "webp", label: "WebP" }]} />
+          <div className="knit-opts">
+            <Field label="Type">
+              <SegmentedControl label="Format" value={type} onChange={setFormat} options={motion ? [{ value: "mp4", label: "MP4 video" }] : [{ value: "png", label: "PNG" }, { value: "jpeg", label: "JPEG" }, { value: "webp", label: "WebP" }]} />
             </Field>
-            <Field label="Quality"><SegmentedControl<"1" | "2"> label="Scale" value={String(scale) as "1" | "2"} onChange={(v) => setScale(Number(v) as 1 | 2)} options={[{ value: "1", label: "1x" }, { value: "2", label: "2x sharper" }]} /></Field>
+            <Field label="Scale"><SegmentedControl<"1" | "2"> label="Scale" value={String(scale) as "1" | "2"} onChange={(v) => setScale(Number(v) as 1 | 2)} options={[{ value: "1", label: "1x" }, { value: "2", label: "2x, sharper" }]} /></Field>
             {motion && <Field label="Smoothness" hint={fps === 60 ? "Fast motion looks smoother. Takes about twice as long." : "The standard for social video. Footage shot at 24 or 25 keeps its own rate, so it plays without a hitch."}><SegmentedControl<"30" | "60"> label="Frames a second" value={String(fps) as "30" | "60"} onChange={(v) => setFps(Number(v) as 30 | 60)} options={[{ value: "30", label: "30 fps" }, { value: "60", label: "60 fps" }]} /></Field>}
           </div>
-          <Field label="Sizes" hint="Knit the same pattern at several sizes in one go.">
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }} role="group" aria-label="Sizes">
-              {SIZES.map((s) => <button key={s.name} type="button" className="chip chip-button" aria-pressed={sizes.includes(s.name)} onClick={() => setSizes((cur) => (cur.includes(s.name) ? cur.filter((x) => x !== s.name) : [...cur, s.name]))}>{s.name} <span className="code" style={{ color: "var(--ink-muted)" }}>{s.w}x{s.h}</span></button>)}
+          <div className="field">
+            <span className="field-label" id="kd-sizes">Sizes</span>
+            <div className="knit-sizes" role="group" aria-labelledby="kd-sizes">
+              {tiles.map((s) => (
+                <button key={s.name} type="button" className="knit-size" aria-pressed={sizes.includes(s.name)} title={`${s.w} × ${s.h}`} aria-label={`${s.name} ${s.w}x${s.h}`}
+                  onClick={() => setSizes((cur) => (cur.includes(s.name) ? cur.filter((x) => x !== s.name) : [...cur, s.name]))}>
+                  <SizeShape w={s.w} h={s.h} box={[26, 20]} />{s.name}
+                </button>
+              ))}
             </div>
-          </Field>
-          <label style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}><span className="body-sm">Knit many from a table<br /><span style={{ color: "var(--ink-muted)" }}>One row per post. Paste from a spreadsheet.</span></span><Switch label="Knit many from a table" checked={batch} onCheckedChange={setBatch} /></label>
+          </div>
+
+          <section aria-label="What it makes" aria-live="polite" className="field">
+            <h3 className="field-label" style={{ margin: 0 }}>What it makes {units && <small className="knit-files-n">{units.length} {units.length === 1 ? "file" : "files"}</small>}</h3>
+            {!units ? <Skeleton height={52} /> : (
+              <ul className="knit-files">
+                {units.slice(0, ROWS_SHOWN).map((u, k) => {
+                  const errs = u.issues.filter((i) => i.level === "error"), warns = u.issues.filter((i) => i.level === "warning");
+                  const status = errs.length ? <span className="knit-file-bad"><X size={12} aria-hidden /> Fix first</span>
+                    : keptAsIs(u) ? <span className="knit-file-same">Kept</span>
+                    : warns.length ? <span className="knit-file-warn"><AlertTriangle size={12} aria-hidden /> {warns.length} to look at</span>
+                    : <span className="knit-file-ok"><Check size={12} aria-hidden /> Ready</span>;
+                  const w = u.size.w * scale, h = u.size.h * scale;
+                  return (
+                    <li key={k}>
+                      <div className="knit-file">
+                        <SizeShape w={u.size.w} h={u.size.h} box={[24, 24]} />
+                        <span><b>{u.label}</b><small>{TYPE[type]} {w} × {h} · {comesBackAs(u)}</small></span>
+                        {status}
+                      </div>
+                      {[...errs, ...warns].length > 0 && !keptAsIs(u) && (
+                        <ul className="knit-file-issues">
+                          {[...errs, ...warns].slice(0, 3).map((i, n) => <li key={n} data-level={i.level}>{i.message}{i.stitchId && <> <button type="button" className="link" onClick={() => show(i.stitchId!)}>Show me</button></>}</li>)}
+                        </ul>
+                      )}
+                    </li>
+                  );
+                })}
+                {units.length > ROWS_SHOWN && <li className="knit-files-more">And {units.length - ROWS_SHOWN} more, each checked the same way</li>}
+              </ul>
+            )}
+          </section>
+
+          <label className="knit-toggle"><span>Knit many from a table<small>One row per post, pasted from a spreadsheet</small></span><Switch label="Knit many from a table" checked={batch} onCheckedChange={setBatch} /></label>
           {batch && (
             <Field label="Table" hint={freeSlots.length ? `First line is the column names. This pattern's slots: ${freeSlots.join(", ")}. For an image slot, use a Yarn name or tag:product.` : "This pattern has no free slots yet. Name some stitches in the editor first."} htmlFor="kd-rows">
               <Textarea id="kd-rows" rows={6} value={text} onChange={(e) => setText(e.target.value)} placeholder={`${freeSlots.join("\t") || "headline"}\nSpring sale\nNew arrivals`} style={{ fontFamily: "var(--font-mono)", fontSize: 12 }} />
@@ -115,16 +182,7 @@ export function KnitDialog({ open, onOpenChange, pattern, projectId }: { open: b
               </div>
             </Field>
           )}
-          <label style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}><span className="body-sm">Reuse identical knits<br /><span style={{ color: "var(--ink-muted)" }}>If nothing changed, skip redrawing it.</span></span><Switch label="Reuse identical knits" checked={reuse} onCheckedChange={setReuse} /></label>
-
-          <section aria-label="Checks" aria-live="polite">
-            <h3 className="eyebrow" style={{ marginBottom: 6 }}>Checks</h3>
-            {!units ? <Skeleton height={20} /> : errors.length + warnings.length === 0 ? <p className="body-sm" style={{ margin: 0, color: "var(--success)", display: "flex", gap: 6, alignItems: "center" }}><Check size={14} aria-hidden /> Ready to knit. Nothing to fix.</p> : (
-              <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 6 }}>
-                {[...errors, ...warnings].slice(0, 8).map((i, k) => <li key={k} className="body-sm" style={{ display: "flex", gap: 6, color: i.level === "error" ? "var(--danger)" : "var(--ink)" }}><AlertTriangle size={14} aria-hidden style={{ flexShrink: 0, marginTop: 2 }} /><span><strong>{i.level === "error" ? "Fix this first: " : "Heads up: "}</strong>{i.message}</span></li>)}
-              </ul>
-            )}
-          </section>
+          <label className="knit-toggle"><span>Reuse identical knits<small>A file there already, exactly as it would be made, is kept, not drawn again</small></span><Switch label="Reuse identical knits" checked={reuse} onCheckedChange={setReuse} /></label>
         </div>
       ) : (
         <div style={{ display: "grid", gap: "var(--space-4)" }} role="status" aria-live="polite">

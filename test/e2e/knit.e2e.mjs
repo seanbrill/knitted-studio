@@ -13,7 +13,7 @@ async function openKnit() {
   await page.goto(editor());
   await page.getByRole("application", { name: "Pattern canvas" }).waitFor();
   await page.getByRole("button", { name: "Knit", exact: true }).click();
-  await page.getByRole("dialog").getByText("Make real files from").waitFor();
+  await page.getByRole("dialog", { name: /^Knit / }).getByText("Real files from the pattern as it is now").waitFor();
 }
 
 before(async () => {
@@ -31,7 +31,11 @@ after(async () => { await browser?.close(); await studio?.stop(); });
 test("Knit opens a dialog that checks the pattern first, and tells the truth about what is missing", async () => {
   await openKnit();
   // A fresh starter has no logo yet. That is a heads-up, not a blocker: you can still knit.
-  await page.getByRole("dialog").getByText(/Heads up: The logo slot has no image yet/).waitFor();
+  const made = page.getByRole("dialog").getByRole("region", { name: "What it makes" });
+  await made.getByText(/The logo slot has no image yet/).waitFor();
+  await made.getByText("1 to look at").waitFor();
+  await made.getByText("PNG 1080 × 1920 · new").waitFor();
+  await page.getByRole("dialog").getByText("It comes into Knits as new").waitFor();
   await page.getByRole("button", { name: "Knit 1 file" }).waitFor();
   assert.equal(await page.getByRole("button", { name: "Knit 1 file" }).isDisabled(), false);
 });
@@ -56,6 +60,33 @@ test("the knit file answers range requests, so video and big images can stream",
   const res = await fetch(`${studio.url}/api/knits/${k.id}/file`, { headers: { range: "bytes=0-9" } });
   assert.equal(res.status, 206);
   assert.equal((await res.arrayBuffer()).byteLength, 10);
+});
+
+test("knitted already, each file says what it comes back as: kept, another format, or a knit of its own", async () => {
+  await openKnit();
+  const dlg = page.getByRole("dialog");
+  const made = dlg.getByRole("region", { name: "What it makes" });
+  await made.getByText("PNG 1080 × 1920 · the same as the one there: kept").waitFor();
+  await made.getByText("Kept", { exact: true }).waitFor();
+  assert.equal(await dlg.getByRole("button", { name: "Nothing new to knit" }).isDisabled(), true);
+  await dlg.getByText("Each is the same as the one there. Turn off Reuse to draw them again.").waitFor();
+
+  await dlg.getByRole("switch", { name: "Reuse identical knits" }).click();
+  await made.getByText("PNG 1080 × 1920 · the same as the one there, drawn again").waitFor();
+  await dlg.getByRole("button", { name: "Knit 1 file" }).waitFor();
+  await dlg.getByRole("switch", { name: "Reuse identical knits" }).click();
+
+  await dlg.getByRole("radio", { name: "2x, sharper" }).click();
+  await made.getByText("PNG 2160 × 3840 · another format of the one there").waitFor();
+  await dlg.getByRole("radio", { name: "1x" }).click();
+
+  await dlg.getByRole("button", { name: "Square 1080x1080" }).click();
+  await made.getByText("2 files").waitFor();
+  await made.getByText("PNG 1080 × 1080 · new").waitFor();
+  await dlg.getByRole("button", { name: "Knit 1 file" }).waitFor();
+  await dlg.getByText("1 kept as it is", { exact: false }).waitFor();
+  await page.keyboard.press("Escape");
+  await dlg.waitFor({ state: "detached" });
 });
 
 test("Knit many: a pasted table of three rows makes three files in one batch", async () => {
@@ -203,6 +234,25 @@ test("keys act on the knit in focus: F favourites it, T tags it, M moves it, Del
   await page.getByPlaceholder("Search knits").fill("");
 });
 
+test("Ask your model on a knit shows it, and says it comes back as its next version with this one kept", async () => {
+  await page.goto(`${studio.url}/projects/${projectId}/knits`);
+  const card = page.locator(".pickable").first();
+  const id = await card.getAttribute("data-thing");
+  const k = (await j("GET", `/api/projects/${projectId}/knits`)).body.find((x) => x.id === id);
+  await card.hover();
+  await card.getByRole("button", { name: /^Actions for / }).click();
+  await page.getByRole("menuitem", { name: "Ask your model" }).click();
+  const dlg = page.getByRole("dialog", { name: "Ask your model to change this knit" });
+  await dlg.getByText("It works in a chat of its own, and you keep working").waitFor();
+  assert.equal(await dlg.locator(`figure img[src="/api/knits/${id}/file"]`).count(), 1, "its picture");
+  await dlg.locator("figure").getByText(`From the pattern ${k.patternName}`).waitFor();
+  await dlg.getByRole("region", { name: "What comes back" }).getByText(`The new one becomes this knit, as version ${(k.versions ?? 1) + 1}; this one stays under Versions.`, { exact: false }).waitFor();
+  await dlg.getByRole("button", { name: "Make the headline bigger" }).click();
+  assert.equal(await dlg.getByLabel("What should change?").inputValue(), "Make the headline bigger");
+  await page.keyboard.press("Escape");
+  await dlg.waitFor({ state: "detached" });
+});
+
 test("the gallery opens a knit, offers download and delete, and delete removes the file", async () => {
   await page.goto(`${studio.url}/projects/${projectId}/knits`);
   await page.getByRole("button", { name: /^Open Launch story/ }).first().click();
@@ -228,7 +278,8 @@ test("a pattern with missing Yarn cannot be knitted, and the dialog says what to
   await page.goto(`${studio.url}/projects/${projectId}/patterns/${p.id}`);
   await page.getByRole("application", { name: "Pattern canvas" }).waitFor();
   await page.getByRole("button", { name: "Knit", exact: true }).click();
-  await page.getByRole("dialog").getByText(/Fix this first/).waitFor();
+  await page.getByRole("dialog").getByRole("region", { name: "What it makes" }).getByText("Fix first").waitFor();
+  await page.getByRole("dialog").getByText("Fix what is marked first").waitFor();
   assert.equal(await page.getByRole("button", { name: /^Knit \d+ file/ }).isDisabled(), true);
 });
 

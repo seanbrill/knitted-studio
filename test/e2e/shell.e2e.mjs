@@ -54,7 +54,7 @@ test("? opens the keyboard shortcuts anywhere, for this computer's keys, and the
   const mac = await page.evaluate(() => /Mac/.test(navigator.platform));
   await keys.getByText(mac ? "On this Mac" : "On this computer").waitFor();
   const everywhere = keys.getByRole("region", { name: "Everywhere" });
-  assert.deepEqual(await everywhere.locator("kbd").allTextContents(), ["?", "Esc", mac ? "⌘" : "Ctrl", "K"]);
+  assert.deepEqual(await everywhere.locator("kbd").allTextContents(), ["?", "Esc", mac ? "⌘" : "Ctrl", "K", mac ? "⌘" : "Ctrl", mac ? "↵" : "Enter"]);
   await keys.getByLabel("Find a shortcut").fill("tag");
   assert.deepEqual(await keys.getByRole("region").evaluateAll((r) => r.map((x) => x.getAttribute("aria-label"))), ["In a list"]);
   await keys.getByText("Add a tag, in Knits and Yarn").waitFor();

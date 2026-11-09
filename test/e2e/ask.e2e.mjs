@@ -320,8 +320,10 @@ test("Ask your model on a pattern starts a chat about it, and the person keeps w
   await page.getByRole("button", { name: `Actions for ${p.name}` }).first().click();
   await page.getByRole("menuitem", { name: "Ask your model" }).click();
   const dialog = page.getByRole("dialog", { name: "Ask your model to change this pattern" });
+  await dialog.getByRole("region", { name: "What comes back" }).getByText(`Your model changes ${p.name} where it is`, { exact: false }).waitFor();
+  await dialog.getByText(`${p.size.name} · ${p.size.w} × ${p.size.h}`, { exact: false }).waitFor();
   await dialog.getByLabel("What should change?").fill("make the headline shorter");
-  await dialog.getByRole("button", { name: "Ask", exact: true }).click();
+  await dialog.getByRole("button", { name: "Ask your model", exact: true }).click();
   await page.getByText(`Your model is on it: ${p.name}`).waitFor();
   await dialog.waitFor({ state: "detached" });
   await serverHas(studio, `/api/patterns/${patternId}`, () => !!carrying("make the headline shorter"));
@@ -340,7 +342,7 @@ test("while the model works, its pattern's card and the tab are marked, and when
   await page.getByRole("menuitem", { name: "Ask your model" }).click();
   const dialog = page.getByRole("dialog", { name: "Ask your model to change this pattern" });
   await dialog.getByLabel("What should change?").fill("slowly make the headline say it is done");
-  await dialog.getByRole("button", { name: "Ask", exact: true }).click();
+  await dialog.getByRole("button", { name: "Ask your model", exact: true }).click();
   await dialog.waitFor({ state: "detached" });
   // Its step on the pattern outlines that pattern's card, with who and what, and the Patterns tab.
   const card = page.locator(".card").filter({ has: page.getByRole("link", { name: `Open ${p.name}` }) }).first();

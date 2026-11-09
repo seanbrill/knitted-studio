@@ -1,5 +1,15 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
+  "next": {
+    "title": "Knit, ask and make, said before you press",
+    "items": [
+      "Knit lists each file it will make, one row each with its shape, its size in pixels and its checks, and says what each comes back as: new, the next version of its knit, another format of one, or the same as the one there, which is kept rather than drawn again. Show me picks the stitch a check is about.",
+      "The sizes to knit are shown as their shapes, and the button leaves out the files that are there already as they are. With nothing changed it says so, and turning off Reuse draws them again.",
+      "Ask your model shows what it is about, with its picture, and says what comes back before you ask: for a knit, its next version, with this one kept under Versions; for a pattern, changes you can take back in its History. ⌘↵ asks.",
+      "Make a photo or video puts the price beside the choices that change it: the total, each one, and what the other qualities cost. The month's spending is in the footer, and the button says what it makes and for how much.",
+      "Pictures to work from can be added from Yarn in the window itself, found by name."
+    ]
+  },
   "entries": [
     {
       "version": "0.1.40",

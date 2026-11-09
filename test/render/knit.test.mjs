@@ -79,6 +79,24 @@ test("VERSIONS: the same pattern at 2x is another format of its knit, and change
   assert.equal(listKnits(store, project.id, { patternId: p.id, every: true }).length, 3);
 });
 
+test("the preview says what each file comes back as: new, kept, drawn again, another format, or the next version", async () => {
+  const p = store.duplicatePattern(story.id);
+  const as = (params = {}) => previewKnit(store, { projectId: project.id, patternId: p.id, params }).map(({ versions, look, current, same, kept }) => ({ versions, look, current, same, kept }));
+  assert.deepEqual(as(), [{ versions: 0, look: null, current: null, same: false, kept: false }], "never knitted: new");
+  await knit(p.id);
+  assert.deepEqual(as(), [{ versions: 1, look: 1, current: 1, same: true, kept: true }], "the very file is there: kept");
+  assert.deepEqual(as({ reuse: false }), [{ versions: 1, look: 1, current: 1, same: true, kept: false }], "with reuse off it is drawn again");
+  assert.deepEqual(as({ scale: 2 }), [{ versions: 1, look: 1, current: 1, same: false, kept: false }], "at 2x, another format of the one there");
+  const was = store.db.prepare("select id, look from knits where pattern_id = ?").get(p.id);
+  store.db.prepare("update knits set look = 'an older kind of look' where id = ?").run(was.id);
+  assert.deepEqual(as(), [{ versions: 1, look: 1, current: 1, same: true, kept: true }], "a file whose look was kept another way still says which version it is");
+  store.db.prepare("update knits set look = ? where id = ?").run(was.look, was.id);
+  store.apply(p.id, { type: "fillSlot", slot: "headline", content: "Something new" }, "human");
+  assert.deepEqual(as(), [{ versions: 1, look: null, current: 1, same: false, kept: false }], "changed: the next version");
+  const sizes = SIZES.filter((s) => ["Story", "Square"].includes(s.name));
+  assert.deepEqual(as({ sizes }).map((u) => u.versions), [1, 0], "a size never knitted is a knit of its own");
+});
+
 test("one pattern knits to several sizes in one go, each at its own dimensions", async () => {
   const sizes = SIZES.filter((s) => ["Story", "Square", "Landscape"].includes(s.name));
   const { knits } = await knit(story.id, { sizes, reuse: false });
