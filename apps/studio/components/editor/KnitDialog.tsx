@@ -127,7 +127,7 @@ export function KnitDialog({ open, onOpenChange, pattern, projectId }: { open: b
               <SegmentedControl label="Format" value={type} onChange={setFormat} options={motion ? [{ value: "mp4", label: "MP4 video" }] : [{ value: "png", label: "PNG" }, { value: "jpeg", label: "JPEG" }, { value: "webp", label: "WebP" }]} />
             </Field>
             <Field label="Scale"><SegmentedControl<"1" | "2"> label="Scale" value={String(scale) as "1" | "2"} onChange={(v) => setScale(Number(v) as 1 | 2)} options={[{ value: "1", label: "1x" }, { value: "2", label: "2x, sharper" }]} /></Field>
-            {motion && <Field label="Smoothness" hint={fps === 60 ? "Fast motion looks smoother. Takes about twice as long." : "The standard for social video. Footage shot at 24 or 25 keeps its own rate, so it plays without a hitch."}><SegmentedControl<"30" | "60"> label="Frames a second" value={String(fps) as "30" | "60"} onChange={(v) => setFps(Number(v) as 30 | 60)} options={[{ value: "30", label: "30 fps" }, { value: "60", label: "60 fps" }]} /></Field>}
+            {motion && <Field label="Smoothness" hint={fps === 60 ? "Fast motion looks smoother. Takes about twice as long." : "The standard for social video. When most of the footage is shot at 24 or 25, the video keeps that rate, so it plays without a hitch."}><SegmentedControl<"30" | "60"> label="Frames a second" value={String(fps) as "30" | "60"} onChange={(v) => setFps(Number(v) as 30 | 60)} options={[{ value: "30", label: "30 fps" }, { value: "60", label: "60 fps" }]} /></Field>}
           </div>
           <div className="field">
             <span className="field-label" id="kd-sizes">Sizes</span>

@@ -70,3 +70,17 @@ test("a new chat with no key says what asking is like and the two ways in", asyn
   await page.getByRole("link", { name: /Write a headline about the spring sale/ }).first().click();
   await page.getByRole("note", { name: "Writing needs a key" }).waitFor();
 });
+
+test("the claims check without a key says how to check them: a key, or Claude Code with check_claims", async () => {
+  const projectId = (await j("POST", "/api/projects", { name: "Claims, no key", starter: "social" })).body.id;
+  const patternId = (await j("GET", `/api/projects/${projectId}/patterns`)).body[0].id;
+  await j("PUT", `/api/projects/${projectId}/brief`, { profile: "# What they offer\nBread, baked daily." });
+  await page.goto(`${studio.url}/projects/${projectId}/patterns/${patternId}`);
+  const note = page.getByRole("note", { name: "Checking needs a key" });
+  await note.waitFor();
+  assert.match(await note.innerText(), /check_claims/);
+  assert.equal(await note.getByRole("link", { name: "Add a key in Settings" }).getAttribute("href"), "/settings?tab=model");
+  assert.equal(await note.getByRole("link", { name: "Connect Claude Code" }).getAttribute("href"), "/settings?tab=model#claude-code");
+  assert.equal(await page.getByRole("button", { name: "Check the claims" }).count(), 0, "nothing offered that cannot work");
+  assert.equal((await j("POST", `/api/patterns/${patternId}/claims`)).status, 400);
+});

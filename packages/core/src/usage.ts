@@ -7,7 +7,7 @@
 import { newId } from "./ids.ts";
 import type { Store } from "./store.ts";
 
-export type UsageKind = "chat" | "post" | "profile" | "generate" | "other";
+export type UsageKind = "chat" | "post" | "profile" | "claims" | "generate" | "other";
 export interface UsageEntry {
   id: string; at: string; kind: UsageKind; model: string; projectId: string | null; chatId: string | null;
   input: number; output: number; cacheWrite: number; cacheRead: number;

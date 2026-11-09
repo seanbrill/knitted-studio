@@ -9,6 +9,7 @@ import { NumberField, Section, TokenColor } from "./controls";
 import { PartInstanceInspector } from "./PartsUI";
 import { byFolder } from "../Folders";
 import { addClip } from "./Timeline";
+import { Claims } from "./Claims";
 import { PRESETS, presetInfo, type Preset } from "@knitted/core";
 
 const ANIMATE_GROUPS = { in: "Come in", out: "Go out", loop: "Keep moving" } as const;
@@ -51,6 +52,7 @@ export function Inspector({ fonts, onSavePart }: { fonts: string[]; onSavePart?:
           <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>{pattern.partId ? `${W} x ${H}` : `${pattern.size.name}, ${W} x ${H}`}. {pattern.stitches.length === 1 ? "1 stitch" : `${pattern.stitches.length} stitches`}.</p>
         </Section>
         {!pattern.partId && <KnitCheck patternId={pattern.id} version={st.serverVersion} names={(id) => all.find((s) => s.id === id)?.slot ?? undefined} onPick={(id) => st.select([id])} />}
+        {!pattern.partId && <Claims key={pattern.id} />}
         {!pattern.partId && <SlotList stitches={all} yarnName={(id) => yarn[id]?.name} onPick={(id) => st.select([id])} />}
       </aside>
     );

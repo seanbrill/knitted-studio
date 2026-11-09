@@ -88,7 +88,7 @@ test("4K footage in a Story is knitted from a copy the Story's size, made once",
   assert.equal(readdirSync(join(store.paths.cacheDir, "footage")).filter((n) => n.endsWith(".mp4")).length, copies.length, "the second knit uses the same copy");
 });
 
-test("footage shot at 25 a second knits at 25, so no frame of it shows twice; mixed with 30 it is 30, and said", async () => {
+test("footage shot at 25 a second knits at 25, so no frame of it shows twice; beside a little at 30 it stays 25; half and half it is 30, and said", async () => {
   // A bar that moves every frame, as a camera pan does.
   for (const r of [25, 30]) ff("-f", "lavfi", "-i", `color=c=black:s=320x240:r=${r}:d=3`, "-f", "lavfi", "-i", `color=c=white:s=20x240:r=${r}:d=3`, "-filter_complex", "[0][1]overlay=x='mod(n*12,300)':y=0", "-c:v", "libx264", "-pix_fmt", "yuv420p", f(`pan${r}.mp4`));
   const { project, y } = await footageProject("Rates", "pan25.mp4");
@@ -109,13 +109,20 @@ test("footage shot at 25 a second knits at 25, so no frame of it shows twice; mi
   assert.equal(repeats(own.file), 0, "every frame moves");
   assert.deepEqual(own.unit.issues.filter((i) => i.code === "footage-rate"), []);
 
-  // Beside footage at 30 (in the bottom half), the video is 30, the 25 hitches, and the check says which.
+  // Footage at 30 in a corner: the 25 is most of what is seen, so the video stays 25, and the check says the 30 steps.
   const thirty = (await footageProject("", "pan30.mp4", project)).y;
   store.apply(p.id, { type: "addStitch", stitch: { id: "w", kind: "video", x: 0.5, y: 0.5, w: 0.5, h: 0.5, locked: false, yarnId: thirty.id } }, "human");
-  const mixed = await knit();
-  assert.equal(rate(mixed.file), "30/1,60");
-  assert.ok(repeats(mixed.file) >= 8, `one frame in six of the 25 repeats: ${repeats(mixed.file)}`);
-  assert.match(mixed.unit.issues.find((i) => i.code === "footage-rate")?.message ?? "", /"pan25\.mp4" was shot at 25 frames a second and this video is 30/);
+  const corner = await knit();
+  assert.equal(rate(corner.file), "25/1,50");
+  assert.equal(repeats(corner.file), 0, "the 25 still moves every frame");
+  assert.match(corner.unit.issues.find((i) => i.code === "footage-rate")?.message ?? "", /"pan30\.mp4" was shot at 30 frames a second and this video is 25, the rate of most of its footage/);
+
+  // Half and half: no one rate is most of it, so the video is the standard 30, the 25 hitches, and the check says which.
+  store.apply(p.id, { type: "batch", commands: [{ type: "updateStitch", id: "v", patch: { h: 0.5 } }, { type: "updateStitch", id: "w", patch: { x: 0, y: 0.5, w: 1, h: 0.5 } }] }, "human");
+  const even = await knit();
+  assert.equal(rate(even.file), "30/1,60");
+  assert.ok(repeats(even.file) >= 8, `one frame in six of the 25 repeats: ${repeats(even.file)}`);
+  assert.match(even.unit.issues.find((i) => i.code === "footage-rate")?.message ?? "", /"pan25\.mp4" was shot at 25 frames a second and this video is 30, the standard/);
 });
 
 test("Chrome's fast PNG is exactly the pixels Playwright's screenshot gave, at 1x and 2x; where the page is clear, black", async () => {

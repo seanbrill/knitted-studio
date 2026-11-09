@@ -7,6 +7,7 @@ import type { Actor, AgentState, Brief, ColorRole, CommentThread, CropBox, Part,
 import type { FolderSection } from "./folders-pure.ts";
 import type { SiteProposal } from "./site.ts";
 import type { KnitFormat, KnitIssue, KnitRecord } from "./knits.ts";
+import type { ClaimsCheck } from "./claims.ts";
 import type { Command } from "./commands.ts";
 import type { SpendLimits, UsageSummary } from "./usage.ts";
 import type { PostChange, SocialAccount, SocialPost } from "./social.ts";
@@ -65,6 +66,8 @@ export const api = {
       call<ApplyResponse>("POST", `/api/patterns/${id}/commands`, { command, ...o }),
     revisions: (id: string) => call<RevisionItem[]>("GET", `/api/patterns/${id}/revisions`),
     restore: (id: string, revisionId: string) => call<Pattern>("POST", `/api/patterns/${id}/revisions`, { revisionId }),
+    /** The person's model reads the words beside the Brief, claim by claim. */
+    claims: (id: string, signal?: AbortSignal) => call<ClaimsCheck>("POST", `/api/patterns/${id}/claims`, {}, signal),
   },
   yarn: {
     /** `shelf`: Yarn, unless it says the reference (the Brief's files). `library: false`: without the Library's files. */

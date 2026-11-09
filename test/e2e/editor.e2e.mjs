@@ -49,7 +49,7 @@ test("the canvas shows the real pattern, rendered by the same page the engine us
   // The headline is drawn at its saved position in the frame, in frame pixels.
   const head = stitches.find((s) => s.slot === "headline");
   const box = await f.locator(`[data-stitch-id="${head.id}"]`).boundingBox();
-  assert.ok(Math.abs((box.x - (await page.locator("iframe").boundingBox()).x) / (await geo()).scale - head.x * W) < 2);
+  assert.ok(Math.abs((box.x - (await page.locator('iframe[title="Pattern canvas"]').boundingBox()).x) / (await geo()).scale - head.x * W) < 2);
 });
 
 test("a click selects, and the inspector names the stitch and its slot", async () => {

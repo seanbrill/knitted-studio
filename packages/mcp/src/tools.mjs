@@ -17,7 +17,7 @@
 //    propose_swatch adds a NEW swatch the person may choose to use; it never changes
 //    one, and never makes one the project's.
 
-import { applyCommand, findSection, frameSize, DESIGN_DEVICES, TOKEN_NAMES, instanceOf, joinFolder, motionLint, sceneChange, parentOf, partFromStitches, preflight, uniqueSlotName, checkPost, metricsLine, COLOR_ROLES, FOLDER_SECTIONS, PLATFORMS, PRESETS, SIZES, KNIT_SIZES, sizeNamed, CommandSchema } from "@knitted/core";
+import { applyCommand, claimTexts, findSection, frameSize, DESIGN_DEVICES, TOKEN_NAMES, instanceOf, joinFolder, motionLint, sceneChange, parentOf, partFromStitches, preflight, uniqueSlotName, checkPost, metricsLine, COLOR_ROLES, FOLDER_SECTIONS, PLATFORMS, PRESETS, SIZES, KNIT_SIZES, sizeNamed, CommandSchema } from "@knitted/core";
 import { GUIDE, GUIDE_TOPICS } from "./guide.mjs";
 import { LIBRARY_ID } from "@knitted/core";
 import { setYarnScope, activeSwatch, cancelPost, createPost, getAccount, getPost, listAccounts, listPosts, postInsights, validatePost, cleanFolder, cropToYarn, getBrief, pdfText, readWebsite, setProfile, viewVideo, viewYarn, createFolder, createPart, editPart, partUsage, createSwatch, createSwatchFromProposal, folderCounts, getKnit, getPart, getYarn, setKnitFavorite, setKnitPost, setKnitTags, importYarn, importYarnFromPath, importYarnFromUrl, searchStock, addStock, saveDrawing, drawSheet, planGeneration, startGeneration, createCopy, createDesign, changeDesign, getDesign, listDesigns, listComments, replyComment, knitPath, listFolders, listKnits, countKnits, changedSince, withVersions, listParts, listYarn, moveAllToFolder, proposeFromWebsite, renameFolder, setCopyText, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
@@ -59,7 +59,7 @@ function into(store, projectId, library, reference) {
   return LIBRARY_ID;
 }
 
-export const READ_ONLY = new Set(["get_guide", "get_studio_info", "list_projects", "get_project", "list_yarn", "view_yarn", "get_brand_guidelines", "get_brief", "read_website", "list_patterns", "get_pattern", "describe_pattern", "list_parts", "list_presets", "list_voices", "preview_pattern", "check_pattern", "get_job", "list_knits", "list_folders", "list_social_accounts", "list_posts", "post_insights", "search_stock", "view_sheet", "list_designs", "get_design", "view_design", "list_comments", "view_comment"]);
+export const READ_ONLY = new Set(["get_guide", "get_studio_info", "list_projects", "get_project", "list_yarn", "view_yarn", "get_brand_guidelines", "get_brief", "read_website", "list_patterns", "get_pattern", "describe_pattern", "list_parts", "list_presets", "list_voices", "preview_pattern", "check_pattern", "check_claims", "get_job", "list_knits", "list_folders", "list_social_accounts", "list_posts", "post_insights", "search_stock", "view_sheet", "list_designs", "get_design", "view_design", "list_comments", "view_comment"]);
 
 // When the process answering started. A build made after it means an older copy is answering.
 const STARTED_AT = new Date(Date.now() - process.uptime() * 1000).toISOString();
@@ -570,6 +570,21 @@ export const TOOLS = [
     } },
   { name: "check_pattern", description: "Run the same quality checks Knit runs, without drawing anything: missing files, low contrast, text that will not fit, animation that is too busy. Fix errors before knitting.", inputSchema: obj({ patternId: PATTERN, params: { type: "object" } }, ["patternId"]),
     async handler({ patternId, params = {} }, { store, engine }) { const p = store.getPattern(patternId); return engine.previewKnit(store, { projectId: p.projectId, patternId, params }).map((u) => ({ unit: u.label, issues: u.issues.map((i) => `${i.level}: ${i.message}`) })); } },
+  { name: "check_claims", description: "Before words are knitted or posted, read a pattern's words beside its project's Brief, to check each claim: what the business does, works with or costs, what it has done or will do, numbers, names and quotes. Give each claim one of four answers: backed (the Brief says it), against (the Brief says otherwise), not yet (the Brief says planned, in beta or by invitation, and the words say it as if anyone can have it now), or not in the Brief (nothing backs it: it may be a gap in the Brief, so ask the person). Change what is against or not yet to what the Brief says, and tell the person what you changed and what is not in the Brief.", inputSchema: obj({ patternId: PATTERN }, ["patternId"]),
+    async handler({ patternId }, { store }) {
+      const p = store.getPattern(patternId);
+      const b = getBrief(store, p.projectId);
+      const texts = claimTexts(p);
+      const empty = !b.profile.trim() && !b.notes.trim();
+      return {
+        texts: texts.map((t) => ({ ...(t.id ? { stitchId: t.id } : {}), ...(t.slot ? { slot: t.slot } : {}), text: untrusted(`text:${t.slot ?? (t.id || "page")}`, t.text) })),
+        brief: b.profile.trim() ? untrusted("brief:profile", b.profile) : null,
+        ...(b.notes.trim() ? { notes: untrusted("brief:notes", b.notes) } : {}),
+        next: empty ? "The Brief is empty, so there is nothing to check the claims against. Ask the person what is true, or for their website to build the Brief from."
+          : !texts.length ? "The pattern has no words, so it makes no claims."
+          : "For each claim, quote it exactly and give its answer: backed, against, not yet, or not in the Brief. Change a text only to what the Brief says, then tell the person what you found.",
+      };
+    } },
   { name: "knit_pattern", description: "Make real files (PNG, JPEG, WebP or MP4) from a pattern, through the same job the studio's Knit button uses, with the same checks. `params`: sizes (array of {name,w,h}), format, scale (1 or 2), fps (30, or 60 for smoother fast motion, which takes about twice as long), rows (an array of objects of slot values, one per post, to make many). A row may only fill free slots. Returns file paths and any issues, or a jobId when wait is false.", inputSchema: obj({ projectId: PROJECT, patternId: PATTERN, params: { type: "object" }, wait: { type: "boolean" } }, ["patternId"]),
     async handler({ projectId, patternId, params = {}, wait = true }, { store, engine, limits }) {
       projectId = patternIn(store, patternId, projectId).projectId;

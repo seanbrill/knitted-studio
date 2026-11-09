@@ -1,5 +1,17 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
+  "next": {
+    "title": "Check the claims",
+    "items": [
+      "The editor checks what a pattern's words say about the business against its Brief. With nothing selected, Claims, under Before it knits, has your model read each claim beside the Brief: what the business does, works with or costs, numbers, names and quotes.",
+      "Each claim gets one of four answers. Backed: the Brief says it. Against: the Brief says otherwise. Not available yet: the Brief says planned, in beta or by invitation, and the words say it as if anyone can have it now. Not in the Brief: nothing backs it, which may be a gap in the Brief.",
+      "Where the Brief says it differently, the card shows what it says and a true way to say it. Use this wording puts that in the quote's place, as one change you can undo, and Show it picks the text the claim is in.",
+      "Change the words and the check says it is out of date, with Check again. Going to another page and back keeps the check, without asking your model again.",
+      "Without a key, Claims says how to check them: add a key, or connect Claude Code, which can now check_claims. That tool gives the words and the Brief side by side, and costs nothing more. The copywriting guide asks for it before words are knitted.",
+      "Checks are counted in Spending, as Claims checks.",
+      "A video with footage at more than one rate is knitted at the rate of most of it, by time on screen and the part of the frame it fills. A full-frame clip shot at 25 with a small one at 30 in a corner was knitted at 30 before, and every pan in it hitched. The warning for footage that still steps now says which rate the video chose and why."
+    ]
+  },
   "entries": [
     {
       "version": "0.1.47",

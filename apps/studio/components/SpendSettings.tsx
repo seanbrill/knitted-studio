@@ -12,7 +12,7 @@ import { SetRow, settingsChanged } from "./SettingsParts";
 const { AlertTriangle } = icons;
 
 const money = (n: number) => (n > 0 && n < 0.01 ? "under 1 cent" : `$${n.toFixed(2)}`);
-const KIND: Record<string, string> = { chat: "Ask and the editor", post: "Captions and hashtags", profile: "Brief profiles", generate: "Photos and video", other: "Other" };
+const KIND: Record<string, string> = { chat: "Ask and the editor", post: "Captions and hashtags", profile: "Brief profiles", claims: "Claims checks", generate: "Photos and video", other: "Other" };
 const dayName = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 
 export function SpendSettings() {

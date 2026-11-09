@@ -20,9 +20,9 @@ export function useSettingsChanged(run: () => void) {
 }
 
 /** A card of rows, with a head of its own when it has a title or actions. */
-export function SetCard({ title, label, actions, children }: { title?: string; label?: string; actions?: React.ReactNode; children: React.ReactNode }) {
+export function SetCard({ id, title, label, actions, children }: { id?: string; title?: string; label?: string; actions?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section className="set-card" aria-label={label ?? title}>
+    <section id={id} className="set-card" aria-label={label ?? title}>
       {(title || actions) && (
         <div className="set-card-head">
           {title && <h3 className="set-card-title">{title}</h3>}

@@ -561,6 +561,27 @@ test("a model reads the brief, writes the profile the person can undo, and is to
   await assert.rejects(tools.set_profile({ ...at, profile: "  " }), /needs something in it/);
 });
 
+test("check_claims gives a model the words and the Brief side by side, and changes nothing", async () => {
+  const { saveProfile } = await import("@knitted/core/node");
+  const own = store.createProject({ name: "Claims" });
+  const p = store.createPattern(own.id, { name: "Launch", stitches: [
+    { id: "h", kind: "text", slot: "headline", x: 0, y: 0, w: 1, h: 0.1, locked: false, content: "Works with Spotify" },
+    { id: "x", kind: "text", x: 0, y: 0.2, w: 1, h: 0.1, locked: false, content: "Draft", style: { hidden: true } },
+  ] });
+  const empty = await tools.check_claims({ patternId: p.id });
+  assert.equal(empty.brief, null);
+  assert.match(empty.next, /The Brief is empty/);
+  saveProfile(store, own.id, "# Available now, and what is not yet\nSpotify is in early access, by invitation.");
+  const r = await tools.check_claims({ patternId: p.id });
+  assert.deepEqual(r.texts.map((t) => [t.stitchId, t.slot]), [["h", "headline"]], "the texts knitted, a hidden one left out");
+  assert.match(r.texts[0].text, /^<untrusted_data source="text:headline">\nWorks with Spotify/);
+  assert.match(r.brief, /^<untrusted_data source="brief:profile">[\s\S]*by invitation/);
+  assert.match(r.next, /backed, against, not yet, or not in the Brief/);
+  assert.equal(store.getPattern(p.id).version, p.version, "only read");
+  const { READ_ONLY } = await import("@knitted/mcp/tools");
+  assert.ok(READ_ONLY.has("check_claims"));
+});
+
 test("a reference file is listed, looked at, cut from and filed apart from Yarn", async () => {
   const at = { projectId: project.id };
   // A whole web page: far taller than it is wide, red at the top and blue at the bottom.

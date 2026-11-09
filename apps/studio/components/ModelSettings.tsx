@@ -75,7 +75,7 @@ function Connect() {
     </div>
   );
   return (
-    <SetCard title="Connect Claude Code" actions={<Button size="sm" variant="ghost" onClick={async () => { await api.agent.newMcpAddress(); await refresh(); toast("New address made. The old one no longer works."); }}><RotateCcw size={13} aria-hidden /> Make a new address</Button>}>
+    <SetCard id="claude-code" title="Connect Claude Code" actions={<Button size="sm" variant="ghost" onClick={async () => { await api.agent.newMcpAddress(); await refresh(); toast("New address made. The old one no longer works."); }}><RotateCcw size={13} aria-hidden /> Make a new address</Button>}>
       <SetRow label="Or use a model you already have" hint="Claude Code, or any app that speaks MCP, can work here through this address, with the same tools and the same locks. You see its changes as it makes them. It works while knitted is open." />
       <SetRow stack label="For Claude Code" htmlFor="mcp-command" hint="Run it in a terminal, then start Claude Code. Or paste it into Claude Code and ask it to connect to knitted.">
         {copyField("mcp-command", command, "Command")}

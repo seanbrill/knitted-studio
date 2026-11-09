@@ -202,6 +202,9 @@ test("in Parts, a starter part duplicated in a folder goes into it, and the star
   await page.getByRole("region", { name: "Your parts" }).getByRole("button", { name: `Actions for ${mine[0].name}` }).click();
   await page.getByRole("menuitem", { name: "Move to folder" }).waitFor();
   await page.keyboard.press("Escape");
+  // Focus goes back to the menu's button, and its tooltip fades in a moment later: checked
+  // mid-fade, its words are not their colour yet. So the check waits for it.
+  await page.getByRole("tooltip").first().waitFor({ timeout: 1500 }).catch(() => {});
   assert.deepEqual(await problems(), []);
 });
 

@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { FALLBACK_SWATCH, STYLE_KEYS, cleanRate, preflight, safeZoneIssues, videoFps } from "../src/index.ts";
+import { FALLBACK_SWATCH, STYLE_KEYS, cleanRate, preflight, safeZoneIssues, videoFps, videoRate } from "../src/index.ts";
 import { socialStarterPack } from "../src/starters.ts";
 import { BUILTIN_PARTS } from "../src/builtin-parts.ts";
 
@@ -151,19 +151,49 @@ test("a video is knitted at its footage's own rate when all of it shares 24 or 2
   assert.equal(videoFps(reel("y24"), yarn), 24);
   assert.equal(videoFps(reel("y30"), yarn), 30);
   assert.equal(videoFps(reel(), yarn), 30, "no footage: the standard");
-  assert.equal(videoFps(reel("y25", "y30"), yarn), 30, "mixed: the standard");
+  assert.equal(videoFps(reel("y25", "y30"), yarn), 30, "mixed evenly: the standard");
+  assert.equal(videoFps(reel("y25", "y24"), yarn), 30, "24 and 25 evenly: the standard, not one of them");
   assert.equal(videoFps(reel("y25"), yarn, 60), 60, "60 when asked for");
   const hidden = reel("y25", "y30"); hidden.stitches[1].style = { hidden: true };
   assert.equal(videoFps(hidden, yarn), 25, "a hidden clip is not in the video");
 
   const rate = (p, fps) => preflight(p, FALLBACK_SWATCH, { yarn, fps }).filter((i) => i.code === "footage-rate");
   assert.deepEqual(rate(reel("y25", "y25b")), [], "at its own rate, nothing to say");
-  const [mixed, ...more] = rate(reel("y25", "y30", "y25"));
-  assert.equal(more.length, 0, "told once a file");
-  assert.equal(mixed.slot, "footage");
-  assert.match(mixed.message, /"clip 25" was shot at 25 frames a second and this video is 30, so some of its frames are held longer than others/);
-  assert.match(rate(reel("y25"), 60)[0].message, /video is 60.*and 60 is not asked for/);
+  const [even, ...more] = rate(reel("y25", "y30"));
+  assert.equal(more.length, 0, "the 30 is at the video's rate");
+  assert.equal(even.slot, "footage");
+  assert.match(even.message, /"clip 25" was shot at 25 frames a second and this video is 30, the standard, since no one rate is most of its footage, so some of its frames are held longer than others.*Use footage shot at one rate\./);
+  const [most, ...again] = rate(reel("y30", "y25", "y30", "y25", "y25"));
+  assert.equal(again.length, 0, "told once a file");
+  assert.match(most.message, /"clip 29\.97" was shot at 29\.97 frames a second and this video is 25, the rate of most of its footage.*Use footage shot at 25, or all at one rate\./);
+  assert.match(rate(reel("y25"), 60)[0].message, /video is 60, so .*Without 60, a video is knitted at the rate of most of its footage/);
   assert.deepEqual(rate(reel("y30"), 60), [], "30 divides into 60");
   assert.deepEqual(rate(reel("y12", "y30"), undefined), [], "an odd rate has no clean one to suggest");
   assert.deepEqual(rate({ ...reel("y25", "y30"), durationMs: 0 }), [], "a still has no frame rate");
+});
+
+test("a video is knitted at the rate of most of its footage, by time on screen and the part of the frame it fills", () => {
+  const clip = (id, fps) => [id, { id, name: `clip ${fps}`, kind: "video", deletedAt: null, meta: { fps } }];
+  const yarn = Object.fromEntries([clip("y25", 25), clip("y30", 29.97), clip("y24", 24)]);
+  const video = (id, yarnId, box = {}) => ({ id, kind: "video", x: 0, y: 0, w: 1, h: 1, locked: false, yarnId, ...box });
+  const reel = (stitches, tracks = {}) => ({ ...story(stitches), durationMs: 6000, motion: { tracks, audio: [] } });
+  // A full-frame clip at 25, and a small one at 30 in a corner: the 25 is most of what is seen.
+  const corner = reel([video("a", "y25"), video("b", "y30", { x: 0.65, y: 0.05, w: 0.3, h: 0.3 })]);
+  assert.deepEqual(videoRate(corner, yarn), { fps: 25, by: "footage" });
+  // Full frame, one after the other: 30 for four seconds, then 24 for two.
+  const cut = reel([video("a", "y30"), video("b", "y24")], {
+    a: [{ id: "o", preset: "fade-out", startMs: 3800, endMs: 4000 }],
+    b: [{ id: "i", preset: "fade-in", startMs: 4000, endMs: 4200 }],
+  });
+  assert.deepEqual(videoRate(cut, yarn), { fps: 30, by: "footage" });
+  // Turned round, the 24 is on screen longest.
+  const longer = reel([video("a", "y30"), video("b", "y24")], {
+    a: [{ id: "o", preset: "fade-out", startMs: 1800, endMs: 2000 }],
+    b: [{ id: "i", preset: "fade-in", startMs: 2000, endMs: 2200 }],
+  });
+  assert.deepEqual(videoRate(longer, yarn), { fps: 24, by: "footage" });
+  // Off the frame, or never on screen, it is not part of the video.
+  assert.deepEqual(videoRate(reel([video("a", "y30"), video("b", "y25", { x: 1.2 })]), yarn), { fps: 30, by: "footage" });
+  assert.deepEqual(videoRate(reel([]), yarn), { fps: 30, by: "standard" });
+  assert.deepEqual(videoRate(corner, yarn, 60), { fps: 60, by: "asked" });
 });

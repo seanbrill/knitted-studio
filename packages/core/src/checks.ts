@@ -9,7 +9,7 @@ import type { Pattern, Swatch, Yarn } from "./types.ts";
 import type { KnitIssue } from "./knits.ts";
 import { colorFor, resolveStyle } from "./tokens.ts";
 import { ratio } from "./contrast.ts";
-import { motionLint } from "./motion.ts";
+import { motionLint, shownOf } from "./motion.ts";
 import { codeOnScreen, spokenProblem } from "./spoken.ts";
 
 export interface PreflightOpts { scale?: number; yarn: Record<string, Yarn | undefined>; /** The frame rate asked for: 60, or left to the footage. */ fps?: number; }
@@ -27,18 +27,34 @@ export function cleanRate(fps: number | undefined): 24 | 25 | 30 | null {
 const footageIn = (p: Pattern, yarn: Record<string, Yarn | undefined>) =>
   p.stitches.flatMap((s) => { const y = s.kind === "video" && s.yarnId && !s.style?.hidden ? yarn[s.yarnId] : undefined; return y && !y.deletedAt && y.kind === "video" ? [{ s, y }] : []; });
 
-/**
- * The frame rate to knit a video at. Drawn at 30 a second, footage shot at 25 holds one frame in
- * six for two, a hitch on every pan, and 13 of 24 footage reels in a real library had footage at
- * 24 or 25. So when all of a video's footage shares 24 or 25, the video is knitted at that rate
- * and no frame repeats; otherwise at 30, or at 60 when that is asked for.
- */
-export function videoFps(p: Pattern, yarn: Record<string, Yarn | undefined>, asked?: number): number {
-  if (asked === 60) return 60;
-  const rates = new Set(footageIn(p, yarn).map(({ y }) => cleanRate(y.meta?.fps)));
-  const [only] = rates;
-  return rates.size === 1 && (only === 24 || only === 25) ? only : 30;
+/** How much of a video a clip of footage is: its time on screen, times the part of the frame it fills. */
+function shareOf(s: Pattern["stitches"][number], p: Pattern): number {
+  const { from, goneAt } = shownOf(s.id, p.motion, p.durationMs);
+  const time = p.durationMs > 0 ? Math.max(0, Math.min(goneAt, p.durationMs) - Math.max(0, from)) : 1;
+  const across = (at: number, size: number) => Math.max(0, Math.min(1, at + size) - Math.max(0, at));
+  return time * across(s.x, s.w) * across(s.y, s.h);
 }
+
+/**
+ * The frame rate to knit a video at, and why. Drawn at 30 a second, footage shot at 25 holds one
+ * frame in six for two, a hitch on every pan, and 13 of 24 footage reels in a real library had
+ * footage at 24 or 25. So a video is knitted at the rate of most of its footage, by its time on
+ * screen and the part of the frame it fills: at 24 or 25 when that is, and none of that footage
+ * repeats a frame; otherwise at 30, the standard, as when two rates are even; or at 60 when that
+ * is asked for. A full-frame clip at 25 under a small one at 30 used to make the whole video 30.
+ */
+export function videoRate(p: Pattern, yarn: Record<string, Yarn | undefined>, asked?: number): { fps: number; by: "asked" | "footage" | "standard" } {
+  if (asked === 60) return { fps: 60, by: "asked" };
+  const weight = new Map<number, number>();
+  for (const { s, y } of footageIn(p, yarn)) {
+    const r = cleanRate(y.meta?.fps);
+    if (r) weight.set(r, (weight.get(r) ?? 0) + shareOf(s, p));
+  }
+  const [top, next] = [...weight].filter(([, w]) => w > 0).sort((a, b) => b[1] - a[1]);
+  if (!top || (next && next[1] >= top[1] * 0.999)) return { fps: 30, by: "standard" };
+  return { fps: top[0], by: "footage" };
+}
+export const videoFps = (p: Pattern, yarn: Record<string, Yarn | undefined>, asked?: number): number => videoRate(p, yarn, asked).fps;
 
 const hexOf = (v: unknown): string | null => (typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v) ? v.toLowerCase() : null);
 
@@ -145,12 +161,14 @@ export function preflight(p: Pattern, sw: Swatch, o: PreflightOpts): KnitIssue[]
   for (const m of motionLint(p)) issues.push({ level: "warning", code: m.code, stitchId: m.stitchId, message: m.message });
   // Footage the video's rate does not divide into: some of its frames are held longer than others.
   if (p.durationMs > 0) {
-    const fps = videoFps(p, o.yarn, o.fps), told = new Set<string>();
+    const { fps, by } = videoRate(p, o.yarn, o.fps), told = new Set<string>();
+    const because = by === "asked" ? "" : by === "footage" ? ", the rate of most of its footage" : ", the standard, since no one rate is most of its footage";
+    const instead = by === "asked" ? "Without 60, a video is knitted at the rate of most of its footage, so use footage shot at one rate, at the standard smoothness." : `Use footage shot at ${fps === 30 ? "one rate" : `${fps}, or all at one rate`}.`;
     for (const { s, y } of footageIn(p, o.yarn)) {
       const r = cleanRate(y.meta?.fps);
       if (!r || fps % r === 0 || told.has(y.id)) continue;
       told.add(y.id);
-      add({ level: "warning", code: "footage-rate", stitchId: s.id, slot: s.slot, message: `The ${s.slot ?? "footage"} "${y.name}" was shot at ${y.meta.fps} frames a second and this video is ${fps}, so some of its frames are held longer than others and its motion hitches. A video is knitted at its footage's own rate when all of it shares one (24, 25 or 30)${fps === 60 ? " and 60 is not asked for" : ""}, so use footage shot at one rate${fps === 60 ? ", at the standard smoothness" : ""}.` });
+      add({ level: "warning", code: "footage-rate", stitchId: s.id, slot: s.slot, message: `The ${s.slot ?? "footage"} "${y.name}" was shot at ${y.meta.fps} frames a second and this video is ${fps}${because}, so some of its frames are held longer than others and its motion hitches. ${instead}` });
     }
   }
   issues.push(...safeZoneIssues(p, sw));

@@ -99,15 +99,20 @@ export async function axeProblems(page) {
 
 /**
  * Drag one thing onto another as a hand does. Playwright's dragTo jumps there in one move, and
- * under load Chromium sometimes never starts the drag; a short move first starts it, and the
- * target is hovered twice so it hears a dragover before the drop.
+ * under load Chromium sometimes never starts the drag; a short move first starts it. Things that
+ * slide in are let settle first, or the target is not where its box says. Over the target, the
+ * pointer moves a few times: a second hover at the same point is no move at all, so the target
+ * could miss the dragover that lets it take the drop, which is how "Moved it into Spring" never came.
  */
 export async function drag(page, from, to) {
+  await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a.effect?.getComputedTiming().endTime !== Infinity).map((a) => a.finished.catch(() => {}))));
   await from.hover();
   await page.mouse.down();
   const b = await from.boundingBox();
   await page.mouse.move(b.x + b.width / 2 + 10, b.y + b.height / 2 + 10, { steps: 5 });
   await to.hover();
-  await to.hover();
+  const t = await to.boundingBox();
+  const x = t.x + t.width / 2, y = t.y + t.height / 2;
+  for (const [dx, dy] of [[-4, -2], [3, 1], [0, 0]]) await page.mouse.move(x + dx, y + dy, { steps: 2 });
   await page.mouse.up();
 }

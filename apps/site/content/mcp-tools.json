@@ -1448,6 +1448,18 @@
     ]
   },
   {
+    "name": "check_claims",
+    "summary": "Before words are knitted or posted, read a pattern's words beside its project's Brief, to check each claim: what the business does, works with or costs, what it has done or will do, numbers, names and quotes. Give each claim one of four answers: backed (the Brief says it), against (the Brief says otherwise), not yet (the Brief says planned, in beta or by invitation, and the words say it as if anyone can have it now), or not in the Brief (nothing backs it: it may be a gap in the Brief, so ask the person). Change what is against or not yet to what the Brief says, and tell the person what you changed and what is not in the Brief.",
+    "params": [
+      {
+        "name": "patternId",
+        "type": "string",
+        "required": true,
+        "description": "The pattern id, like pt_01..."
+      }
+    ]
+  },
+  {
     "name": "knit_pattern",
     "summary": "Make real files (PNG, JPEG, WebP or MP4) from a pattern, through the same job the studio's Knit button uses, with the same checks. `params`: sizes (array of {name,w,h}), format, scale (1 or 2), fps (30, or 60 for smoother fast motion, which takes about twice as long), rows (an array of objects of slot values, one per post, to make many). A row may only fill free slots. Returns file paths and any issues, or a jobId when wait is false.",
     "params": [

@@ -190,7 +190,7 @@ knit_pattern makes PNG, JPEG, WebP or MP4 files through the same job and checks 
 - params.sizes: one or more {name, w, h}. The same pattern knits at every size, re-laid out.
 - params.format: png for pictures with text (crisp), jpeg for photos (smaller), webp for the web, mp4 for a pattern with motion.
 - params.scale 2 for extra-crisp pictures and video, at four times the pixels to draw.
-- params.fps: 30, or 60 for fast motion (smoother, about twice the time). A video whose footage all shares 24 or 25 is knitted at that rate unless 60 is asked for.
+- params.fps: 30, or 60 for fast motion (smoother, about twice the time). A video is knitted at the rate of most of its footage (by time on screen and the part of the frame it fills) when that is 24 or 25, unless 60 is asked for.
 - params.rows: an array of slot values, one per post, to make many in one batch: [{headline: "Spring sale"}, {headline: "New arrivals"}]. A row may only fill free slots.
 - wait: false returns a jobId at once: check it with get_job, cancel with cancel_job. The person sees its progress in the studio.
 - A knit with the same inputs as one already made is not made twice.
@@ -263,7 +263,7 @@ Varied, so a set does not read as a template:
 - Across a batch, open each piece differently, and do not repeat a structure ("X. Y. Z." three times) or a phrase.
 - Write for the platform (the posts topic) and the format: a voiceover is heard (the voice topic), a story is read in two seconds.
 
-Before you finish, read every line once more against the Brief, and once aloud. Remove what is not true, not clear, or not needed.`,
+Before you finish, check_claims the pattern: it puts its words beside the Brief, for each claim to be backed, against, not yet or not in the Brief. Change what the Brief does not back, and tell the person what is not in it. Then read every line once aloud. Remove what is not true, not clear, or not needed.`,
 
   organizing: `# Organizing
 
