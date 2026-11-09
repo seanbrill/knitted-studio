@@ -5,12 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { api, uploadYarn, yarnPictureUrl, yarnThumbUrl, type JobItem, type ProjectSummary } from "@knitted/core/client";
 import {
-  Button, Chip, ConfirmDialog, ContextMenu, Dialog, EmptyState, Field, IconButton, Input, Menu, SegmentedControl,
-  Select, SkeletonSection, StitchRow, Textarea, icons, useToast, type MenuItems,
+  Button, ChoiceCards, Chip, ConfirmDialog, ContextMenu, Dialog, EmptyState, Field, IconButton, Input, Menu, SegmentedControl,
+  Select, SkeletonSection, StitchRow, icons, useToast, type MenuItems,
 } from "@knitted/ui";
 import { PageHeader } from "./AppShell";
-import { SyncChoices } from "./SyncChoices";
-import type { SyncOptions } from "@knitted/core/client";
+import { SizeShape } from "./SizeTiles";
+import { SIZES } from "@knitted/core";
 import { timeAgo, useLive } from "@/lib/hooks";
 import { leadOf, useMarks, type Mark } from "@/lib/agent";
 import { ModelMark } from "./ModelMark";
@@ -119,8 +119,9 @@ function ProjectsInner() {
 
   const menuFor = (p: ProjectSummary): MenuItems => [
     { label: "Open", icon: <FolderOpen size={14} />, onSelect: () => router.push(`/projects/${p.id}`) },
+    { label: "Choose its picture", icon: <ImageIcon size={14} />, onSelect: () => setPicturing(p) },
+    "separator",
     { label: "Rename", icon: <Pencil size={14} />, onSelect: () => setRenaming(p) },
-    { label: "Choose picture", icon: <ImageIcon size={14} />, onSelect: () => setPicturing(p) },
     { label: "Duplicate", icon: <Copy size={14} />, onSelect: () => act(() => api.projects.action(p.id, "duplicate"), `Duplicated ${p.name}`) },
     p.archivedAt
       ? { label: "Restore", icon: <Archive size={14} />, onSelect: () => act(() => api.projects.action(p.id, "restore"), `Restored ${p.name}`) }
@@ -194,11 +195,19 @@ function ProjectsInner() {
         open={!!deleting}
         onOpenChange={(o) => !o && setDeleting(null)}
         title={`Delete ${deleting?.name ?? "project"}?`}
-        description={deleting && deleting.counts.yarn + deleting.counts.patterns > 0
-          ? `This removes ${deleting.counts.patterns} ${deleting.counts.patterns === 1 ? "pattern" : "patterns"} and ${deleting.counts.yarn} yarn. You can undo it for a while.`
+        sub="The project and everything in it"
+        description={deleting && deleting.counts.yarn + deleting.counts.patterns + deleting.counts.knits > 0
+          ? <>Undo is offered for a little while after. Posts already out stay where they were posted.</>
           : "It is empty, so nothing is lost."}
-        confirmLabel="Delete project"
+        confirmLabel={`Delete ${deleting?.name ?? "the project"}`}
         requireText={deleting && deleting.counts.yarn > 0 ? deleting.name : undefined}
+        lead={deleting && deleting.counts.yarn + deleting.counts.patterns + deleting.counts.knits > 0 ? (
+          <dl className="confirm-stats">
+            {([[deleting.counts.patterns, "pattern", "patterns"], [deleting.counts.yarn, "file in Yarn", "files in Yarn"], [deleting.counts.knits, "knit", "knits"]] as const).map(([n, one, many]) => (
+              <div key={many}><dt>{n === 1 ? one : many}</dt><dd>{n.toLocaleString()}</dd></div>
+            ))}
+          </dl>
+        ) : undefined}
         onConfirm={async () => {
           const p = deleting!;
           await api.projects.remove(p.id);
@@ -223,9 +232,9 @@ export function ProjectsView() {
  */
 export function NewProjectDialog({ open, onOpenChange, onCreated }: { open: boolean; onOpenChange: (o: boolean) => void; onCreated: (p: { id: string }, next?: string) => void }) {
   const [name, setName] = useState("");
-  const [desc, setDesc] = useState("");
+  const [site, setSite] = useState("");
+  const [reads, setReads] = useState({ swatch: true, profile: true, pictures: true });
   const [starter, setStarter] = useState<"social" | "blank">("social");
-  const [site, setSite] = useState<SyncOptions>({});
   const [err, setErr] = useState<string | undefined>();
   const [siteErr, setSiteErr] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
@@ -233,41 +242,56 @@ export function NewProjectDialog({ open, onOpenChange, onCreated }: { open: bool
   const hasKey = model ? model.key.present : null;
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (open) { setName(""); setDesc(""); setErr(undefined); setSiteErr(undefined); setBusy(false); setSite({ url: "", profile: true, pictures: true, swatch: true, activateSwatch: true, maxPages: 40 }); }
+    if (open) { setName(""); setSite(""); setReads({ swatch: true, profile: true, pictures: true }); setStarter("social"); setErr(undefined); setSiteErr(undefined); setBusy(false); }
   }, [open]);
-  const url = site.url?.trim() ?? "";
+  const url = site.trim();
+  const profile = reads.profile && hasKey !== false;
+  const reading = !!url && (reads.swatch || profile || reads.pictures);
   const submit = async () => {
+    if (busy) return;
     setBusy(true);
     let p: { id: string };
-    try { p = await api.projects.create({ name, description: desc, starter }); }
+    try { p = await api.projects.create({ name, starter }); }
     catch (e) { setErr((e as Error).message); setBusy(false); return; }
-    if (!url) { onOpenChange(false); onCreated(p); return; }
+    if (!reading) { onOpenChange(false); onCreated(p); return; }
     try {
-      const { writeUp, ...rest } = site;
-      const job = await api.brief.sync(p.id, { ...rest, url, ...(writeUp?.trim() ? { writeUp } : {}), profile: (rest.profile ?? true) && hasKey !== false, mode: "replace" });
+      const job = await api.brief.sync(p.id, { url, swatch: reads.swatch, activateSwatch: reads.swatch, profile, pictures: reads.pictures, maxPages: 40, mode: "replace" });
       try { localStorage.setItem(`knitted.sync.${p.id}`, job.id); } catch { /* the address carries it too */ }
       onOpenChange(false); onCreated(p, `/projects/${p.id}/brief?sync=${job.id}`);
     } catch (e) {
-      // The project is made: say why the sync did not start, and open it where it can be tried again.
-      setSiteErr(`The project is made, but the sync did not start: ${(e as Error).message}`);
+      // The project is made: say why the reading did not start, and open it where it can be tried again.
+      setSiteErr(`The project is made, but reading the site did not start: ${(e as Error).message}`);
       setBusy(false);
       setTimeout(() => { onOpenChange(false); onCreated(p, `/projects/${p.id}/brief`); }, 2500);
     }
   };
+  const check = (key: keyof typeof reads, label: string, off?: boolean) => (
+    <label data-off={off || undefined}><input type="checkbox" checked={reads[key] && !off} disabled={off} onChange={(e) => setReads({ ...reads, [key]: e.target.checked })} /> {label}</label>
+  );
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} title="New project" description="One project per brand: it holds that brand's Yarn, Swatch, Brief and Patterns."
-      actions={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" busy={busy} onClick={submit}>{url ? "Create and sync" : "Create project"}</Button></>}>
+    <Dialog open={open} onOpenChange={onOpenChange} title="New project" description="One per brand: its Yarn, Swatch, Brief and Patterns"
+      actions={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" busy={busy} onClick={submit}>{reading ? "Make the project and read the site" : "Make the project"}</Button></>}>
       <form onSubmit={(e) => { e.preventDefault(); void submit(); }} style={{ display: "grid", gap: "var(--space-4)" }}>
         <Field label="Name" error={err} htmlFor="np-name"><Input id="np-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Launch week" /></Field>
-        <Field label="Description (optional)" htmlFor="np-desc"><Textarea id="np-desc" value={desc} onChange={(e) => setDesc(e.target.value)} rows={2} /></Field>
-        <Field label="Start with">
-          <SegmentedControl<"social" | "blank"> label="Start with" value={starter} onChange={setStarter} options={[{ value: "social", label: "Social starter pack" }, { value: "blank", label: "Blank" }]} />
-          <span className="field-hint">{starter === "social" ? "Five patterns: Story, Post, Square, Landscape and Banner, each with a headline to fill." : "One empty pattern."}</span>
+        <Field label="Its website" optional htmlFor="np-site" error={siteErr}
+          hint={<>knitted reads it to set the project up: the swatch from its colours and fonts, a profile of the business for your model, and a picture of each page. Read it again from the Brief whenever the site changes.</>}>
+          <Input id="np-site" value={site} onChange={(e) => setSite(e.target.value)} placeholder="https://example.com" inputMode="url" autoComplete="url" />
         </Field>
-        <Field label="The business's website (optional)" htmlFor="np-site" error={siteErr} hint="Give it, and knitted reads it to set the project up: its swatch, a profile of the business for your model, and pictures of every page. Run it again from the Brief whenever the site changes.">
-          <Input id="np-site" value={site.url ?? ""} onChange={(e) => setSite({ ...site, url: e.target.value })} placeholder="https://example.com" inputMode="url" autoComplete="url" />
-        </Field>
-        {url && <SyncChoices value={site} onChange={setSite} hasKey={hasKey} hasProfile={false} showUrl={false} />}
+        {url && (
+          <div className="checks" role="group" aria-label="What it reads">
+            {check("swatch", "Swatch")}
+            {check("profile", "Profile", hasKey === false)}
+            {check("pictures", "Page pictures")}
+            <span className="checks-note">{hasKey === false ? "The profile needs your Anthropic key, in Settings" : reading ? "about a minute" : "Tick one to read the site"}</span>
+          </div>
+        )}
+        <div className="field">
+          <span className="field-label">Start with</span>
+          <ChoiceCards<"social" | "blank"> label="Start with" align="start" value={starter} onChange={setStarter} options={[
+            { value: "social", title: "Social starter pack", hint: "Story, Post, Square, Landscape and Banner, each with a headline to fill", art: <span className="starter-art">{SIZES.map((z) => <SizeShape key={z.name} w={z.w} h={z.h} box={[30, 40]} />)}</span> },
+            { value: "blank", title: "Blank", hint: "One empty pattern, to start from nothing", art: <span className="size-shape size-shape-custom" style={{ width: 30, height: 30 }} /> },
+          ]} />
+        </div>
         <button type="submit" hidden />
       </form>
     </Dialog>

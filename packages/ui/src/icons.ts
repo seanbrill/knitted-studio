@@ -6,7 +6,7 @@ export {
   Link2, Clock, RotateCcw, RotateCw, ZoomIn, ZoomOut, Play, Pause, Mic, MessageSquare, Package, FileCode, Scissors, Undo2, Redo2, Command,
 } from "lucide-react";
 // The editor's side panels, hidden and shown again, and the way to where a model is working.
-export { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, LocateFixed, Minimize2 } from "lucide-react";
+export { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, LocateFixed, Minimize2, Maximize2 } from "lucide-react";
 // The Brief and its website, PDFs and cutting from them, and how a section is laid out and sorted.
 export { BookOpen, Globe, Crop, RefreshCw, ArrowUpDown, Monitor, Smartphone, ChevronLeft, File as FilePdf } from "lucide-react";
 // Tags past the first few, in a menu.

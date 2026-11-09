@@ -7,12 +7,14 @@ import * as SL from "@radix-ui/react-slider";
 import { AlertTriangle, Check, ChevronDown } from "lucide-react";
 import { cx } from "./cx.ts";
 
-export function Field({ label, hint, error, children, htmlFor }: {
-  label?: string; hint?: string; error?: string; children: React.ReactNode; htmlFor?: string;
+export function Field({ label, hint, error, children, htmlFor, optional }: {
+  label?: string; hint?: React.ReactNode; error?: string; children: React.ReactNode; htmlFor?: string;
+  /** Says, quietly beside the label, that it can be left empty. */
+  optional?: boolean;
 }) {
   return (
     <div className="field">
-      {label && <label htmlFor={htmlFor}>{label}</label>}
+      {label && <label htmlFor={htmlFor}>{label}{optional && <span className="field-optional">optional</span>}</label>}
       {children}
       {error ? (
         <span className="field-error" role="alert"><AlertTriangle size={13} aria-hidden /> {error}</span>
@@ -137,6 +139,38 @@ export function ColorField({ value, onChange, label }: { value: string; onChange
         style={{ width: 36, height: 36, padding: 0, border: "1px solid var(--line-strong)", borderRadius: "var(--radius-sm)", background: "none", cursor: "pointer" }}
       />
       <Input mono aria-label={`${label} hex`} aria-invalid={!valid} value={value} onChange={(e) => onChange(e.target.value)} maxLength={7} style={{ width: 110 }} />
+    </div>
+  );
+}
+
+/**
+ * Choose one, as cards: each shows what it is (`art`, a shape or a picture), its name, and a
+ * line or two on it. A radio group: the arrow keys move between the cards and choose.
+ */
+export function ChoiceCards<T extends string>({ label, value, onChange, options, columns = 2, align }: {
+  label: string; value: T; onChange: (v: T) => void; columns?: number; align?: "start";
+  options: { value: T; title: string; meta?: React.ReactNode; hint?: React.ReactNode; art?: React.ReactNode; dashed?: boolean }[];
+}) {
+  const refs = React.useRef<(HTMLButtonElement | null)[]>([]);
+  const step = (from: number, by: number) => {
+    const i = (from + by + options.length) % options.length;
+    onChange(options[i]!.value); refs.current[i]?.focus();
+  };
+  return (
+    <div className="choice-cards" role="radiogroup" aria-label={label} data-align={align} style={{ "--cols": columns } as React.CSSProperties}>
+      {options.map((o, i) => (
+        <button key={o.value} ref={(el) => { refs.current[i] = el; }} type="button" role="radio" aria-checked={o.value === value}
+          tabIndex={o.value === value ? 0 : -1} className="choice-card" data-dashed={o.dashed || undefined} onClick={() => onChange(o.value)}
+          onKeyDown={(e) => {
+            const by = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
+            if (by) { e.preventDefault(); step(i, by); }
+          }}>
+          {o.art && <span className="choice-card-art" aria-hidden>{o.art}</span>}
+          <span className="choice-card-title">{o.title}</span>
+          {o.meta && <span className="choice-card-meta">{o.meta}</span>}
+          {o.hint && <span className="choice-card-hint">{o.hint}</span>}
+        </button>
+      ))}
     </div>
   );
 }

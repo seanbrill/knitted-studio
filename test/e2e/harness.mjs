@@ -94,3 +94,18 @@ export async function axeProblems(page) {
     .filter((v) => v.impact === "serious" || v.impact === "critical")
     .map((v) => `${v.id} (${v.impact}): ${v.help} [${v.nodes.slice(0, 2).map((n) => n.target.join(" ")).join(" | ")}]`);
 }
+
+/**
+ * Drag one thing onto another as a hand does. Playwright's dragTo jumps there in one move, and
+ * under load Chromium sometimes never starts the drag; a short move first starts it, and the
+ * target is hovered twice so it hears a dragover before the drop.
+ */
+export async function drag(page, from, to) {
+  await from.hover();
+  await page.mouse.down();
+  const b = await from.boundingBox();
+  await page.mouse.move(b.x + b.width / 2 + 10, b.y + b.height / 2 + 10, { steps: 5 });
+  await to.hover();
+  await to.hover();
+  await page.mouse.up();
+}

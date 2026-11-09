@@ -3,13 +3,14 @@
 import { useMemo, useState } from "react";
 import { api, knitFileUrl, type KnitRecord } from "@knitted/core/client";
 import { KNIT_SIZES, foldersIn, isInside, nameOf, sizeNamed } from "@knitted/core";
-import { Button, ConfirmDialog, EmptyState, Input, Select, SkeletonSection, icons, useToast } from "@knitted/ui";
+import { Button, ConfirmDialog, ContextMenu, EmptyState, IconButton, Input, Menu, Select, SkeletonSection, icons, useToast, type MenuItems } from "@knitted/ui";
 import { formatBytes, timeAgo, useLive } from "@/lib/hooks";
 import { FolderCrumbs, FolderDialogs, FolderList, NewFolderButton, useFolders } from "./Folders";
 import { KnitQueue } from "./KnitQueue";
-import { KnitView, formatName } from "./KnitView";
+import { KnitView, formatName, saveHref } from "./KnitView";
+import { AskModelDialog, aboutKnit } from "./AskModel";
 import { TagFilter, ViewBar, layout, useView, type SortBy } from "./Views";
-import { PickBox, SelectionBar, TagDialog, picking, useSelection } from "./Selection";
+import { PickBox, SelectionBar, TagDialog, picking, tagWords, useSelection } from "./Selection";
 import { PostDialog } from "./PostDialog";
 import { ModelMark } from "./ModelMark";
 import { leadOf, useMarks } from "@/lib/agent";
@@ -21,7 +22,7 @@ const KNIT_SORTS: SortBy<KnitRecord>[] = [
   { value: "size", label: "Biggest first", key: (k) => k.bytes, desc: true },
 ];
 
-const { Download, Trash2, AlertTriangle, FolderInput, MessageSquare, Check, Send, Star } = icons;
+const { Download, Trash2, AlertTriangle, FolderInput, MessageSquare, Check, Send, Star, Copy, Sparkles, Maximize2, MoreHorizontal, Tag } = icons;
 
 /** A knit's star: press to make it a favourite, again to take it off. */
 function FavoriteStar({ k, onToggle, inRow }: { k: KnitRecord; onToggle: (k: KnitRecord) => void; inRow?: boolean }) {
@@ -88,7 +89,7 @@ export function KnitsView({ projectId }: { projectId: string }) {
   };
   // Anything knitted after this page opened is new, and gets the signature "stitching in" reveal.
   const [openedAt] = useState(() => Date.now());
-  const kit = useFolders(projectId, "knits", knits, { onChanged: refresh, peek: (t) => { const k = t as KnitRecord; return k.kind === "image" ? knitFileUrl(k) : null; } });
+  const kit = useFolders(projectId, "knits", knits, { onChanged: refresh, peek: (t) => { const k = t as KnitRecord; return k.kind === "image" ? knitFileUrl(k) : null; }, zipOf: (f) => `/api/projects/${projectId}/knits/zip?folder=${encodeURIComponent(f)}` });
 
   const view = useView<KnitRecord>("knits", KNIT_SORTS);
   const [q, setQ] = useState("");
@@ -121,13 +122,45 @@ export function KnitsView({ projectId }: { projectId: string }) {
   // Knits a model is filing: outlined here as they go, and where they land.
   const marks = useMarks((w) => w.thingIds);
   const lead = leadOf(marks);
-  const [tagging, setTagging] = useState(false);
-  const [bulkDelete, setBulkDelete] = useState(false);
+  // What a dialog is about: the picked knits, or the one whose menu it came from.
+  const [tagFor, setTagFor] = useState<KnitRecord[] | null>(null);
+  const [deleteFor, setDeleteFor] = useState<KnitRecord[] | null>(null);
+  const [asking, setAsking] = useState<KnitRecord | null>(null);
   // What is being posted: the open knit, or the picked ones together.
   const [posting, setPosting] = useState<KnitRecord[] | null>(null);
   const pickedNew = sel.picked.filter((k) => !k.seenAt);
   const pickedAllFavorites = sel.picked.length > 0 && sel.picked.every((k) => k.favorite);
+  /**
+   * A knit's menu, the same from its ... button and a right-click. On one of several picked, it
+   * acts on all of them and says so; what works on one only, like Open, acts on the one clicked.
+   */
+  const menuFor = (k: KnitRecord): MenuItems => {
+    const many = sel.has(k.id) && sel.count > 1 ? sel.picked : null;
+    const them = many ?? [k];
+    const n = them.length;
+    const caption = k.post.caption ? [k.post.caption, (k.post.hashtags ?? []).join(" ")].filter(Boolean).join("\n\n") : "";
+    const allFav = them.every((x) => x.favorite);
+    const deep = them.some((x) => (x.versions ?? 1) > 1 || (x.formats?.length ?? 1) > 1);
+    return [
+      { label: "Open", icon: <Maximize2 size={14} aria-hidden />, onSelect: () => show(k) },
+      { label: many ? `Post ${n} together` : "Post", icon: <Send size={14} aria-hidden />, onSelect: () => setPosting(them) },
+      ...(many ? [] : [
+        { label: "Copy the caption", icon: <Copy size={14} aria-hidden />, disabled: !caption, hint: caption ? undefined : "It has no caption yet: open it to write one", onSelect: async () => { await navigator.clipboard.writeText(caption); toast("Caption and hashtags copied."); } },
+        { label: "Ask your model", icon: <Sparkles size={14} aria-hidden />, onSelect: () => setAsking(k) },
+      ]),
+      "separator",
+      { label: many ? `Move ${n} to folder` : "Move to folder", icon: <FolderInput size={14} aria-hidden />, onSelect: () => kit.askMove(them, many ? `${n} knits` : k.label) },
+      { label: many ? `Tag ${n}` : "Add a tag", icon: <Tag size={14} aria-hidden />, onSelect: () => setTagFor(them) },
+      { label: allFav ? (many ? `Take ${n} off favourites` : "Take off favourites") : (many ? `Add ${n} to favourites` : "Favourite"), icon: <Star size={14} aria-hidden />,
+        onSelect: async () => { for (const x of them) await api.knit.favorite(x.id, !allFav); await refresh(); if (many) toast(allFav ? `Took ${n} off your favourites` : `Added ${n} to your favourites`); } },
+      { label: many ? `Download ${n}, as a zip` : "Download", icon: <Download size={14} aria-hidden />, onSelect: () => saveHref(many ? `/api/projects/${projectId}/knits/zip?ids=${them.map((x) => x.id).join(",")}` : knitFileUrl(k, true)) },
+      "separator",
+      { label: every ? (many ? `Delete ${n} files` : "Delete this file") : many ? `Delete ${n} knits` : deep ? "Delete, every version" : "Delete", icon: <Trash2 size={14} aria-hidden />, danger: true, onSelect: () => setDeleteFor(them) },
+    ];
+  };
+  const more = (k: KnitRecord, inRow?: boolean) => <Menu trigger={<IconButton label={`Actions for ${k.label}`} className={`card-more${inRow ? " in-row" : ""}`}><MoreHorizontal size={16} /></IconButton>} items={menuFor(k)} />;
   // A folder downloads as a zip of it and the folders in it, each a folder in the zip.
+  const nameIn = (folder: string) => ["Knits", ...(folder ? folder.split("/") : [])].join(" / ");
   const anything = kit.here ? kit.countIn(kit.here) > 0 : (knits ?? []).length > 0;
 
   return (
@@ -161,12 +194,12 @@ export function KnitsView({ projectId }: { projectId: string }) {
       )}
       <SelectionBar sel={sel} total={here.length}>
         <Button size="sm" onClick={() => kit.askMove(sel.picked, `${sel.count} ${sel.count === 1 ? "knit" : "knits"}`)}><FolderInput size={13} aria-hidden /> Move to folder</Button>
-        <Button size="sm" onClick={() => setTagging(true)}>Add tag</Button>
+        <Button size="sm" onClick={() => setTagFor(sel.picked)}>Add tag</Button>
         <Button size="sm" onClick={async () => { const on = !pickedAllFavorites; for (const k of sel.picked) await api.knit.favorite(k.id, on); await refresh(); toast(on ? `Added ${sel.count} to your favourites` : `Took ${sel.count} off your favourites`); }}><Star size={13} aria-hidden /> {pickedAllFavorites ? "Take off favourites" : "Add to favourites"}</Button>
         <Button size="sm" onClick={() => setPosting(sel.picked)}><Send size={13} aria-hidden /> Post together</Button>
         <a className="btn btn-secondary btn-sm" href={`/api/projects/${projectId}/knits/zip?ids=${sel.picked.map((k) => k.id).join(",")}`}><Download size={13} aria-hidden /> Download</a>
         {pickedNew.length > 0 && <Button size="sm" onClick={async () => { for (const k of pickedNew) await api.knit.seen(k.id); await refresh(); }}><Check size={13} aria-hidden /> Mark seen</Button>}
-        <Button size="sm" variant="danger" onClick={() => setBulkDelete(true)}><Trash2 size={13} aria-hidden /> Delete</Button>
+        <Button size="sm" variant="danger" onClick={() => setDeleteFor(sel.picked)}><Trash2 size={13} aria-hidden /> Delete</Button>
       </SelectionBar>
       {filtering ? (kit.here && <p className="body-sm" style={{ margin: "0 0 var(--space-3)", color: "var(--ink-muted)" }}>Looking in {nameOf(kit.here)} and the folders in it.</p>) : <FolderList kit={kit} />}
       {!knits || !kit.folders ? <SkeletonSection filters={!knits} tiles={kit.folders ? 0 : 3} min={190} list={view.mode === "list"} /> : knits.length === 0 && kit.folders.length === 0 ? (
@@ -191,6 +224,7 @@ export function KnitsView({ projectId }: { projectId: string }) {
                   if (view.mode === "list") return (
                     <li key={k.id} className={`pickable${fresh ? " stitching-in" : ""}`} data-selected={sel.has(k.id)} draggable onDragStart={kit.dragThings(sel.has(k.id) ? sel.picked.map((x) => x.id) : [k.id])}>
                       <PickBox sel={sel} id={k.id} name={k.label} className="pick-box" />
+                      <ContextMenu items={menuFor(k)}>
                       <div className="card card-link" style={{ position: "relative", padding: "6px var(--space-3) 6px 6px", display: "grid", gridTemplateColumns: "56px minmax(0, 1fr) auto", gap: "var(--space-3)", alignItems: "center" }}>
                         <button aria-label={`Open ${k.label}${k.seenAt ? "" : (k.versions ?? 1) > 1 ? ", a new version" : ", new"}${(k.versions ?? 1) > 1 ? `, ${k.versions} versions` : ""}${k.patternChangedSince ? ", its pattern changed since" : ""}${noted(k.id) ? `, ${noted(k.id)} open comment${noted(k.id) === 1 ? "" : "s"}` : ""}`} onClick={(e) => (picking(e) ? sel.toggle(k.id, e.shiftKey) : show(k))} style={{ position: "absolute", inset: 0, zIndex: 1, background: "transparent", border: 0, cursor: "pointer", borderRadius: "var(--radius-md)" }} />
                         <div aria-hidden className="thumb" style={{ width: 56, height: 56, padding: 4 }}>
@@ -200,14 +234,16 @@ export function KnitsView({ projectId }: { projectId: string }) {
                           <p className="label" style={{ margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{k.label}</p>
                           <p className="eyebrow knit-meta"><span className="knit-meta-text">{k.format} · {k.width}x{k.height} · {formatBytes(k.bytes)}</span>{warn > 0 && <span title={`${warn} to review`} style={{ color: "var(--danger)", display: "inline-flex" }}><AlertTriangle size={12} aria-hidden /></span>}{noted(k.id) > 0 && <span className="comment-count" title={`${noted(k.id)} open comment${noted(k.id) === 1 ? "" : "s"}`}><MessageSquare size={12} aria-hidden />{noted(k.id)}</span>}<Chips chips={knitChips(k, every)} inline /></p>
                         </div>
-                        <span className="body-sm" style={{ color: "var(--ink-muted)", whiteSpace: "nowrap", display: "flex", gap: 8, alignItems: "center", position: "relative", zIndex: 2 }}><span aria-hidden style={{ display: "contents" }}>{!k.seenAt && <span className="new-badge in-row">New</span>}{timeAgo(k.createdAt)}</span><FavoriteStar k={k} onToggle={favorite} inRow /></span>
+                        <span className="body-sm" style={{ color: "var(--ink-muted)", whiteSpace: "nowrap", display: "flex", gap: 8, alignItems: "center", position: "relative", zIndex: 2 }}><span aria-hidden style={{ display: "contents" }}>{!k.seenAt && <span className="new-badge in-row">New</span>}{timeAgo(k.createdAt)}</span><FavoriteStar k={k} onToggle={favorite} inRow />{more(k, true)}</span>
                         <ModelMark mark={marks.get(k.id)} lead={lead === k.id} />
                       </div>
+                      </ContextMenu>
                     </li>
                   );
                   return (
                     <li key={k.id} className={`pickable${fresh ? " stitching-in" : ""}`} data-selected={sel.has(k.id)} draggable onDragStart={kit.dragThings(sel.has(k.id) ? sel.picked.map((x) => x.id) : [k.id])}>
                       <PickBox sel={sel} id={k.id} name={k.label} className="pick-box" />
+                      <ContextMenu items={menuFor(k)}>
                       <div className={`card card-link${(k.versions ?? 1) > 1 ? " knit-stack" : ""}`} style={{ position: "relative", height: "100%", padding: "var(--space-2)" }}>
                         <button aria-label={`Open ${k.label}${k.seenAt ? "" : (k.versions ?? 1) > 1 ? ", a new version" : ", new"}${(k.versions ?? 1) > 1 ? `, ${k.versions} versions` : ""}${k.patternChangedSince ? ", its pattern changed since" : ""}${noted(k.id) ? `, ${noted(k.id)} open comment${noted(k.id) === 1 ? "" : "s"}` : ""}`} onClick={(e) => (picking(e) ? sel.toggle(k.id, e.shiftKey) : show(k))} style={{ position: "absolute", inset: 0, zIndex: 1, background: "transparent", border: 0, cursor: "pointer", borderRadius: "var(--radius-md)" }} />
                         {!k.seenAt && <span aria-hidden className="new-badge">{(k.versions ?? 1) > 1 ? "New version" : "New"}</span>}
@@ -221,8 +257,10 @@ export function KnitsView({ projectId }: { projectId: string }) {
                         <p className="eyebrow knit-meta" aria-hidden><span className="knit-meta-text">{k.format} · {k.width}x{k.height} · {formatBytes(k.bytes)}</span>{warn > 0 && <span title={`${warn} to review`} style={{ color: "var(--danger)", display: "inline-flex" }}><AlertTriangle size={12} aria-hidden /></span>}{noted(k.id) > 0 && <span className="comment-count" title={`${noted(k.id)} open comment${noted(k.id) === 1 ? "" : "s"}`}><MessageSquare size={12} aria-hidden />{noted(k.id)}</span>}</p>
                         <Chips chips={knitChips(k, every)} />
                         <FavoriteStar k={k} onToggle={favorite} />
+                        {more(k)}
                         <ModelMark mark={marks.get(k.id)} lead={lead === k.id} />
                       </div>
+                      </ContextMenu>
                     </li>
                   );
                 })}
@@ -234,10 +272,24 @@ export function KnitsView({ projectId }: { projectId: string }) {
 
       {open && <KnitView knit={open} here={here} onOpen={show} onClose={() => setOpen(null)} onChanged={() => void refresh()}
         onMove={(k) => { kit.askMove([k], k.label); setOpen(null); }} onPost={(k) => setPosting([k])} onFavorite={(k) => void favorite(k)} />}
-      <TagDialog open={tagging} onOpenChange={setTagging} what={`${sel.count} ${sel.count === 1 ? "knit" : "knits"}`} onTag={async (t) => { for (const k of sel.picked) await api.knit.tag(k.id, [...k.tags, t]); await refresh(); toast(`Tagged ${t}`); }} />
-      <ConfirmDialog open={bulkDelete} onOpenChange={setBulkDelete} title={every ? `Delete ${sel.count} ${sel.count === 1 ? "file" : "files"}?` : `Delete ${sel.count} ${sel.count === 1 ? "knit" : "knits"}?`}
-        description={every ? "Each file picked is removed from disk. Where it was the one shown for its knit, the newest one left is shown." : `${sel.picked.some((k) => (k.versions ?? 1) > 1 || (k.formats?.length ?? 1) > 1) ? "Every version and format of each goes. " : ""}The files are removed from disk. You can knit them again from their patterns.`} confirmLabel={every ? "Delete files" : "Delete knits"}
-        onConfirm={async () => { for (const k of sel.picked) await api.knit.remove(k.id, every ? "file" : "all"); sel.clear(); await refresh(); toast("Deleted"); }} />
+      <TagDialog open={!!tagFor} onOpenChange={(o) => !o && setTagFor(null)} what={tagFor?.length === 1 ? tagFor[0]!.label : `${tagFor?.length ?? 0} knits`} where="Knits"
+        items={tagFor ?? []} known={(knits ?? []).map((k) => k.tags)} pics={(tagFor ?? []).map((k) => kit.peekOf(k)).filter((x): x is string => !!x)}
+        onSave={async (id, tags) => { await api.knit.tag(id, tags); }} onDone={async (a, r) => { await refresh(); toast(tagWords(a, r)); }} />
+      {(() => {
+        const them = deleteFor ?? [];
+        const n = them.length;
+        const one = n === 1 ? them[0]! : null;
+        const deep = them.some((k) => (k.versions ?? 1) > 1 || (k.formats?.length ?? 1) > 1);
+        return (
+          <ConfirmDialog open={!!deleteFor} onOpenChange={(o) => !o && setDeleteFor(null)}
+            title={one ? `Delete ${one.label}?` : every ? `Delete ${n} files?` : `Delete ${n} knits?`}
+            sub={one ? [nameIn(one.folder), ...(every ? [formatName(one)] : [])].join(" · ") : undefined}
+            description={every ? `${n === 1 ? "The file is" : "Each file picked is"} removed from disk. Where it was the one shown for its knit, the newest one left is shown.` : `${deep ? `Every version and format of ${n === 1 ? "it" : "each"} goes. ` : ""}The files are removed from disk. You can knit ${n === 1 ? "it" : "them"} again from ${n === 1 ? "its pattern" : "their patterns"}.`}
+            confirmLabel={every ? (n === 1 ? "Delete the file" : `Delete ${n} files`) : n === 1 ? (deep ? "Delete every version" : "Delete the knit") : `Delete ${n} knits`}
+            onConfirm={async () => { for (const k of them) await api.knit.remove(k.id, every ? "file" : "all"); if (them.some((k) => sel.has(k.id))) sel.clear(); await refresh(); toast("Deleted"); }} />
+        );
+      })()}
+      <AskModelDialog about={asking ? aboutKnit(asking) : null} onOpenChange={(o) => !o && setAsking(null)} />
       <FolderDialogs kit={kit} />
       {posting && <PostDialog key={posting.map((k) => k.id).join()} projectId={projectId} knits={posting} open onOpenChange={(o) => !o && setPosting(null)} />}
     </div>

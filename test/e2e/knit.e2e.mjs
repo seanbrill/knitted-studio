@@ -120,13 +120,34 @@ test("a modifier click picks knits without opening them, and the picked ones are
   assert.equal(await page.getByRole("dialog").count(), 0, "picking opens nothing");
 
   await bar.getByRole("button", { name: "Add tag" }).click();
-  await page.getByRole("dialog").getByLabel("Tag").fill("launch");
-  await page.getByRole("dialog").getByRole("button", { name: "Add tag" }).click();
-  await serverHas(studio, `/api/projects/${projectId}/knits`, (k) => k.filter((x) => (x.tags ?? []).includes("launch")).length === 2);
+  const tags = page.getByRole("dialog", { name: "Tag 2 knits" });
+  // Two at once: a comma adds one, Enter the other; neither is saved until the button.
+  await tags.getByLabel("Add", { exact: true }).fill("launch,");
+  await tags.getByLabel("Add", { exact: true }).fill("spring");
+  await tags.getByLabel("Add", { exact: true }).press("Enter");
+  const chips = await tags.getByRole("list", { name: "Their tags" }).getByRole("listitem").allTextContents();
+  assert.ok(chips.includes("launch") && chips.includes("spring"), chips.join());
+  await tags.getByText("Adds launch, spring").waitFor();
+  await tags.getByRole("button", { name: "Tag 2 knits" }).click();
+  await serverHas(studio, `/api/projects/${projectId}/knits`, (k) => k.filter((x) => ["launch", "spring"].every((t) => (x.tags ?? []).includes(t))).length === 2);
+
+  // One that all of them have comes off with its x, and the project's tags are offered, the most used first.
+  await bar.getByRole("button", { name: "Add tag" }).click();
+  await tags.getByRole("button", { name: "Take spring off" }).click();
+  await tags.getByRole("button", { name: "Take them off" }).click();
+  await serverHas(studio, `/api/projects/${projectId}/knits`, (k) => k.every((x) => !(x.tags ?? []).includes("spring")) && k.filter((x) => (x.tags ?? []).includes("launch")).length === 2);
 
   const href = await bar.getByRole("link", { name: "Download" }).getAttribute("href");
   const zip = Buffer.from(await (await fetch(studio.url + href)).arrayBuffer());
   assert.equal(zip.readUInt16LE(zip.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06])) + 10), 2, "the zip has the two picked");
+
+  // A right-click on one of them acts on both, and says so; Esc that closes the menu lets go of nothing.
+  await open.nth(1).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Tag 2" }).waitFor();
+  await page.getByRole("menuitem", { name: "Delete 2 knits" }).waitFor();
+  await page.keyboard.press("Escape");
+  await page.getByRole("menu").waitFor({ state: "detached" });
+  await bar.getByText("2 selected").waitFor();
 
   await page.keyboard.press("Escape");
   await bar.waitFor({ state: "detached" });

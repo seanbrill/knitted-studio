@@ -51,11 +51,11 @@ test("a new project made with a website syncs it, and the Brief shows each step 
 
   await page.goto(`${studio.url}/projects?new=1`);
   await page.getByLabel("Name").fill("Hollow Oak");
-  await page.getByLabel("The business's website (optional)").fill("https://hollowoak.example");
-  // With a website, the sync's choices show: the swatch read and used, the profile, the pictures.
-  await page.getByRole("switch", { name: "Read a swatch from it" }).waitFor();
-  assert.equal(await page.getByRole("switch", { name: "Use it for this project" }).getAttribute("aria-checked"), "true");
-  await page.getByRole("button", { name: "Create and sync" }).click();
+  await page.getByLabel("Its website").fill("https://hollowoak.example");
+  // With a website, what it reads shows, all ticked: the swatch (used), the profile, the pictures.
+  const reads = page.getByRole("group", { name: "What it reads" });
+  for (const n of ["Swatch", "Profile", "Page pictures"]) assert.equal(await reads.getByRole("checkbox", { name: n }).isChecked(), true, n);
+  await page.getByRole("button", { name: "Make the project and read the site" }).click();
 
   await page.waitForURL(/\/brief\?sync=jb_fake/);
   assert.deepEqual([asked.url, asked.swatch, asked.activateSwatch, asked.profile, asked.pictures, asked.mode], ["https://hollowoak.example", true, true, true, true, "replace"]);

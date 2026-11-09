@@ -6,8 +6,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, pdfPageUrl, uploadYarn, yarnFileUrl, yarnThumbUrl } from "@knitted/core/client";
 import { isInside, nameOf, needsCredit, GEN_SOURCES, LIBRARY_ID, STOCK_SOURCES, type CropBox, type Shelf, type Yarn, type YarnKind } from "@knitted/core";
 import {
-  Button, Chip, ConfirmDialog, Dialog, Drawer, DropZone, EmptyState, Field, IconButton, Input, Menu, SegmentedControl, Select, SkeletonSection, Textarea,
-  Tip, icons, useToast,
+  Button, Chip, ConfirmDialog, ContextMenu, Dialog, Drawer, DropZone, EmptyState, Field, IconButton, Input, Menu, SegmentedControl, Select, SkeletonSection, Textarea,
+  Tip, icons, useToast, type MenuItems,
 } from "@knitted/ui";
 import { formatBytes, timeAgo, useLive } from "@/lib/hooks";
 import { leadOf, useMarks } from "@/lib/agent";
@@ -15,11 +15,12 @@ import { ModelMark } from "./ModelMark";
 import { useUploads, type UploadItem } from "@/lib/uploads";
 import { FolderCrumbs, FolderDialogs, FolderList, InFolder, NewFolderButton, counted, useFolders } from "./Folders";
 import { TagFilter, ViewBar, commonSorts, layout, useView, type SortBy } from "./Views";
-import { AskModelButton, aboutDrawing, aboutYarn } from "./AskModel";
+import { AskModelButton, AskModelDialog, aboutDrawing, aboutYarn } from "./AskModel";
+import { RenameDialog } from "./ProjectsView";
 import { MakeDialog, type MakeStart } from "./MakeDialog";
-import { PickBox, SelectionBar, TagDialog, picking, useSelection } from "./Selection";
+import { PickBox, SelectionBar, TagDialog, picking, tagWords, useSelection } from "./Selection";
 
-const { Upload, Plus, Search, FileText, Music, Film, Type, Image: ImageIcon, X, AlertTriangle, Trash2, Download, Link2: LinkIcon, RotateCcw, FolderInput, FilePdf, Crop, BookOpen, Monitor, Smartphone, ChevronLeft, ChevronRight, Play, Library, Images, Copy, ExternalLink, Wand2, ChevronDown } = icons;
+const { Upload, Plus, Search, FileText, Music, Film, Type, Image: ImageIcon, X, AlertTriangle, Trash2, Download, Link2: LinkIcon, RotateCcw, FolderInput, FilePdf, Crop, BookOpen, Monitor, Smartphone, ChevronLeft, ChevronRight, Play, Library, Images, Copy, ExternalLink, Wand2, ChevronDown, Maximize2, MoreHorizontal, Pencil, Sparkles, Tag } = icons;
 const spoken = (path: string) => path.split("/").join(" / ");
 
 const KINDS: { value: "all" | YarnKind; label: string }[] = [
@@ -138,7 +139,10 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
   const [urlOpen, setUrlOpen] = useState(false);
   const [over, setOver] = useState(false);
   const [bulkDelete, setBulkDelete] = useState(false);
-  const [tagging, setTagging] = useState(false);
+  // What a dialog is about: the picked files, or the one whose menu it came from.
+  const [tagFor, setTagFor] = useState<Yarn[] | null>(null);
+  const [asking, setAsking] = useState<Yarn | null>(null);
+  const [renaming, setRenaming] = useState<Yarn | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const { data, refresh } = useLive(() => api.yarn.list(projectId, { kind: kind === "all" ? undefined : kind, q: q || undefined, tag, shelf: asked, library: false }), [projectId, kind, q, tag, shelf]);
@@ -179,6 +183,32 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
     if (moved) toast(`Moved ${list.length === 1 ? list[0].name : counted(moved, section)} ${where}`);
   };
   const toLibrary = (list: Yarn[]) => share(list, LIBRARY_ID, "to the Library. Every project can use it now.");
+
+  /**
+   * A file's menu, the same from its ... button and a right-click, in the order every menu has.
+   * On one of several picked, it acts on all of them and says so.
+   */
+  const menuFor = (y: Yarn): MenuItems => {
+    const many = sel.has(y.id) && sel.count > 1 ? picked : null;
+    const n = many?.length ?? 1;
+    const canMake = shelf === "yarn" && !isLibrary && y.kind === "image";
+    return [
+      { label: "Open", icon: <Maximize2 size={14} aria-hidden />, onSelect: () => setDetail(y.id) },
+      ...(many ? [] : [
+        ...(y.kind === "image" || y.kind === "pdf" ? [{ label: "Cut out a part", icon: <Crop size={14} aria-hidden />, onSelect: () => setCropping(y) }] : []),
+        ...(canMake ? [{ label: "Make a photo or video from it", icon: <Wand2 size={14} aria-hidden />, onSelect: () => setMaking({ from: [y] }) }] : []),
+        { label: "Ask your model", icon: <Sparkles size={14} aria-hidden />, onSelect: () => setAsking(y) },
+      ]),
+      "separator",
+      ...(many ? [] : [{ label: "Rename", icon: <Pencil size={14} aria-hidden />, onSelect: () => setRenaming(y) }]),
+      { label: many ? `Move ${n} to folder` : "Move to folder", icon: <FolderInput size={14} aria-hidden />, onSelect: () => kit.askMove(many ?? [y], many ? counted(n, section) : y.name) },
+      { label: many ? `Tag ${n}` : "Add a tag", icon: <Tag size={14} aria-hidden />, onSelect: () => setTagFor(many ?? [y]) },
+      ...(many ? [] : [{ label: "Download", icon: <Download size={14} aria-hidden />, onSelect: () => { const a = document.createElement("a"); a.href = yarnFileUrl(y); a.download = y.originalName; document.body.append(a); a.click(); a.remove(); } }]),
+      "separator",
+      { label: many ? `Delete ${counted(n, section)}` : "Delete", icon: <Trash2 size={14} aria-hidden />, danger: true, onSelect: () => (many ? setBulkDelete(true) : void removeOne(y)) },
+    ];
+  };
+  const more = (y: Yarn, inRow?: boolean) => <Menu trigger={<IconButton label={`Actions for ${y.name}`} className={`card-more${inRow ? " in-row" : ""}`}><MoreHorizontal size={16} /></IconButton>} items={menuFor(y)} />;
 
   const removeOne = async (y: Yarn) => {
     await api.yarn.remove(y.id); await refresh(); setDetail(null);
@@ -234,7 +264,7 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
         {!isLibrary && <Button size="sm" tip={shelf === "yarn" ? "To the Brief: for your model to look at, not to put in a pattern" : "To Yarn, to put in a pattern"} onClick={async () => { const ids = picked.map((y) => y.id); await kit.attempt(() => api.folders.move(projectId, shelf === "yarn" ? "reference" : "yarn", ids, "")); sel.clear(); await reload(); toast(`Moved ${counted(ids.length, section)} to ${shelf === "yarn" ? "the reference, in the Brief" : "Yarn"}`); }}>
           <BookOpen size={13} aria-hidden /> {shelf === "yarn" ? "Move to the Brief" : "Move to Yarn"}
         </Button>}
-        <Button size="sm" onClick={() => setTagging(true)}>Add tag</Button>
+        <Button size="sm" onClick={() => setTagFor(picked)}>Add tag</Button>
         <Button size="sm" variant="danger" onClick={() => setBulkDelete(true)}><Trash2 size={13} aria-hidden /> Delete</Button>
       </SelectionBar>
 
@@ -273,6 +303,7 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
             return view.mode === "grid" ? (
             <li key={y.id} className="yarn-card" data-selected={sel.has(y.id)} draggable onDragStart={kit.dragThings(sel.has(y.id) ? picked.map((x) => x.id) : [y.id])}>
               <PickBox sel={sel} id={y.id} name={y.name} className="yarn-check" />
+              <ContextMenu items={menuFor(y)}>
               <div className="card card-link" style={{ position: "relative", padding: "var(--space-2)", outline: sel.has(y.id) ? "2px solid var(--ember)" : undefined }}>
                 {/* The whole card is one empty button that carries the name, so the
                     announced name and the visible text cannot disagree. */}
@@ -285,12 +316,15 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
                 <p className="label" aria-hidden style={{ margin: "var(--space-2) 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{y.name}</p>
                 <p className="eyebrow" aria-hidden style={{ margin: "2px 0 0", display: "flex", gap: 6, alignItems: "center" }}>{facts}{warn}</p>
                 {from && <span aria-hidden style={{ display: "block", marginTop: 2 }}><InFolder path={from} /></span>}
+                {more(y)}
               </div>
+              </ContextMenu>
             </li>
             ) : (
             <li key={y.id} className="yarn-row" data-selected={sel.has(y.id)} draggable onDragStart={kit.dragThings(sel.has(y.id) ? picked.map((x) => x.id) : [y.id])}>
               <PickBox sel={sel} id={y.id} name={y.name} style={{ position: "relative", zIndex: 2 }} />
-              <div className="card card-link" style={{ position: "relative", display: "grid", gridTemplateColumns: "48px minmax(0, 1fr) auto", gap: "var(--space-3)", alignItems: "center", padding: "6px var(--space-3) 6px 6px", outline: sel.has(y.id) ? "2px solid var(--ember)" : undefined }}>
+              <ContextMenu items={menuFor(y)}>
+              <div className="card card-link" style={{ position: "relative", display: "grid", gridTemplateColumns: "48px minmax(0, 1fr) auto auto", gap: "var(--space-3)", alignItems: "center", padding: "6px var(--space-3) 6px 6px", outline: sel.has(y.id) ? "2px solid var(--ember)" : undefined }}>
                 {cover}
                 <ModelMark mark={marks.get(y.id)} lead={lead === y.id} />
                 <div aria-hidden style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", overflow: "hidden" }}><YarnThumb y={y} top={!!site} /></div>
@@ -304,7 +338,9 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
                   </p>
                 </div>
                 <span aria-hidden className="body-sm" style={{ color: "var(--ink-muted)", whiteSpace: "nowrap" }}>{formatBytes(y.bytes)} · {timeAgo(y.createdAt)}</span>
+                <span style={{ position: "relative", zIndex: 2 }}>{more(y, true)}</span>
               </div>
+              </ContextMenu>
             </li>
             );
           })}
@@ -326,7 +362,12 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
       <FromUrlDialog open={urlOpen} onOpenChange={setUrlOpen} projectId={projectId} folder={kit.here} shelf={shelf} onDone={reload} />
       <ConfirmDialog open={bulkDelete} onOpenChange={setBulkDelete} title={`Delete ${counted(picked.length, section)}?`} description="You can undo it for a while. Patterns that use them will show a missing-yarn marker." confirmLabel="Delete"
         onConfirm={async () => { for (const y of picked) await api.yarn.remove(y.id); sel.clear(); await reload(); toast("Deleted"); }} />
-      <TagDialog open={tagging} onOpenChange={setTagging} what={counted(picked.length, section)} onTag={async (t) => { for (const y of picked) await api.yarn.update(y.id, { tags: [...y.tags, t] }); await reload(); toast(`Tagged ${t}`); }} />
+      <TagDialog open={!!tagFor} onOpenChange={(o) => !o && setTagFor(null)} what={tagFor?.length === 1 ? tagFor[0]!.name : counted(tagFor?.length ?? 0, section)} where={section === "reference" ? "Reference" : "Yarn"}
+        items={tagFor ?? []} known={allTags} pics={(tagFor ?? []).map((y) => kit.peekOf(y)).filter((x): x is string => !!x)}
+        onSave={async (id, tags) => { await api.yarn.update(id, { tags }); }} onDone={async (a, r) => { await reload(); toast(tagWords(a, r)); }} />
+      <AskModelDialog about={asking ? aboutYarn(asking) : null} onOpenChange={(o) => !o && setAsking(null)} />
+      <RenameDialog open={!!renaming} onOpenChange={(o) => !o && setRenaming(null)} title={`Rename ${renaming?.name ?? "the file"}`} initial={renaming?.name ?? ""}
+        onSave={async (name) => { await api.yarn.update(renaming!.id, { name }); await reload(); }} />
       <FolderDialogs kit={kit} />
     </div>
   );

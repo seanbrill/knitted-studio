@@ -51,21 +51,29 @@ export function Tip({ text, children, side }: { text?: string; children: React.R
 }
 
 // ── Dialog ─────────────────────────────────────────────────────────────────
-export function Dialog({ open, onOpenChange, title, description, children, wide, actions }: {
-  open: boolean; onOpenChange: (o: boolean) => void; title: string; description?: string;
-  children?: React.ReactNode; wide?: boolean; actions?: React.ReactNode;
+/**
+ * One shape for every dialog: a header with the title (the action, like "Move 3 knits") and
+ * a line under it on where it lands or what it is about; a body that scrolls on its own; and
+ * a footer that stays put, with `note` on its left and the buttons on its right. Three
+ * widths: sm to confirm, md to make or change one thing, lg to pick from many.
+ */
+export function Dialog({ open, onOpenChange, title, description, children, wide, size, actions, note }: {
+  open: boolean; onOpenChange: (o: boolean) => void; title: string; description?: React.ReactNode;
+  children?: React.ReactNode; wide?: boolean; size?: "sm" | "md" | "lg"; actions?: React.ReactNode; note?: React.ReactNode;
 }) {
   return (
     <D.Root open={open} onOpenChange={onOpenChange}>
       <D.Portal>
         <D.Overlay className="overlay" />
-        <D.Content className={cx("dialog", wide && "dialog-wide")} aria-describedby={description ? undefined : undefined}>
-          <D.Title className="dialog-title">{title}</D.Title>
-          {description ? <D.Description className="dialog-desc">{description}</D.Description> : <D.Description className="sr-only">{title}</D.Description>}
-          {children}
-          {actions && <div className="dialog-actions">{actions}</div>}
+        <D.Content className={cx("dialog", `dialog-${size ?? (wide ? "lg" : "md")}`)}>
+          <header className="dialog-head">
+            <D.Title className="dialog-title">{title}</D.Title>
+            {description ? <D.Description className="dialog-desc">{description}</D.Description> : <D.Description className="sr-only">{title}</D.Description>}
+          </header>
+          {children != null && children !== false && <div className="dialog-body">{children}</div>}
+          {(actions || note) && <footer className="dialog-actions">{note && <span className="dialog-actions-note">{note}</span>}{actions}</footer>}
           <D.Close asChild>
-            <button className="icon-btn" aria-label="Close" style={{ position: "absolute", top: 12, right: 12 }}><X size={16} /></button>
+            <button className="icon-btn dialog-close" aria-label="Close"><X size={16} /></button>
           </D.Close>
         </D.Content>
       </D.Portal>
@@ -109,40 +117,45 @@ export function Viewer({ open, onOpenChange, title, sub, lead, trail, footer, ch
  * A destructive confirmation. `requireText` makes the user type a name before
  * the button works, for things that cannot be undone (a project with files).
  */
-export function ConfirmDialog({ open, onOpenChange, title, description, confirmLabel, requireText, onConfirm, children }: {
-  open: boolean; onOpenChange: (o: boolean) => void; title: string; description?: string; confirmLabel: string;
+export function ConfirmDialog({ open, onOpenChange, title, description, confirmLabel, requireText, onConfirm, children, sub, lead }: {
+  open: boolean; onOpenChange: (o: boolean) => void; title: string; description?: React.ReactNode; confirmLabel: string;
   requireText?: string; onConfirm: () => void | Promise<void>; children?: React.ReactNode;
+  /** A line under the title on what it is about; then `description`, in the body, says what goes. */
+  sub?: React.ReactNode;
+  /** Shown first in the body, before `description`: what it holds, say. */
+  lead?: React.ReactNode;
 }) {
   const [typed, setTyped] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   React.useEffect(() => { if (!open) { setTyped(""); setBusy(false); } }, [open]);
   const ok = !requireText || typed === requireText;
+  const go = async () => { if (!ok || busy) return; setBusy(true); try { await onConfirm(); onOpenChange(false); } finally { setBusy(false); } };
+  const body = sub && description ? <p className="confirm-what">{description}</p> : null;
   return (
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
+      size="sm"
       title={title}
-      description={description}
+      description={sub ?? description}
       actions={
         <>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button
-            variant="danger"
-            disabled={!ok || busy}
-            onClick={async () => { setBusy(true); try { await onConfirm(); onOpenChange(false); } finally { setBusy(false); } }}
-          >
-            {confirmLabel}
-          </Button>
+          <Button variant="danger" disabled={!ok || busy} onClick={() => void go()}>{confirmLabel}</Button>
         </>
       }
     >
-      {children}
-      {requireText && (
-        <label className="field" style={{ marginTop: "var(--space-3)" }}>
-          <span className="field-label">Type <strong>{requireText}</strong> to confirm</span>
-          <input className="input" value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus />
-        </label>
-      )}
+      {lead || body || children || requireText ? <>
+        {lead}
+        {body}
+        {children}
+        {requireText && (
+          <label className="field" style={{ marginTop: "var(--space-3)" }}>
+            <span className="field-label">Type <code className="confirm-name">{requireText}</code> to delete it</span>
+            <input className="input" value={typed} onChange={(e) => setTyped(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void go(); } }} autoFocus />
+          </label>
+        )}
+      </> : null}
     </Dialog>
   );
 }
@@ -168,6 +181,8 @@ export function Drawer({ open, onOpenChange, title, children }: { open: boolean;
 // ── Menus ──────────────────────────────────────────────────────────────────
 export interface MenuEntry {
   label: string; onSelect: () => void; icon?: React.ReactNode; danger?: boolean; disabled?: boolean; shortcut?: string;
+  /** A quiet line under the label: what it does to what is inside, or why it cannot be done now. */
+  hint?: string;
 }
 export type MenuItems = (MenuEntry | "separator")[];
 
@@ -176,9 +191,9 @@ function renderItems(items: MenuItems, Item: typeof M.Item, Sep: typeof M.Separa
     it === "separator" ? (
       <Sep key={`s${i}`} className="menu-sep" />
     ) : (
-      <Item key={it.label} className={cx("menu-item", it.danger && "danger")} disabled={it.disabled} onSelect={it.onSelect}>
+      <Item key={it.label} className={cx("menu-item", it.danger && "danger", it.hint && "menu-item-hinted")} disabled={it.disabled} onSelect={it.onSelect}>
         {it.icon}
-        {it.label}
+        <span className="menu-text">{it.label}{it.hint && <span className="menu-hint">{it.hint}</span>}</span>
         {it.shortcut && <span className="menu-kbd">{it.shortcut}</span>}
       </Item>
     ),

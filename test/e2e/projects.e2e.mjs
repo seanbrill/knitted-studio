@@ -35,7 +35,7 @@ test("the library opens with the example project already in it", async () => {
 test("creating a project in the UI lands on its overview with the five starter patterns", async () => {
   await page.goto(studio.url + "/projects?new=1");
   await page.getByRole("dialog").getByLabel("Name", { exact: true }).fill("Spring sale");
-  await page.getByRole("button", { name: "Create project" }).click();
+  await page.getByRole("button", { name: "Make the project" }).click();
   await page.waitForURL(/\/projects\/pj_/);
   await page.getByRole("heading", { name: "Spring sale" }).waitFor();
   for (const n of ["Launch story", "Launch post", "Launch square", "Launch landscape", "Launch banner"]) {
@@ -45,7 +45,7 @@ test("creating a project in the UI lands on its overview with the five starter p
 
 test("an empty name is refused in the product's voice", async () => {
   await page.goto(studio.url + "/projects?new=1");
-  await page.getByRole("button", { name: "Create project" }).click();
+  await page.getByRole("button", { name: "Make the project" }).click();
   await page.getByText("Give it a name.").waitFor();
 });
 
@@ -72,7 +72,7 @@ test("delete shows an Undo that really restores the project", async () => {
   await page.goto(studio.url + "/projects");
   await page.getByRole("button", { name: "Actions for Autumn sale" }).click();
   await page.getByRole("menuitem", { name: "Delete" }).click();
-  await page.getByRole("button", { name: "Delete project" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: /^Delete / }).click();
   await page.getByRole("button", { name: "Autumn sale" }).waitFor({ state: "detached" }).catch(() => {});
   await page.getByRole("button", { name: "Undo" }).click();
   await page.getByRole("link", { name: "Open Autumn sale" }).waitFor();
@@ -84,7 +84,7 @@ test("a project's picture: uploaded from its card menu, shown on the card, and t
   writeFileSync(photo, await sharp({ create: { width: 2000, height: 1500, channels: 3, background: { r: 223, g: 90, b: 15 } } }).png().toBuffer());
   await page.goto(studio.url + "/projects");
   await page.getByRole("button", { name: "Actions for Example: launch week" }).click();
-  await page.getByRole("menuitem", { name: "Choose picture" }).click();
+  await page.getByRole("menuitem", { name: "Choose its picture" }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Choose an image").setInputFiles(photo);
   await dialog.getByRole("option", { name: /storefront/, selected: true }).waitFor();
@@ -100,7 +100,7 @@ test("a project's picture: uploaded from its card menu, shown on the card, and t
   assert.ok((await j("GET", "/api/projects")).body.find((p) => p.name === "Example: launch week").cover);
 
   await page.getByRole("button", { name: "Actions for Example: launch week" }).click();
-  await page.getByRole("menuitem", { name: "Choose picture" }).click();
+  await page.getByRole("menuitem", { name: "Choose its picture" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Take picture away" }).click();
   await page.getByText("Picture taken away.").waitFor();
   await cover.waitFor({ state: "detached" });

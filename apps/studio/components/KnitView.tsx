@@ -25,7 +25,8 @@ export const formatName = (f: { format: string; scale: number; fps?: number; kin
   return `${f.format === "jpeg" || f.format === "jpg" ? "JPEG" : f.format === "webp" ? "WebP" : f.format.toUpperCase()}${f.scale > 1 ? ` ${f.scale}x` : ""}${fps ? ` ${fps} fps` : ""}`;
 };
 const dims = (f: { width: number; height: number }) => `${f.width} × ${f.height}`;
-const save = (href: string) => { const a = document.createElement("a"); a.href = href; a.rel = "noopener"; document.body.append(a); a.click(); a.remove(); };
+/** Download what is at `href`, as a link pressed would. */
+export const saveHref = (href: string) => { const a = document.createElement("a"); a.href = href; a.rel = "noopener"; document.body.append(a); a.click(); a.remove(); };
 
 export function KnitView({ knit, here, onOpen, onClose, onChanged, onMove, onPost, onFavorite }: {
   knit: KnitRecord;
@@ -119,7 +120,7 @@ export function KnitView({ knit, here, onOpen, onClose, onChanged, onMove, onPos
         <span className="split-btn">
           <a className="btn btn-secondary" href={knitFileUrl(viewing, true)}><Download size={14} aria-hidden /> Download {version && version.files.length > 1 ? formatName(viewing) : ""}</a>
           {version && version.files.length > 1 && <Menu trigger={<button type="button" className="btn btn-secondary" aria-label="Download another format"><ChevronDown size={14} /></button>}
-            items={[...version.files.map((f) => ({ label: `${formatName(f)}, ${dims(f)}, ${formatBytes(f.bytes)}`, icon: <Download size={14} aria-hidden />, onSelect: () => save(knitFileUrl(f, true)) })), "separator", { label: `All ${version.files.length}, as a zip`, onSelect: () => save(`/api/projects/${knit.projectId}/knits/zip?ids=${version.files.map((f) => f.id).join(",")}`) }]} />}
+            items={[...version.files.map((f) => ({ label: `${formatName(f)}, ${dims(f)}, ${formatBytes(f.bytes)}`, icon: <Download size={14} aria-hidden />, onSelect: () => saveHref(knitFileUrl(f, true)) })), "separator", { label: `All ${version.files.length}, as a zip`, onSelect: () => saveHref(`/api/projects/${knit.projectId}/knits/zip?ids=${version.files.map((f) => f.id).join(",")}`) }]} />}
         </span>
         <Button variant="primary" onClick={() => onPost(viewing)}><Send size={14} aria-hidden /> Post</Button>
       </>}>
@@ -167,7 +168,7 @@ export function KnitView({ knit, here, onOpen, onClose, onChanged, onMove, onPos
                 const shown = v.files[0]!, isCurrent = v.no === current?.no, looking = v.no === version?.no;
                 const items: MenuItems = [
                   ...(!isCurrent ? [{ label: "Use this one", icon: <Check size={14} aria-hidden />, onSelect: () => void choose(shown, `Version ${v.no} is the one shown now`) }] : []),
-                  { label: "Download", icon: <Download size={14} aria-hidden />, onSelect: () => save(knitFileUrl(shown, true)) },
+                  { label: "Download", icon: <Download size={14} aria-hidden />, onSelect: () => saveHref(knitFileUrl(shown, true)) },
                   ...(n > 1 ? ["separator" as const, { label: "Delete this version", icon: <Trash2 size={14} aria-hidden />, danger: true, onSelect: () => setConfirm({ id: shown.id, what: "version", title: `Delete version ${v.no}?`, description: `${v.files.length === 1 ? "Its file goes" : `Its ${v.files.length} files go`}, ${formatBytes(v.files.reduce((m, f) => m + f.bytes, 0))}.${isCurrent ? " The version before it is shown in its place." : ""}`, label: "Delete the version" }) }] : []),
                 ];
                 return (

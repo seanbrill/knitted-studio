@@ -307,11 +307,22 @@ function SiteDialog({ open, onOpenChange, projectId, folder, onCreated }: { open
   const standIn = found?.matched.body?.family ?? "Inter";
   return (
     <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) { setFound(null); setErr(undefined); } }} wide title="Start from a website"
-      description="knitted reads the site's own colours, fonts and logo and proposes a swatch. It fetches the page and its stylesheets when you press Read, and runs nothing from them.">
-      <Field label="Website" htmlFor="site-url" error={found ? undefined : err}>
-        <Input id="site-url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="example.com" onKeyDown={(e) => { if (e.key === "Enter" && url && !busy) void read(); }} />
-      </Field>
-      <div className="dialog-actions"><Button variant={found ? "secondary" : "primary"} disabled={!!busy || !url} onClick={read}>{busy === "reading" ? "Reading..." : found ? "Read again" : "Read the site"}</Button></div>
+      description="knitted reads the site's own colours, fonts and logo and proposes a swatch. It fetches the page and its stylesheets when you press Read, and runs nothing from them."
+      note={found ? `From ${new URL(found.sourceUrl).hostname}` : undefined}
+      actions={<>
+        <Button variant="ghost" onClick={() => { onOpenChange(false); setFound(null); setErr(undefined); }}>Cancel</Button>
+        {found
+          ? <Button variant="primary" disabled={!!busy || !valid} onClick={create}><Check size={14} aria-hidden /> {busy === "creating" ? "Creating..." : "Create swatch"}</Button>
+          : <Button variant="primary" disabled={!!busy || !url} onClick={read}>{busy === "reading" ? "Reading..." : "Read the site"}</Button>}
+      </>}>
+      <div style={{ display: "flex", gap: 8, alignItems: "end" }}>
+        <div style={{ flex: 1 }}>
+          <Field label="Website" htmlFor="site-url" error={found ? undefined : err}>
+            <Input id="site-url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="example.com" onKeyDown={(e) => { if (e.key === "Enter" && url && !busy) void read(); }} />
+          </Field>
+        </div>
+        {found && <Button disabled={!!busy || !url} onClick={read}>{busy === "reading" ? "Reading..." : "Read again"}</Button>}
+      </div>
       {found && (
         <div style={{ marginTop: "var(--space-5)", display: "grid", gap: "var(--space-4)" }}>
           <p className="label" style={{ margin: 0 }}>Found on {new URL(found.sourceUrl).hostname}. Change anything before you create it.</p>
@@ -347,7 +358,6 @@ function SiteDialog({ open, onOpenChange, projectId, folder, onCreated }: { open
           )}
           {found.notes.map((n) => <p key={n} className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>{n}</p>)}
           {err && <p className="field-error" role="alert"><AlertTriangle size={13} aria-hidden /> {err}</p>}
-          <div className="dialog-actions"><Button variant="primary" disabled={!!busy || !valid} onClick={create}><Check size={14} aria-hidden /> {busy === "creating" ? "Creating..." : "Create swatch"}</Button></div>
         </div>
       )}
     </Dialog>

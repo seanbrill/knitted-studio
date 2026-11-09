@@ -318,7 +318,7 @@ test("Ask your model on a pattern starts a chat about it, and the person keeps w
   const p = await pattern();
   await page.goto(`${studio.url}/projects/${projectId}`);
   await page.getByRole("button", { name: `Actions for ${p.name}` }).first().click();
-  await page.getByRole("menuitem", { name: "Ask your model..." }).click();
+  await page.getByRole("menuitem", { name: "Ask your model" }).click();
   const dialog = page.getByRole("dialog", { name: "Ask your model to change this pattern" });
   await dialog.getByLabel("What should change?").fill("make the headline shorter");
   await dialog.getByRole("button", { name: "Ask", exact: true }).click();
@@ -337,7 +337,7 @@ test("while the model works, its pattern's card and the tab are marked, and when
   const p = await pattern();
   await page.goto(`${studio.url}/projects/${projectId}`);
   await page.getByRole("button", { name: `Actions for ${p.name}` }).first().click();
-  await page.getByRole("menuitem", { name: "Ask your model..." }).click();
+  await page.getByRole("menuitem", { name: "Ask your model" }).click();
   const dialog = page.getByRole("dialog", { name: "Ask your model to change this pattern" });
   await dialog.getByLabel("What should change?").fill("slowly make the headline say it is done");
   await dialog.getByRole("button", { name: "Ask", exact: true }).click();
@@ -396,7 +396,7 @@ test("the model is picked beside the message: one for everything, or Auto, which
   const p = await pattern();
   await page.goto(`${studio.url}/projects/${projectId}`);
   await page.getByRole("button", { name: `Actions for ${p.name}` }).first().click();
-  await page.getByRole("menuitem", { name: "Ask your model..." }).click();
+  await page.getByRole("menuitem", { name: "Ask your model" }).click();
   const dialog = page.getByRole("dialog", { name: "Ask your model to change this pattern" });
   assert.match(await dialog.getByRole("combobox", { name: "Model" }).innerText(), /Auto/);
   await page.keyboard.press("Escape");

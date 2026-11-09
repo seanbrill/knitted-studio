@@ -15,6 +15,7 @@ import { AskModelDialog, aboutPattern } from "./AskModel";
 import { PickBox, SelectionBar, picking, useSelection } from "./Selection";
 import { leadOf, useMarks } from "@/lib/agent";
 import { ModelMark } from "./ModelMark";
+import { SizeTiles, sizeReady } from "./SizeTiles";
 
 const PATTERN_SORTS: SortBy<Pattern>[] = [
   { value: "updated", label: "Last changed", key: (p) => p.updatedAt, desc: true },
@@ -106,15 +107,24 @@ export function PatternsView({ projectId }: { projectId: string }) {
   const [bulkDelete, setBulkDelete] = useState(false);
   // A click with Shift, Ctrl or Cmd held picks the pattern instead of opening it.
   const pick = (p: Pattern) => (e: React.MouseEvent) => { if (picking(e)) { e.preventDefault(); sel.toggle(p.id, e.shiftKey); } };
-  const menu = (p: Pattern): MenuItems => [
-    { label: "Open in editor", icon: <FolderOpen size={14} />, onSelect: () => router.push(`/projects/${projectId}/patterns/${p.id}`) },
-    { label: "Ask your model...", icon: <Sparkles size={14} />, onSelect: () => setAsking(p) },
-    { label: "Rename", icon: <Pencil size={14} />, onSelect: () => setRenaming(p) },
-    { label: "Duplicate", icon: <Copy size={14} />, onSelect: () => act(() => api.patterns.duplicate(p.id), "Duplicated") },
-    { label: "Move to folder", icon: <FolderInput size={14} />, onSelect: () => kit.askMove([p], p.name) },
-    "separator",
-    { label: "Delete", icon: <Trash2 size={14} />, danger: true, onSelect: () => setDeleting(p) },
-  ];
+  // One order for every menu: open and what it is for, then rename and file it, then delete. On
+  // one of several picked, what can act on all of them does, and says so.
+  const menu = (p: Pattern): MenuItems => {
+    const many = sel.has(p.id) && sel.count > 1 ? sel.picked : null;
+    const n = many?.length ?? 1;
+    return [
+      { label: "Open in the editor", icon: <FolderOpen size={14} />, onSelect: () => router.push(`/projects/${projectId}/patterns/${p.id}`) },
+      ...(many ? [] : [{ label: "Ask your model", icon: <Sparkles size={14} />, onSelect: () => setAsking(p) }]),
+      "separator" as const,
+      ...(many ? [] : [
+        { label: "Rename", icon: <Pencil size={14} />, onSelect: () => setRenaming(p) },
+        { label: "Duplicate", icon: <Copy size={14} />, onSelect: () => act(() => api.patterns.duplicate(p.id), "Duplicated") },
+      ]),
+      { label: many ? `Move ${n} to folder` : "Move to folder", icon: <FolderInput size={14} />, onSelect: () => kit.askMove(many ?? [p], many ? `${n} patterns` : p.name) },
+      "separator" as const,
+      { label: many ? `Delete ${n} patterns` : "Delete", icon: <Trash2 size={14} />, danger: true, onSelect: () => (many ? setBulkDelete(true) : setDeleting(p)) },
+    ];
+  };
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 280px", gap: "var(--space-8)", alignItems: "start" }}>
@@ -225,23 +235,30 @@ export function PatternsView({ projectId }: { projectId: string }) {
 
 function NewPatternDialog({ open, onOpenChange, projectId, folder, onCreated }: { open: boolean; onOpenChange: (o: boolean) => void; projectId: string; folder: string; onCreated: (p: Pattern) => void }) {
   const [name, setName] = useState("");
-  const [size, setSize] = useState(SIZES[0].name);
+  const [size, setSize] = useState<Size>(SIZES[0]);
   const [err, setErr] = useState<string | undefined>();
+  const [busy, setBusy] = useState(false);
+  const ready = sizeReady(size);
   const submit = async () => {
+    if (!ready || busy) return;
+    setBusy(true);
     try {
-      const sz: Size = SIZES.find((s) => s.name === size) ?? SIZES[0];
-      const p = await api.patterns.create(projectId, { name: name || undefined, size: sz, folder });
-      onOpenChange(false); setName(""); onCreated(p);
-    } catch (e) { setErr((e as Error).message); }
+      const p = await api.patterns.create(projectId, { name: name || undefined, size, folder });
+      onOpenChange(false); setName(""); setSize(SIZES[0]); onCreated(p);
+    } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
+  const where = ["Patterns", ...(folder ? folder.split("/") : [])].join(" / ");
+  const what = size.name === "Custom" ? (ready ? `${size.w} × ${size.h}` : "custom") : size.name;
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} title="New pattern" description={`Pick a size. You can change it later.${folder ? ` It goes in ${nameOf(folder)}.` : ""}`}
-      actions={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" onClick={submit}>Create pattern</Button></>}>
+    <Dialog open={open} onOpenChange={onOpenChange} title="New pattern" description={`In ${where} · the size can change later`}
+      note={<><span className="kbd">↵</span> makes it</>}
+      actions={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" busy={busy} disabled={!ready} onClick={submit}>Make the {what} pattern</Button></>}>
       <form onSubmit={(e) => { e.preventDefault(); void submit(); }} style={{ display: "grid", gap: "var(--space-4)" }}>
         <Field label="Name" error={err} htmlFor="npat-name"><Input id="npat-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Untitled pattern" /></Field>
-        <Field label="Size" htmlFor="npat-size">
-          <Select id="npat-size" aria-label="Size" value={size} onValueChange={setSize} options={SIZES.map((s) => ({ value: s.name, label: `${s.name} (${s.w}x${s.h})` }))} />
-        </Field>
+        <div className="field">
+          <span className="field-label">Size</span>
+          <SizeTiles value={size} onChange={setSize} />
+        </div>
         <button type="submit" hidden />
       </form>
     </Dialog>

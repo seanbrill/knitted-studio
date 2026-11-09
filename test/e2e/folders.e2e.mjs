@@ -8,7 +8,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
-import { axeProblems, launchBrowser, serverHas, startStudio } from "./harness.mjs";
+import { axeProblems, drag, launchBrowser, serverHas, startStudio } from "./harness.mjs";
 
 let studio, browser, page, projectId, mcpPath;
 const files = mkdtempSync(join(tmpdir(), "knitted-folders-e2e-"));
@@ -50,7 +50,9 @@ test("a folder can hold folders of its own, made in one go with a /", async () =
   await page.getByRole("button", { name: "New folder" }).click();
   const dialog = page.getByRole("dialog", { name: "New folder" });
   await dialog.getByLabel("Name").fill("Royalty free music/Lo-fi");
-  await dialog.getByRole("button", { name: "Make folder" }).click();
+  // It shows the folders it makes, both of them new, and says how many.
+  assert.deepEqual(await dialog.getByLabel("The folders it makes").locator("[data-new]").allTextContents(), ["Royalty free music", "Lo-fi"]);
+  await dialog.getByRole("button", { name: "Make 2 folders" }).click();
   await page.getByRole("link", { name: "Royalty free music, folder, 1 folder" }).click();
   await trail().getByText("Royalty free music").waitFor();
   assert.match(page.url(), /folder=Royalty/, "where the person is, is in the address, so Back goes up");
@@ -76,9 +78,12 @@ test("files move from the selection bar, and Undo puts them back where they were
   await page.getByLabel("Select cover").check();
   await page.getByRole("toolbar", { name: "Selection" }).getByRole("button", { name: "Move to folder" }).click();
   const dialog = page.getByRole("dialog", { name: "Move 1 file" });
-  await dialog.getByRole("radio", { name: "Lo-fi" }).check();
+  // Lo-fi is inside a closed folder: a search opens the way to it and lights it.
+  await dialog.getByLabel("Find a folder").fill("lo-f");
+  await dialog.getByRole("treeitem", { name: /^Lo-fi/, selected: true }).waitFor();
+  await dialog.getByText("To Royalty free music / Lo-fi").waitFor();
   assert.deepEqual(await problems(), []);
-  await dialog.getByRole("button", { name: "Move here" }).click();
+  await dialog.getByRole("button", { name: "Move it here" }).click();
   await page.getByText("Moved it into Lo-fi").waitFor();
   await page.getByRole("button", { name: /^cover image/ }).waitFor({ state: "detached" });
   assert.equal((await yarn("cover")).folder, "Royalty free music/Lo-fi");
@@ -137,9 +142,11 @@ test("in Patterns, a pattern dragged onto a folder is filed there, and deleting 
   await page.getByRole("button", { name: "New folder" }).click();
   const dialog = page.getByRole("dialog", { name: "New folder" });
   await dialog.getByLabel("Name").fill("Spring");
-  await dialog.getByRole("button", { name: "Make folder" }).click();
+  await dialog.getByRole("button", { name: "Make the folder" }).click();
   const tile = page.getByRole("link", { name: "Spring, folder, Empty" });
-  await page.getByRole("link", { name: `Open ${story.name}` }).dragTo(tile);
+  // The new folder's row pushes the patterns down as it comes in: drag once it is there.
+  await tile.waitFor();
+  await drag(page, page.getByRole("link", { name: `Open ${story.name}` }), tile);
   await page.getByText("Moved it into Spring").waitFor();
   await serverHas(studio, `/api/patterns/${story.id}`, (p) => p.folder === "Spring");
   await page.getByRole("link", { name: `Open ${story.name}` }).waitFor({ state: "detached" });
@@ -148,10 +155,10 @@ test("in Patterns, a pattern dragged onto a folder is filed there, and deleting 
   assert.deepEqual(await problems(), []);
 
   await page.getByRole("button", { name: "Actions for the folder Spring" }).click();
-  await page.getByRole("menuitem", { name: "Delete folder" }).click();
+  await page.getByRole("menuitem", { name: /^Delete the folder/ }).click();
   const confirm = page.getByRole("dialog", { name: "Delete the folder Spring?" });
-  await confirm.getByText("The 1 pattern in it moves up to Patterns. Nothing in it is deleted.").waitFor();
-  await confirm.getByRole("button", { name: "Delete folder" }).click();
+  await confirm.getByText("Nothing in it is deleted. The 1 pattern in it moves up to Patterns, at the top.").waitFor();
+  await confirm.getByRole("button", { name: "Delete the folder" }).click();
   await page.getByRole("link", { name: `Open ${story.name}` }).waitFor();
   assert.equal((await j("GET", `/api/patterns/${story.id}`)).body.folder, "");
   assert.deepEqual(await folders("patterns"), []);
@@ -163,11 +170,13 @@ test("a swatch moves into a folder made on the spot, and the swatch list shows w
   await page.getByRole("button", { name: swatch.name, pressed: true }).waitFor();
   await page.getByRole("button", { name: "Move to folder" }).click();
   const dialog = page.getByRole("dialog", { name: `Move ${swatch.name}` });
+  await dialog.getByRole("button", { name: "New folder in Swatches" }).click();
   await dialog.getByLabel("New folder in Swatches").fill("Clients/Acme");
   await dialog.getByRole("button", { name: "Make it" }).click();
-  await dialog.getByRole("radio", { name: "Acme" }).waitFor();
-  assert.equal(await dialog.getByRole("radio", { name: "Acme" }).isChecked(), true, "the folder just made is the one chosen");
-  await dialog.getByRole("button", { name: "Move here" }).click();
+  // The folder just made is the one chosen, with the way to it open.
+  await dialog.getByRole("treeitem", { name: /^Acme/, selected: true }).waitFor();
+  await dialog.getByRole("treeitem", { name: /^Clients/, expanded: true }).waitFor();
+  await dialog.getByRole("button", { name: "Move it here" }).click();
   await page.getByText("Moved it into Acme").waitFor();
   await page.getByRole("button", { name: swatch.name, pressed: true }).waitFor({ state: "detached" });
   await page.getByRole("link", { name: "Clients, folder, 1 folder, 1 swatch" }).click();
@@ -181,7 +190,7 @@ test("in Parts, a starter part duplicated in a folder goes into it, and the star
   await page.getByRole("button", { name: "New folder" }).click();
   const dialog = page.getByRole("dialog", { name: "New folder" });
   await dialog.getByLabel("Name").fill("Lower thirds");
-  await dialog.getByRole("button", { name: "Make folder" }).click();
+  await dialog.getByRole("button", { name: "Make the folder" }).click();
   await page.getByRole("link", { name: "Lower thirds, folder, Empty" }).click();
   await page.getByText("Nothing in Lower thirds yet").waitFor();
   await page.getByRole("region", { name: "Starter parts" }).getByRole("button", { name: "Duplicate" }).first().click();
