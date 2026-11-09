@@ -15,9 +15,10 @@
 // (scripts/pipeline-release.mjs); this run on that version replaces its files and adds the .dmg.
 //
 // Installed apps read the release folder themselves (apps/studio/electron/update.mjs), so
-// they are offered the version once it is up. The site lists the folder as it was when it
-// was built, and a push to main builds it: so last, this pushes the checkout it built from
-// and waits for the Download page to list these files (scripts/release-site.mjs).
+// they are offered the version once it is up, and so does the Download page in a visitor's
+// browser. The site's own list is the folder as it was when it was built, and a push to main
+// builds it: so last, this pushes the checkout it built from and waits for that list to have
+// these files (scripts/release-site.mjs).
 
 import { spawnSync } from "node:child_process";
 import { readFile, rm } from "node:fs/promises";
@@ -61,6 +62,6 @@ run("node", ["scripts/publish-release.mjs", "dist/desktop"]);
 const built = await readFile(join(root, "dist/desktop/SHA256SUMS.txt"), "utf8");
 const wrong = await problem(version, built);
 if (wrong) fail(wrong);
-console.log(`release: ${version} is published. Installed apps (0.1.2 and later) are offered it the next time they check.`);
+console.log(`release: ${version} is published. Installed apps (0.1.2 and later) are offered it the next time they check, and the Download page shows it now: it reads the release folder.`);
 
 console.log(`release: ${await showOnSite({ root, site: SITE, version, sums: built })}`);

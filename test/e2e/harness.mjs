@@ -89,6 +89,8 @@ export async function axeProblems(page) {
   const { default: AxeBuilder } = await import("@axe-core/playwright");
   // Things arrive with a short fade: mid-fade, text is not its colour yet. Wait for the ones that end.
   await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a.effect?.getComputedTiming().endTime !== Infinity).map((a) => a.finished.catch(() => {}))));
+  // A page changed in place gets its <title> a moment after the rest: Next puts the new one in.
+  await page.waitForFunction(() => document.title.length > 0, null, { timeout: 5000 }).catch(() => {});
   const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
   return r.violations
     .filter((v) => v.impact === "serious" || v.impact === "critical")

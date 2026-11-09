@@ -1080,3 +1080,6 @@ body:has(.dialog, .viewer) .toasts { top: var(--space-4); bottom: auto; }
 .part-slots { margin: 0; padding: 0; list-style: none; display: flex; gap: 4px; flex-wrap: nowrap; overflow: hidden; min-height: 22px; }
 .part-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); align-self: end; }
 .part-card-list .part-actions { align-self: center; }
+
+/* A chat read without a key: where the message box was, how to write in it again. */
+.chat-nokey { border-top: 1px solid var(--line); }

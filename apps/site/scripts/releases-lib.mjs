@@ -18,7 +18,8 @@ const archOf = (name) => ARCHS.find(([re]) => re.test(name))?.[1] ?? null;
 const CHIPS = { arm64: { macOS: "Apple silicon", Windows: "Arm", Linux: "ARM64" }, x64: { macOS: "Intel", Windows: null, Linux: "x64" } };
 
 export const size = (n) => (n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(1)} GB` : `${Math.max(1, Math.round(n / 1024 ** 2))} MB`);
-const cmp = (a, b) => { const p = (v) => v.replace(/^v/, "").split("-")[0].split(".").map(Number); const [x, y] = [p(a), p(b)]; for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return y[i] - x[i]; return 0; };
+/** For sort(): the newer of two versions first. */
+export const newestFirst = (a, b) => { const p = (v) => v.replace(/^v/, "").split("-")[0].split(".").map(Number); const [x, y] = [p(a), p(b)]; for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return y[i] - x[i]; return 0; };
 
 /** @param items every item in the folder, files and folders, as the FileFreak tree gives them */
 export function buildReleases(items) {
@@ -45,6 +46,6 @@ export function buildReleases(items) {
       platform: chip ? `${system} (${chip})` : system, system, arch, name: f.name, url: f.publicUrl, size: size(f.sizeBytes), sha256: f.clientSha256 ?? "not recorded",
     });
   }
-  const releases = [...byVersion].sort(([a], [b]) => cmp(a, b)).map(([version, files]) => ({ version, files: files.sort((a, b) => a.platform.localeCompare(b.platform) || a.name.localeCompare(b.name)) }));
+  const releases = [...byVersion].sort(([a], [b]) => newestFirst(a, b)).map(([version, files]) => ({ version, files: files.sort((a, b) => a.platform.localeCompare(b.platform) || a.name.localeCompare(b.name)) }));
   return { releases, skipped };
 }

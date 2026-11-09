@@ -229,8 +229,9 @@ export function Chat({ chatId, onStarted, projectId = null, patternId, compact =
     if (!running && !sending && queued.length && last?.status === "done") sendNext();
   }, [running, sending, last?.status, queued.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (cfg && !cfg.key.present) {
-    // No key: what asking is like, and the two ways in.
+  const noKey = !!cfg && !cfg.key.present;
+  if (noKey && !chatId) {
+    // No key, and no chat open: what asking is like, and the two ways in. A chat had before stays readable (below).
     const asks = EXAMPLES[patternId ? "pattern" : projectId ? "project" : "studio"];
     return (
       <div className="arrive" style={{ display: "grid", gap: compact ? 8 : "var(--space-4)", padding: compact ? 0 : "var(--space-8)", alignContent: "start", maxWidth: 620 }}>
@@ -257,7 +258,7 @@ export function Chat({ chatId, onStarted, projectId = null, patternId, compact =
       <div ref={box} onScroll={() => { const b = box.current; if (b) stick.current = b.scrollHeight - b.scrollTop - b.clientHeight < 48; }}
         // Positioned, so the hidden words in it ("You:", "Done:") are held in its scroll, not stretching the page.
         style={{ flex: 1, minHeight: 0, overflowY: "auto", position: "relative", padding: compact ? "var(--space-2) 0" : `var(--space-6) ${pad}` }}>
-        {turns.length === 0 ? (
+        {turns.length === 0 ? (noKey ? null : (
           <div style={{ display: "grid", gap: "var(--space-3)", maxWidth: 560 }}>
             {!compact && <Sparkles size={22} aria-hidden style={{ color: "var(--ember-ink)" }} />}
             <p className={compact ? "body-sm" : "body"} style={{ margin: 0, color: "var(--ink-muted)" }}>
@@ -267,7 +268,7 @@ export function Chat({ chatId, onStarted, projectId = null, patternId, compact =
               {examples.map((x) => <button key={x} type="button" className="chip chip-button" onClick={() => setText(x)}>{x}</button>)}
             </div>
           </div>
-        ) : (
+        )) : (
           <ol aria-label="Conversation" className="chat" data-compact={compact || undefined} style={{ maxWidth: compact ? undefined : 760 }}>
             {turns.map((t) => <Turn key={t.id} job={t} latest={t === last} compact={compact} projectId={chat?.projectId ?? null} patternId={patternId} onChanged={onChanged} />)}
           </ol>
@@ -293,6 +294,17 @@ export function Chat({ chatId, onStarted, projectId = null, patternId, compact =
         </div>
       )}
       <div role="status" className="sr-only">{last && !running && last.result?.text ? `Your model answered: ${last.result.text}` : running ? "Your model is working." : ""}</div>
+      {noKey ? (
+        // A chat had before is kept and read without a key; writing in it again needs one.
+        <div role="note" aria-label="Writing needs a key" className="chat-nokey" style={{ padding: compact ? "var(--space-3) 0 0" : `var(--space-4) ${pad} var(--space-6)` }}>
+          <div style={{ display: "grid", gap: 8, maxWidth: compact ? undefined : 760 }}>
+            <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>To write in this chat again, add your Anthropic key. Or connect Claude Code once, and it works in this studio from your terminal with your own plan.</p>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <Link className={compact ? "link body-sm" : "btn btn-primary"} href="/settings?tab=model">Add a key in Settings</Link>
+            </div>
+          </div>
+        </div>
+      ) : (
       <form onSubmit={(e) => { e.preventDefault(); void send(); }}
         style={{ display: "grid", gap: 8, padding: compact ? "var(--space-3) 0 0" : `var(--space-4) ${pad} var(--space-6)`, borderTop: "1px solid var(--line)" }}>
         <div style={{ display: "grid", gap: 8, maxWidth: compact ? undefined : 760 }}>
@@ -312,6 +324,7 @@ export function Chat({ chatId, onStarted, projectId = null, patternId, compact =
           {error && <p className="field-error" role="alert" style={{ margin: 0 }}><AlertTriangle size={13} aria-hidden /> {error}</p>}
         </div>
       </form>
+      )}
     </div>
   );
 }

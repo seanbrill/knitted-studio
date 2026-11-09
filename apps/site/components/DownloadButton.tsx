@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { detect, offer, type Download, type Offer, type Release, type Signals } from "../lib/downloads";
+import { useEffect, useMemo, useState } from "react";
+import { detect, diskImages, offer, type Offer, type Release, type Signals } from "../lib/downloads";
+import { useReleases } from "./Releases";
 
 interface UAData { platform: string; mobile: boolean; getHighEntropyValues(hints: string[]): Promise<{ architecture?: string }> }
 
@@ -29,22 +30,28 @@ function gpu(): string | undefined {
 }
 
 /**
- * One button for this visitor's computer, on the Download page's ember band. Before the
- * browser is asked (and with no JavaScript) it points at the full list below instead.
- * diskImages: an older version's .dmg files, when this version has none (lib/downloads.ts).
+ * One button for this visitor's computer, on the Download page's ember band, for the newest
+ * release: of `built`, then of the release folder as it is now (components/Releases.tsx).
+ * Before the browser is asked (and with no JavaScript) it points at the full list below.
  */
-export function DownloadButton({ version, files, diskImages = null }: { version: string; files: Download[]; diskImages?: Release | null }) {
+export function DownloadButton({ built }: { built: Release[] }) {
+  const releases = useReleases(built);
+  const version = releases[0]?.version ?? "";
+  const files = releases[0]?.files;
+  // An older version's .dmg files, when this version has none (lib/downloads.ts).
+  const dmgs = useMemo(() => diskImages(releases), [releases]);
   const [o, setO] = useState<Offer | null>(null);
   useEffect(() => {
+    if (!files) return;
     let live = true;
     void signals().then((s) => {
       let m = detect(s);
       // Only a Mac's chip hides from the browser, and WebGL costs a moment, so only then.
       if (m.system === "macOS" && m.guessed) m = detect({ ...s, gpu: gpu() });
-      if (live) setO(offer(files, m, diskImages));
+      if (live) setO(offer(files, m, dmgs));
     });
     return () => { live = false; };
-  }, [files, diskImages]);
+  }, [files, dmgs]);
 
   const all = <a className="link-on-field" href="#all-downloads">All downloads</a>;
   const guide = <Link className="link-on-field" href="/download/install/">Install guide</Link>;

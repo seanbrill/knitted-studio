@@ -307,7 +307,8 @@ test("a star marks a favourite, and Knits shows only the favourites, or only one
   const star = page.getByRole("button", { name: /^Favourite Launch post/ });
   await star.click();
   await serverHas(studio, `/api/projects/${projectId}/knits`, (k) => k.filter((x) => x.favorite).length === 1 && k.find((x) => x.favorite).patternId === post.id);
-  assert.equal(await star.getAttribute("aria-pressed"), "true");
+  // The server has it; the card shows it once the list is read again.
+  await page.getByRole("button", { name: /^Favourite Launch post/, pressed: true }).waitFor();
   await page.getByRole("checkbox", { name: "Only favourites (1)" }).check();
   assert.equal(await cards.count(), 1);
   await cards.first().click();

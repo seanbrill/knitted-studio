@@ -1,6 +1,6 @@
 // The release's last step, against real git repositories and a stand-in for the site. A
 // release pushes the checkout its installers were built from, since a push to main is what
-// starts the site build, and waits for the Download page to list the version. A release
+// starts the site build, and waits for the site's list to have the version. A release
 // run with nothing new to push once left the page a version behind until someone noticed.
 
 import assert from "node:assert/strict";
@@ -43,7 +43,7 @@ async function site(has) {
 
 const quick = { version: "0.1.3", everyMs: 20, waitMs: 3000 };
 
-test("a release with commits to push pushes them, and waits for the Download page to list it", async () => {
+test("a release with commits to push pushes them, and waits for the site's list to have it", async () => {
   const c = checkout(2);
   // The pipeline: once main has the release's commits, the site it builds lists the version.
   const s = await site(() => (c.originMain() === c.head() ? ["0.1.3", "0.1.2"] : ["0.1.2"]));
@@ -52,7 +52,7 @@ test("a release with commits to push pushes them, and waits for the Download pag
     const out = await showOnSite({ ...quick, root: c.work, site: s.url, log: (m) => said.push(m) });
     assert.equal(c.originMain(), c.head(), "main was pushed");
     assert.match(said.join("\n"), /pushed 2 commits to main, which starts the site build/);
-    assert.equal(out, "the Download page lists 0.1.3, and copies older than 0.1.2 are offered it.");
+    assert.equal(out, "the site's list has 0.1.3, and copies older than 0.1.2 are offered it.");
   } finally { s.close(); }
 });
 
@@ -68,12 +68,12 @@ test("with nothing to push, it says what will start the site build, and that the
   } finally { s.close(); }
 });
 
-test("a version the Download page lists already needs no push", async () => {
+test("a version the site's list has already needs no push", async () => {
   const c = checkout(1);
   const before = c.originMain();
   const s = await site(() => ["0.1.3"]);
   try {
-    assert.equal(await showOnSite({ ...quick, root: c.work, site: s.url, log: () => {} }), "the Download page lists it already.");
+    assert.equal(await showOnSite({ ...quick, root: c.work, site: s.url, log: () => {} }), "the site's list has it already.");
     assert.equal(c.originMain(), before);
   } finally { s.close(); }
 });
@@ -91,8 +91,8 @@ test("a version the page lists from an earlier upload is not taken for this one,
   try {
     const out = await showOnSite({ ...quick, sums, root: c.work, site: s.url, log: (m) => said.push(m) });
     assert.equal(c.originMain(), c.head(), "main was pushed");
-    assert.match(said.join("\n"), /Waiting for the Download page to list this upload of 0\.1\.3/);
-    assert.equal(out, "the Download page lists this upload of 0.1.3, and copies older than 0.1.2 are offered it.");
+    assert.match(said.join("\n"), /Waiting for the site's list to have this upload of 0\.1\.3/);
+    assert.equal(out, "the site's list has this upload of 0.1.3, and copies older than 0.1.2 are offered it.");
   } finally { s.close(); }
 });
 
@@ -100,11 +100,11 @@ test("with nothing to push, it says the page still shows the earlier upload, and
   const c = checkout(0);
   const s = await site(() => [{ version: "0.1.3", files: earlier }]);
   try {
-    assert.match(await showOnSite({ ...quick, sums, root: c.work, site: s.url, log: () => {} }), /^the Download page still shows 0\.1\.3 as it was uploaded before, and this checkout has nothing to push, so nothing will start a site build\. Run "knitted release" in EZPIPELINE/);
+    assert.match(await showOnSite({ ...quick, sums, root: c.work, site: s.url, log: () => {} }), /^the site's list still has 0\.1\.3 as it was uploaded before, and this checkout has nothing to push, so nothing will start a site build\. Run "knitted release" in EZPIPELINE/);
   } finally { s.close(); }
   const listed = await site(() => [{ version: "0.1.3", files: now }]);
   try {
-    assert.equal(await showOnSite({ ...quick, sums, root: c.work, site: listed.url, log: () => {} }), "the Download page lists it already.");
+    assert.equal(await showOnSite({ ...quick, sums, root: c.work, site: listed.url, log: () => {} }), "the site's list has it already.");
   } finally { listed.close(); }
 });
 
@@ -137,6 +137,6 @@ test("a site that never lists it is waited for only so long, and the message say
   try {
     const out = await showOnSite({ ...quick, waitMs: 200, root: c.work, site: s.url, log: () => {} });
     assert.equal(c.originMain(), c.head(), "it pushed, then waited");
-    assert.match(out, /does not list 0\.1\.3 yet, \d+ minutes after the push\. Its build is "knitted release" in EZPIPELINE/);
+    assert.match(out, /the site's list does not have 0\.1\.3 yet, \d+ minutes after the push\. Its build is "knitted release" in EZPIPELINE/);
   } finally { s.close(); }
 });

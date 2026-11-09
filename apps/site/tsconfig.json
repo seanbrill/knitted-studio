@@ -17,6 +17,7 @@
     "**/*.ts",
     "**/*.tsx",
     "content/**/*.json",
+    "scripts/releases-lib.mjs",
     ".next/types/**/*.ts"
   ],
   "exclude": [
