@@ -45,6 +45,33 @@ test("Cmd/Ctrl+K opens the palette and navigates", async () => {
   assert.match(await page.locator("h1").textContent(), /Make it yours/);
 });
 
+test("? opens the keyboard shortcuts anywhere, for this computer's keys, and they can be searched", async () => {
+  await page.goto(`${studio.url}/projects`);
+  await page.getByRole("heading", { level: 1 }).waitFor();
+  await page.keyboard.press("?");
+  const keys = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+  await keys.waitFor();
+  const mac = await page.evaluate(() => /Mac/.test(navigator.platform));
+  await keys.getByText(mac ? "On this Mac" : "On this computer").waitFor();
+  const everywhere = keys.getByRole("region", { name: "Everywhere" });
+  assert.deepEqual(await everywhere.locator("kbd").allTextContents(), ["?", "Esc", mac ? "⌘" : "Ctrl", "K"]);
+  await keys.getByLabel("Find a shortcut").fill("tag");
+  assert.deepEqual(await keys.getByRole("region").evaluateAll((r) => r.map((x) => x.getAttribute("aria-label"))), ["In a list"]);
+  await keys.getByText("Add a tag, in Knits and Yarn").waitFor();
+  await keys.getByLabel("Find a shortcut").fill("juggle");
+  await keys.getByText("No shortcut does that.").waitFor();
+  await page.keyboard.press("Escape");
+  await keys.waitFor({ state: "detached" });
+
+  // Typed into a field, a ? is a ?.
+  await page.keyboard.press("Control+k");
+  const find = page.getByPlaceholder(/search pages/i);
+  await find.press("?");
+  assert.equal(await find.inputValue(), "?");
+  assert.equal(await page.getByRole("dialog", { name: "Keyboard shortcuts" }).count(), 0);
+  await page.keyboard.press("Escape");
+});
+
 test("the app works with the network off (nothing is fetched from elsewhere)", async () => {
   const external = [];
   page.on("request", (r) => { if (!r.url().startsWith(studio.url) && !r.url().startsWith("data:") && !r.url().startsWith("blob:")) external.push(r.url()); });

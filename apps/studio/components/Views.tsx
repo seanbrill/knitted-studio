@@ -5,55 +5,73 @@
 // computer, so Yarn can stay a list while Patterns stay a grid.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Input, Popover, Select, Tip, ToggleChip, icons } from "@knitted/ui";
+import { Input, Menu, Popover, Tip, ToggleChip, icons, type MenuItems } from "@knitted/ui";
 
-const { LayoutGrid, List, Tag } = icons;
+const { ArrowDown, ArrowUp, ArrowUpDown, LayoutGrid, List, Tag } = icons;
 
 export type ViewMode = "grid" | "list";
 
-/** One way to sort: how to read the value from a thing, and which way round it starts. */
-export interface SortBy<T> { value: string; label: string; key: (t: T) => string | number; desc?: boolean }
+/**
+ * One way to sort: how to read the value from a thing, which way round it starts (`desc`),
+ * and the words for each way round, like ["newest first", "oldest first"]. Reversing is a
+ * switch of its own, not another way to sort.
+ */
+export interface SortBy<T> { value: string; label: string; key: (t: T) => string | number; desc?: boolean; ways?: [string, string] }
 
 const KEY = (section: string) => `knitted.view.${section}`;
 const collate = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+// Orders kept from before Reverse, read as the order they are the reverse of.
+const OLD: Record<string, [string, boolean]> = { oldest: ["newest", true], "name-desc": ["name", true] };
 
 /** The person's layout and order for one section, kept on this computer. */
 export function useView<T>(section: string, sorts: SortBy<T>[], defaults: { mode?: ViewMode; sort?: string } = {}) {
   const [mode, setModeState] = useState<ViewMode>(defaults.mode ?? "grid");
   const [sort, setSortState] = useState(defaults.sort ?? sorts[0].value);
+  const [reverse, setReverseState] = useState(false);
   useEffect(() => {
     // Read after mount: the server draws the default, so the first paint matches it.
     try {
-      const v = JSON.parse(localStorage.getItem(KEY(section)) ?? "{}") as { mode?: ViewMode; sort?: string };
+      const v = JSON.parse(localStorage.getItem(KEY(section)) ?? "{}") as { mode?: ViewMode; sort?: string; reverse?: boolean };
       // eslint-disable-next-line react-hooks/set-state-in-effect
       if (v.mode === "grid" || v.mode === "list") setModeState(v.mode);
-      if (v.sort && sorts.some((s) => s.value === v.sort)) setSortState(v.sort);
+      const [was, flip] = v.sort && OLD[v.sort] && !sorts.some((s) => s.value === v.sort) ? OLD[v.sort] : [v.sort, false];
+      if (was && sorts.some((s) => s.value === was)) { setSortState(was); setReverseState(!!v.reverse !== flip); }
     } catch { /* nothing kept, or not readable: the defaults */ }
   }, [section]); // eslint-disable-line react-hooks/exhaustive-deps
-  const keep = useCallback((next: { mode?: ViewMode; sort?: string }) => {
+  const keep = useCallback((next: { mode?: ViewMode; sort?: string; reverse?: boolean }) => {
     try { localStorage.setItem(KEY(section), JSON.stringify({ ...JSON.parse(localStorage.getItem(KEY(section)) ?? "{}"), ...next })); } catch { /* private window: for now only */ }
   }, [section]);
   const setMode = useCallback((m: ViewMode) => { setModeState(m); keep({ mode: m }); }, [keep]);
-  const setSort = useCallback((s: string) => { setSortState(s); keep({ sort: s }); }, [keep]);
+  // Another way to sort starts the natural way round.
+  const setSort = useCallback((s: string) => { setSortState(s); setReverseState(false); keep({ sort: s, reverse: false }); }, [keep]);
+  const setReverse = useCallback((r: boolean) => { setReverseState(r); keep({ reverse: r }); }, [keep]);
   const by = sorts.find((s) => s.value === sort) ?? sorts[0];
   const sorted = useCallback((items: T[]) => [...items].sort((a, b) => {
     const x = by.key(a), y = by.key(b);
     const n = typeof x === "number" && typeof y === "number" ? x - y : collate.compare(String(x), String(y));
-    return by.desc ? -n : n;
-  }), [by]);
-  return { mode, setMode, sort: by.value, setSort, sorts, sorted };
+    return (by.desc ? -n : n) * (reverse ? -1 : 1);
+  }), [by, reverse]);
+  /** The way round it is now, in words, like "oldest first". */
+  const way = by.ways ? by.ways[reverse ? 1 : 0] : reverse ? "reversed" : "";
+  return { mode, setMode, sort: by.value, setSort, reverse, setReverse, way, sorts, sorted };
 }
 
 export type View<T> = ReturnType<typeof useView<T>>;
 
-/** The layout toggle and the sort, for a section's toolbar. */
+/** The sort, as a menu with one tick and a way to reverse it, and the layout toggle, for a section's toolbar. */
 export function ViewBar<T>({ view, what }: { view: View<T>; what: string }) {
-  const options = useMemo(() => view.sorts.map((s) => ({ value: s.value, label: s.label })), [view.sorts]);
+  const by = view.sorts.find((s) => s.value === view.sort) ?? view.sorts[0];
+  const items: MenuItems = [
+    ...view.sorts.map((s) => ({ label: s.label, checked: s.value === view.sort, aside: s.ways?.[s.value === view.sort && view.reverse ? 1 : 0], onSelect: () => (s.value === view.sort ? undefined : view.setSort(s.value)) })),
+    "separator",
+    { label: "Reverse the order", icon: <ArrowUpDown size={14} aria-hidden />, onSelect: () => view.setReverse(!view.reverse) },
+  ];
   return (
     <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center", marginLeft: "auto" }}>
-      <div style={{ minWidth: 170 }}>
-        <Select aria-label={`Sort ${what}`} value={view.sort} onValueChange={view.setSort} options={options} />
-      </div>
+      <Menu label="Sort by" items={items} trigger={
+        <button type="button" className="btn btn-secondary sort-btn" aria-label={`Sort ${what}: ${by.label}${view.way ? `, ${view.way}` : ""}`}>
+          {by.label}{view.reverse ? <ArrowUp size={14} aria-hidden /> : <ArrowDown size={14} aria-hidden />}
+        </button>} />
       <div className="segmented" role="radiogroup" aria-label={`Show ${what} as`}>
         <Tip text="A grid of pictures"><button type="button" role="radio" aria-checked={view.mode === "grid"} aria-label="Grid" onClick={() => view.setMode("grid")}><LayoutGrid size={15} aria-hidden /></button></Tip>
         <Tip text="A list, with more about each"><button type="button" role="radio" aria-checked={view.mode === "list"} aria-label="List" onClick={() => view.setMode("list")}><List size={15} aria-hidden /></button></Tip>
@@ -62,14 +80,12 @@ export function ViewBar<T>({ view, what }: { view: View<T>; what: string }) {
   );
 }
 
-/** The ways most sections sort: newest, oldest, by name, and the last changed. */
+/** The ways most sections sort: the last changed, when made, and by name. */
 export function commonSorts<T extends { name?: string; label?: string; createdAt: string; updatedAt?: string }>(): SortBy<T>[] {
   return [
-    { value: "updated", label: "Last changed", key: (t) => t.updatedAt ?? t.createdAt, desc: true },
-    { value: "newest", label: "Newest first", key: (t) => t.createdAt, desc: true },
-    { value: "oldest", label: "Oldest first", key: (t) => t.createdAt },
-    { value: "name", label: "Name, A to Z", key: (t) => t.name ?? t.label ?? "" },
-    { value: "name-desc", label: "Name, Z to A", key: (t) => t.name ?? t.label ?? "", desc: true },
+    { value: "updated", label: "Last changed", key: (t) => t.updatedAt ?? t.createdAt, desc: true, ways: ["newest first", "oldest first"] },
+    { value: "newest", label: "Made", key: (t) => t.createdAt, desc: true, ways: ["newest first", "oldest first"] },
+    { value: "name", label: "Name", key: (t) => t.name ?? t.label ?? "", ways: ["A to Z", "Z to A"] },
   ];
 }
 

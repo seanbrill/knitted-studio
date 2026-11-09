@@ -153,6 +153,56 @@ test("a modifier click picks knits without opening them, and the picked ones are
   await bar.waitFor({ state: "detached" });
 });
 
+test("keys act on the knit in focus: F favourites it, T tags it, M moves it, Delete asks first; typed in a field they are only letters", async () => {
+  await page.goto(`${studio.url}/projects/${projectId}/knits`);
+  const first = page.getByRole("button", { name: /^Open / }).first();
+  await first.waitFor();
+  const id = await first.evaluate((el) => el.closest("[data-thing]")?.getAttribute("data-thing"));
+  assert.ok(id, "the card says which knit it is");
+  const label = (await j("GET", `/api/projects/${projectId}/knits`)).body.find((k) => k.id === id).label;
+  const fav = (on) => serverHas(studio, `/api/projects/${projectId}/knits`, (k) => !!k.find((x) => x.id === id).favorite === on);
+
+  // The menu says which key does what.
+  await page.locator(`[data-thing="${id}"]`).hover();
+  await page.getByRole("button", { name: `Actions for ${label}` }).click();
+  assert.match(await page.getByRole("menuitem", { name: /^Move to folder/ }).innerText(), /M$/);
+  await page.keyboard.press("Escape");
+  await page.getByRole("menu").waitFor({ state: "detached" });
+
+  await first.focus();
+  await page.keyboard.press("f");
+  await fav(true);
+  await page.keyboard.press("f");
+  await fav(false);
+
+  await first.focus();
+  await page.keyboard.press("t");
+  await page.getByRole("dialog", { name: `Tag ${label}` }).waitFor();
+  await page.keyboard.press("Escape");
+  await page.getByRole("dialog").waitFor({ state: "detached" });
+
+  await first.focus();
+  await page.keyboard.press("m");
+  await page.getByRole("dialog", { name: `Move ${label}` }).waitFor();
+  await page.keyboard.press("Escape");
+  await page.getByRole("dialog").waitFor({ state: "detached" });
+
+  await first.focus();
+  await page.keyboard.press("Delete");
+  await page.getByRole("dialog", { name: `Delete ${label}?` }).waitFor();
+  await page.keyboard.press("Escape");
+  await page.getByRole("dialog").waitFor({ state: "detached" });
+  assert.ok((await j("GET", `/api/projects/${projectId}/knits`)).body.some((k) => k.id === id), "Esc deleted nothing");
+
+  // In the search field an f is an f.
+  await page.getByPlaceholder("Search knits").fill("");
+  await page.getByPlaceholder("Search knits").press("f");
+  assert.equal(await page.getByPlaceholder("Search knits").inputValue(), "f");
+  await page.waitForTimeout(300);
+  assert.equal(!!(await j("GET", `/api/projects/${projectId}/knits`)).body.find((x) => x.id === id).favorite, false);
+  await page.getByPlaceholder("Search knits").fill("");
+});
+
 test("the gallery opens a knit, offers download and delete, and delete removes the file", async () => {
   await page.goto(`${studio.url}/projects/${projectId}/knits`);
   await page.getByRole("button", { name: /^Open Launch story/ }).first().click();

@@ -80,6 +80,36 @@ export function SelectionBar({ sel, total, children }: { sel: Selection<unknown>
   );
 }
 
+type ListAct = "move" | "tag" | "favourite" | "rename" | "delete";
+const LIST_KEYS: Record<string, ListAct> = { m: "move", t: "tag", f: "favourite", r: "rename", Delete: "delete", Backspace: "delete" };
+
+/**
+ * The keys a list answers to: M moves, T tags, F favourites, R renames and Delete deletes,
+ * on the thing with the focus (each one's element carries data-thing with its id) or, when
+ * that is one of several picked or nothing has the focus, on everything picked. Each list
+ * gives the ones it has; R works on one only.
+ */
+export function useListKeys<T extends { id: string }>(items: T[], sel: Selection<T>, on: Partial<Record<ListAct, (them: T[]) => void>>) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.defaultPrevented) return;
+      const act = LIST_KEYS[e.key];
+      const fn = act && on[act];
+      if (!fn) return;
+      const el = document.activeElement as HTMLElement | null;
+      if (el && el !== document.body && el.closest("input, textarea, select, [contenteditable=''], [contenteditable='true'], [role=textbox]")) return;
+      if (document.querySelector("[role=dialog], [role=menu]")) return;
+      const id = el?.closest<HTMLElement>("[data-thing]")?.dataset.thing;
+      const one = id ? items.find((x) => x.id === id) : undefined;
+      const them = one ? (sel.has(one.id) && sel.count > 1 ? sel.picked : [one]) : sel.picked;
+      if (!them.length || (act === "rename" && them.length !== 1)) return;
+      e.preventDefault(); fn(them);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [items, sel, on]);
+}
+
 /** "Tagged launch and winter", "Took hero off", or both. */
 export const tagWords = (added: string[], removed: string[]) => {
   const list = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}` : xs[0] ?? "");

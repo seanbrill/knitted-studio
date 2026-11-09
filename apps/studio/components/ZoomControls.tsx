@@ -4,6 +4,7 @@
 // of zooms with their keys, and in.
 
 import { IconButton, Menu, icons } from "@knitted/ui";
+import { keyText } from "./Shortcuts";
 
 const { ZoomIn, ZoomOut, ChevronDown, Hand } = icons;
 
@@ -23,7 +24,7 @@ export function ZoomControls({ zoom, scale, onZoom, onStep, onSelection, selecti
   return (
     <>
       <span className="editor-wide"><IconButton label="Hand" shortcut="H, or hold Space" hint="Drag anywhere to move around. Scrolling and the middle button move it too." pressed={hand} onClick={() => onHand(!hand)}><Hand size={16} /></IconButton></span>
-      <span className="editor-wide"><IconButton label="Zoom out" shortcut="Ctrl+-" hint="Or pinch, or hold Ctrl and scroll." onClick={() => onStep(-1)}><ZoomOut size={16} /></IconButton></span>
+      <span className="editor-wide"><IconButton label="Zoom out" shortcut={keyText(["mod", "-"])} hint="Or pinch, or hold Ctrl and scroll." onClick={() => onStep(-1)}><ZoomOut size={16} /></IconButton></span>
       <Menu align="center" trigger={
         <button type="button" className="chip chip-button" aria-label={`Zoom: ${zoom === "fit" ? `fit to screen, ${pct}` : pct}`} style={{ minWidth: 64, justifyContent: "center", gap: 2 }}>
           {zoom === "fit" ? "Fit" : pct}<ChevronDown size={12} aria-hidden />
@@ -39,7 +40,7 @@ export function ZoomControls({ zoom, scale, onZoom, onStep, onSelection, selecti
         { label: "100%", shortcut: "Shift 0", onSelect: () => onZoom(1) },
         { label: "200%", onSelect: () => onZoom(2) },
       ]} />
-      <span className="editor-wide"><IconButton label="Zoom in" shortcut="Ctrl+=" hint="Or pinch, or hold Ctrl and scroll." onClick={() => onStep(1)}><ZoomIn size={16} /></IconButton></span>
+      <span className="editor-wide"><IconButton label="Zoom in" shortcut={keyText(["mod", "+"])} hint="Or pinch, or hold Ctrl and scroll." onClick={() => onStep(1)}><ZoomIn size={16} /></IconButton></span>
     </>
   );
 }

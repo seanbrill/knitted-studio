@@ -12,17 +12,17 @@ import { FolderCrumbs, FolderDialogs, FolderList, NewFolderButton, useFolders } 
 import { timeAgo, useLive } from "@/lib/hooks";
 import { ViewBar, layout, useView, type SortBy } from "./Views";
 import { AskModelDialog, aboutPattern } from "./AskModel";
-import { PickBox, SelectionBar, picking, useSelection } from "./Selection";
+import { PickBox, SelectionBar, picking, useListKeys, useSelection } from "./Selection";
+import { keyText } from "./Shortcuts";
 import { leadOf, useMarks } from "@/lib/agent";
 import { ModelMark } from "./ModelMark";
 import { SizeTiles, sizeReady } from "./SizeTiles";
 
 const PATTERN_SORTS: SortBy<Pattern>[] = [
-  { value: "updated", label: "Last changed", key: (p) => p.updatedAt, desc: true },
-  { value: "name", label: "Name, A to Z", key: (p) => p.name },
-  { value: "name-desc", label: "Name, Z to A", key: (p) => p.name, desc: true },
-  { value: "size", label: "Size", key: (p) => `${p.size.name} ${p.name}` },
-  { value: "tall", label: "Tallest first", key: (p) => p.size.h / p.size.w, desc: true },
+  { value: "updated", label: "Last changed", key: (p) => p.updatedAt, desc: true, ways: ["newest first", "oldest first"] },
+  { value: "name", label: "Name", key: (p) => p.name, ways: ["A to Z", "Z to A"] },
+  { value: "size", label: "Size", key: (p) => `${p.size.name} ${p.name}`, ways: ["A to Z", "Z to A"] },
+  { value: "tall", label: "Shape", key: (p) => p.size.h / p.size.w, desc: true, ways: ["tallest first", "widest first"] },
 ];
 
 const { Plus, MoreHorizontal, Pencil, Copy, Trash2, FolderOpen, FolderInput, Sparkles } = icons;
@@ -107,6 +107,10 @@ export function PatternsView({ projectId }: { projectId: string }) {
   const [bulkDelete, setBulkDelete] = useState(false);
   // A click with Shift, Ctrl or Cmd held picks the pattern instead of opening it.
   const pick = (p: Pattern) => (e: React.MouseEvent) => { if (picking(e)) { e.preventDefault(); sel.toggle(p.id, e.shiftKey); } };
+  // What the keys and the menus do, on one pattern or on the ones picked.
+  const moveThem = (them: Pattern[]) => kit.askMove(them, them.length > 1 ? `${them.length} patterns` : them[0]!.name);
+  const deleteThem = (them: Pattern[]) => (them.length > 1 ? setBulkDelete(true) : setDeleting(them[0]!));
+  useListKeys(here, sel, { move: moveThem, rename: (t) => setRenaming(t[0]!), delete: deleteThem });
   // One order for every menu: open and what it is for, then rename and file it, then delete. On
   // one of several picked, what can act on all of them does, and says so.
   const menu = (p: Pattern): MenuItems => {
@@ -117,12 +121,12 @@ export function PatternsView({ projectId }: { projectId: string }) {
       ...(many ? [] : [{ label: "Ask your model", icon: <Sparkles size={14} />, onSelect: () => setAsking(p) }]),
       "separator" as const,
       ...(many ? [] : [
-        { label: "Rename", icon: <Pencil size={14} />, onSelect: () => setRenaming(p) },
+        { label: "Rename", icon: <Pencil size={14} />, shortcut: "R", onSelect: () => setRenaming(p) },
         { label: "Duplicate", icon: <Copy size={14} />, onSelect: () => act(() => api.patterns.duplicate(p.id), "Duplicated") },
       ]),
-      { label: many ? `Move ${n} to folder` : "Move to folder", icon: <FolderInput size={14} />, onSelect: () => kit.askMove(many ?? [p], many ? `${n} patterns` : p.name) },
+      { label: many ? `Move ${n} to folder` : "Move to folder", icon: <FolderInput size={14} />, shortcut: "M", onSelect: () => moveThem(many ?? [p]) },
       "separator" as const,
-      { label: many ? `Delete ${n} patterns` : "Delete", icon: <Trash2 size={14} />, danger: true, onSelect: () => (many ? setBulkDelete(true) : setDeleting(p)) },
+      { label: many ? `Delete ${n} patterns` : "Delete", icon: <Trash2 size={14} />, danger: true, shortcut: keyText(["Delete"]), onSelect: () => deleteThem(many ?? [p]) },
     ];
   };
 
@@ -160,7 +164,7 @@ export function PatternsView({ projectId }: { projectId: string }) {
           <div className="arrive-list" style={layout(view.mode, 190)}>
             {here.map((p) => view.mode === "list" ? (
               <ContextMenu key={p.id} items={menu(p)}>
-                <div className="pickable" data-selected={sel.has(p.id)}>
+                <div className="pickable" data-thing={p.id} data-selected={sel.has(p.id)}>
                 <PickBox sel={sel} id={p.id} name={p.name} className="pick-box" />
                 <div className="card card-link" draggable onDragStart={kit.dragThings(sel.has(p.id) ? sel.picked.map((x) => x.id) : [p.id])} style={{ padding: "6px var(--space-3) 6px 6px", position: "relative", display: "grid", gridTemplateColumns: "56px minmax(0, 1fr) auto auto", gap: "var(--space-3)", alignItems: "center" }}>
                   <ModelMark mark={marks.get(p.id)} lead={lead === p.id} />
@@ -179,7 +183,7 @@ export function PatternsView({ projectId }: { projectId: string }) {
               </ContextMenu>
             ) : (
               <ContextMenu key={p.id} items={menu(p)}>
-                <div className="pickable" data-selected={sel.has(p.id)}>
+                <div className="pickable" data-thing={p.id} data-selected={sel.has(p.id)}>
                 <PickBox sel={sel} id={p.id} name={p.name} className="pick-box" />
                 <div className="card card-link" draggable onDragStart={kit.dragThings(sel.has(p.id) ? sel.picked.map((x) => x.id) : [p.id])} style={{ padding: "var(--space-3)", position: "relative" }}>
                   <ModelMark mark={marks.get(p.id)} lead={lead === p.id} />

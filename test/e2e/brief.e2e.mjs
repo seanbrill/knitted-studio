@@ -130,6 +130,29 @@ test("each section can be a grid or a list, sorted, and remembers which", async 
   await page.getByRole("tooltip").filter({ hasText: /Your files to put in patterns/ }).waitFor();
 });
 
+test("Sort says which way it runs, Reverse turns it round, and both are kept", async () => {
+  const projectId = (await j("POST", "/api/projects", { name: "Sorting", starter: "social" })).body.id;
+  await page.goto(`${studio.url}/projects/${projectId}`);
+  const names = async () => (await page.getByRole("link", { name: /^Open / }).evaluateAll((a) => a.map((x) => x.getAttribute("aria-label").replace(/^Open /, ""))));
+  await page.getByRole("link", { name: /^Open / }).first().waitFor();
+  await page.getByRole("button", { name: "Sort patterns: Last changed, newest first" }).click();
+  assert.equal(await page.getByRole("menuitemradio", { name: /^Last changed/ }).getAttribute("aria-checked"), "true");
+  await page.getByRole("menuitemradio", { name: /^Name/ }).click();
+  await page.getByRole("button", { name: "Sort patterns: Name, A to Z" }).waitFor();
+  const az = await names();
+  assert.deepEqual(az, [...az].sort((a, b) => a.localeCompare(b)));
+  await page.getByRole("button", { name: "Sort patterns: Name, A to Z" }).click();
+  await page.getByRole("menuitem", { name: "Reverse the order" }).click();
+  await page.getByRole("button", { name: "Sort patterns: Name, Z to A" }).waitFor();
+  assert.deepEqual(await names(), [...az].reverse());
+  await page.reload();
+  await page.getByRole("button", { name: "Sort patterns: Name, Z to A" }).waitFor();
+  // Another order starts the right way round.
+  await page.getByRole("button", { name: "Sort patterns: Name, Z to A" }).click();
+  await page.getByRole("menuitemradio", { name: /^Shape/ }).click();
+  await page.getByRole("button", { name: "Sort patterns: Shape, tallest first" }).waitFor();
+});
+
 test("knits under way are one panel: the one knitting with a bar that moves, the rest waiting under it", async () => {
   const projectId = (await j("POST", "/api/projects", { name: "Queue", starter: "social" })).body.id;
   const at = new Date().toISOString();

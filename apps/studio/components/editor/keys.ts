@@ -65,12 +65,3 @@ export function useEditorKeys({ onShortcuts, onFit, onPanels }: { onShortcuts: (
     return () => window.removeEventListener("keydown", onKey);
   }, [onShortcuts, onFit, onPanels]);
 }
-
-export const SHORTCUTS: [string, string][] = [
-  ["Undo / redo", "Ctrl or Cmd + Z / Shift + Z"], ["Select all", "Ctrl or Cmd + A"], ["Duplicate", "Ctrl or Cmd + D"], ["Copy / paste", "Ctrl or Cmd + C / V"],
-  ["Delete", "Delete or Backspace"], ["Nudge 1px / 10px", "Arrow keys / Shift + arrows"], ["Bring forward / back", "Ctrl or Cmd + ] / ["], ["To front / back", "Ctrl or Cmd + Shift + ] / ["],
-  ["Edit text", "Double-click"], ["Add to selection", "Shift + click"], ["Keep proportions", "Shift while resizing"], ["Resize from centre", "Alt while resizing"], ["Zoom in / out", "Ctrl or Cmd + plus / minus, or plus / minus"],
-  ["Fit / to selection / 100%", "Shift + 1 / 2 / 0, or Ctrl or Cmd + 0 to fit"], ["Zoom where the pointer is", "Pinch, or Ctrl or Cmd + scroll"],
-  ["Move around the canvas", "Scroll, hold Space and drag, or drag the space around it"], ["The hand: drag anywhere to move around", "H"], ["Fit, from the space around it", "Double-click"],
-  ["Hide or show the side panels", "Ctrl or Cmd + \\"], ["This list", "Ctrl or Cmd + /"],
-];

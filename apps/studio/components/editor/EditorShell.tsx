@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, subscribeChanges } from "@knitted/core/client";
 import type { Part, Pattern, Swatch, Yarn } from "@knitted/core";
-import { Dialog, IconButton, Kbd, Tooltip, icons, useToast } from "@knitted/ui";
+import { IconButton, Tooltip, icons, useToast } from "@knitted/ui";
 import { manifestFamilies } from "@/lib/editor/fonts";
 import { useLive } from "@/lib/hooks";
 import { namesOf, useEditor } from "@/lib/editor/store";
@@ -13,7 +13,8 @@ import { FillForm } from "./FillForm";
 import { HistoryDrawer } from "./HistoryDrawer";
 import { KnitDialog } from "./KnitDialog";
 import { Inspector } from "./Inspector";
-import { SHORTCUTS, useEditorKeys } from "./keys";
+import { useEditorKeys } from "./keys";
+import { ShortcutsDialog, useQuestionMark } from "../Shortcuts";
 import { PatternsPanel, ShapesPanel, SwatchPanel, TextPanel, YarnPanel, type PanelPattern } from "./Panels";
 import { PartsPanel, SavePartDialog } from "./PartsUI";
 import { VoicePanel } from "./VoicePanel";
@@ -103,7 +104,9 @@ export function EditorShell({ projectId, pattern, swatch, yarn, parts, patterns,
   const pick = (id: Tool) => { if (panel && tool === id) showPanel(false); else { setTool(id); showPanel(true); } };
   const toolLabel = TOOLS.find((t) => t.id === tool)!.label;
 
-  useEditorKeys({ onShortcuts: () => setKeys(true), onFit: () => st.setZoom("fit"), onPanels: () => { const open = !panel && !inspector; showPanel(open); showInspector(open); } });
+  const showKeys = useCallback(() => setKeys(true), []);
+  useQuestionMark(showKeys);
+  useEditorKeys({ onShortcuts: showKeys, onFit: () => st.setZoom("fit"), onPanels: () => { const open = !panel && !inspector; showPanel(open); showInspector(open); } });
 
   // Surface notices (refusals, conflicts) as toasts.
   const noticeId = st.notice?.id;
@@ -170,11 +173,7 @@ export function EditorShell({ projectId, pattern, swatch, yarn, parts, patterns,
       <HistoryDrawer open={history} onOpenChange={setHistory} />
       {!isPart && <SavePartDialog open={savePart} onOpenChange={setSavePart} projectId={projectId} />}
       {!isPart && <KnitDialog open={knit} onOpenChange={setKnit} pattern={st.pattern} projectId={projectId} />}
-      <Dialog open={keys} onOpenChange={setKeys} title="Keyboard shortcuts" wide>
-        <dl style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "8px 24px", margin: 0 }}>
-          {SHORTCUTS.map(([a, b]) => <div key={a} style={{ display: "contents" }}><dt className="body-sm">{a}</dt><dd style={{ margin: 0 }}><Kbd>{b}</Kbd></dd></div>)}
-        </dl>
-      </Dialog>
+      <ShortcutsDialog open={keys} onOpenChange={setKeys} />
     </div>
   );
 }

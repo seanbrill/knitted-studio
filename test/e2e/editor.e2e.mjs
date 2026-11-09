@@ -370,6 +370,54 @@ test("with nothing selected, the inspector checks it before it knits, and a prob
   await serverHas(studio, `/api/patterns/${patternId}`, (p) => p.stitches.find((s) => s.slot === "headline").content === was);
 });
 
+test("Custom size: any width and height, the shape kept on request, sizes worth starting from, and undo puts it back", async () => {
+  await openEditor();
+  const was = (await getPattern()).size;
+  await page.getByRole("combobox", { name: "Size" }).click();
+  await page.getByRole("option", { name: /^Custom/ }).click();
+  const dlg = page.getByRole("dialog", { name: "Custom size" });
+  await dlg.getByText(new RegExp(`, from Story ${was.w} × ${was.h}$`)).waitFor();
+  assert.equal(await dlg.getByRole("button", { name: `Make it ${was.w} × ${was.h}` }).isDisabled(), true, "the size it is already");
+
+  // Linked, the height follows the width in the shape it has.
+  await dlg.getByRole("button", { name: "Keep the shape" }).click();
+  assert.equal(await dlg.getByRole("button", { name: "Keep the shape" }).getAttribute("aria-pressed"), "true");
+  await dlg.getByLabel("Width").fill(String(was.w / 2));
+  assert.equal(await dlg.getByLabel("Height").inputValue(), String(was.h / 2));
+  await dlg.getByRole("button", { name: "Keep the shape" }).click();
+
+  await dlg.getByLabel("Width").fill("9000");
+  await dlg.getByRole("alert").filter({ hasText: "Use pixels between 16 and 8000." }).waitFor();
+  assert.equal(await dlg.getByRole("button", { name: "Make it this size" }).isDisabled(), true);
+
+  await dlg.getByRole("button", { name: /^Link preview/ }).click();
+  assert.deepEqual([await dlg.getByLabel("Width").inputValue(), await dlg.getByLabel("Height").inputValue()], ["1200", "628"]);
+  await dlg.getByText(/^1\.91:1, the shape of a link preview on LinkedIn, X and Facebook\./).waitFor();
+  await dlg.getByRole("figure", { name: /The new size, 1200 by 628, over the old one/ }).waitFor();
+  await dlg.getByRole("button", { name: "Make it 1200 × 628" }).click();
+  await serverHas(studio, `/api/patterns/${patternId}`, (p) => p.size.w === 1200 && p.size.h === 628 && p.size.name === "Custom");
+  await page.getByRole("combobox", { name: "Size" }).getByText("1200x628").waitFor();
+
+  await page.keyboard.press("Control+z");
+  await serverHas(studio, `/api/patterns/${patternId}`, (p) => p.size.w === was.w && p.size.h === was.h);
+});
+
+test("the editor's keys are in the shortcuts list, from ? or the menu's key, and its buttons show this computer's keys", async () => {
+  await openEditor();
+  await page.keyboard.press("?");
+  const keys = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+  await keys.getByRole("region", { name: "The editor" }).getByText("Duplicate").waitFor();
+  await page.keyboard.press("Escape");
+  await keys.waitFor({ state: "detached" });
+  await page.keyboard.press("Control+/");
+  await keys.waitFor();
+  await page.keyboard.press("Escape");
+  await keys.waitFor({ state: "detached" });
+  const mac = await page.evaluate(() => /Mac/.test(navigator.platform));
+  await page.getByRole("button", { name: "Zoom in" }).hover();
+  await page.getByRole("tooltip").getByText(mac ? "⌘+" : "Ctrl++").waitFor();
+});
+
 for (const theme of ["day", "night"]) {
   test(`no serious accessibility violations in the editor in ${theme}`, async () => {
     await openEditor();

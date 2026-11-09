@@ -4,12 +4,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api } from "@knitted/core/client";
-import { SIZES, type Size } from "@knitted/core";
-import { Button, Dialog, Field, IconButton, Input, Menu, SegmentedControl, Select, Tip, icons } from "@knitted/ui";
+import { SIZES } from "@knitted/core";
+import { Button, IconButton, Menu, SegmentedControl, Select, Tip, icons } from "@knitted/ui";
 import { useEditor, type EditMode } from "@/lib/editor/store";
 import { useLive } from "@/lib/hooks";
 import { ModelPresence } from "../ModelPresence";
 import { ZoomControls } from "../ZoomControls";
+import { keyText } from "../Shortcuts";
+import { CustomSizeDialog } from "../SizeTiles";
 
 const { Undo2, Redo2, Clock, Command, Film, ArrowLeft, ChevronRight, MoreHorizontal, Palette } = icons as unknown as Record<string, React.ComponentType<{ size?: number }>>;
 const Clk = Clock ?? Command;
@@ -67,8 +69,8 @@ export function TopBar({ projectId, timeline, onTimeline, onHistory, onShortcuts
         </Tip>
       </div>
       <div className="editor-group">
-        <IconButton label="Undo" shortcut="Ctrl+Z" hint="Takes back your last change. A model's changes are left as they are." disabled={!undoStack.length} onClick={st.undo}><Undo2 size={16} /></IconButton>
-        <IconButton label="Redo" shortcut="Shift+Ctrl+Z" disabled={!redoStack.length} onClick={st.redo}><Redo2 size={16} /></IconButton>
+        <IconButton label="Undo" shortcut={keyText(["mod", "Z"])} hint="Takes back your last change. A model's changes are left as they are." disabled={!undoStack.length} onClick={st.undo}><Undo2 size={16} /></IconButton>
+        <IconButton label="Redo" shortcut={keyText(["shift", "mod", "Z"])} disabled={!redoStack.length} onClick={st.redo}><Redo2 size={16} /></IconButton>
       </div>
       <div className="editor-group">
         <ZoomControls zoom={st.zoom} scale={st.zoom === "fit" ? st.fitScale : st.zoom} onZoom={st.setZoom} onStep={st.zoomStep}
@@ -82,28 +84,15 @@ export function TopBar({ projectId, timeline, onTimeline, onHistory, onShortcuts
           <span aria-hidden className="editor-swatch-dots">{swatch.colors.slice(0, 3).map((c, i) => <span key={i} style={{ background: c.hex }} />)}</span><MoreHorizontal size={14} />
         </button>} items={[
           { label: `Swatch: ${swatch.name}`, icon: <Palette size={14} />, onSelect: () => router.push(`${base}/swatch`) },
-          { label: "Keyboard shortcuts", icon: <Command size={14} />, shortcut: "Ctrl+/", onSelect: onShortcuts },
+          { label: "Keyboard shortcuts", icon: <Command size={14} />, shortcut: keyText(["mod", "/"]), onSelect: onShortcuts },
         ]} />
       </div>
       {isPart
         ? <Tip text="Every change is already saved to the part. Back to Parts."><Link href={back} className="btn btn-primary">Done</Link></Tip>
         : <Button variant="primary" tip="Makes the finished files from this pattern, as pictures or a video." onClick={onKnit} disabled={knitting}>{knitting ? "Knitting..." : "Knit"}</Button>}
 
-      <CustomSize open={custom} onOpenChange={setCustom} current={pattern.size} onApply={(sz) => st.dispatch({ type: "setSize", size: sz }, { label: "Resize" })} />
+      <CustomSizeDialog open={custom} onOpenChange={setCustom} current={pattern.size} what={pattern.name} onApply={(sz) => st.dispatch({ type: "setSize", size: sz }, { label: "Resize" })} />
     </header>
   );
 }
 
-function CustomSize({ open, onOpenChange, current, onApply }: { open: boolean; onOpenChange: (o: boolean) => void; current: Size; onApply: (s: Size) => void }) {
-  const [w, setW] = useState(String(current.w)); const [h, setH] = useState(String(current.h));
-  const bad = !(Number(w) >= 16 && Number(w) <= 8000 && Number(h) >= 16 && Number(h) <= 8000);
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange} title="Custom size" description="Pixels, between 16 and 8000."
-      actions={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" disabled={bad} onClick={() => { onApply({ name: "Custom", w: Math.round(Number(w)), h: Math.round(Number(h)) }); onOpenChange(false); }}>Apply</Button></>}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <Field label="Width" htmlFor="cs-w"><Input id="cs-w" mono value={w} onChange={(e) => setW(e.target.value)} /></Field>
-        <Field label="Height" htmlFor="cs-h" error={bad ? "Use a size between 16 and 8000." : undefined}><Input id="cs-h" mono value={h} onChange={(e) => setH(e.target.value)} /></Field>
-      </div>
-    </Dialog>
-  );
-}

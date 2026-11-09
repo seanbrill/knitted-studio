@@ -10,16 +10,16 @@ import { KnitQueue } from "./KnitQueue";
 import { KnitView, formatName, saveHref } from "./KnitView";
 import { AskModelDialog, aboutKnit } from "./AskModel";
 import { TagFilter, ViewBar, layout, useView, type SortBy } from "./Views";
-import { PickBox, SelectionBar, TagDialog, picking, tagWords, useSelection } from "./Selection";
+import { PickBox, SelectionBar, TagDialog, picking, tagWords, useListKeys, useSelection } from "./Selection";
+import { keyText } from "./Shortcuts";
 import { PostDialog } from "./PostDialog";
 import { ModelMark } from "./ModelMark";
 import { leadOf, useMarks } from "@/lib/agent";
 
 const KNIT_SORTS: SortBy<KnitRecord>[] = [
-  { value: "newest", label: "Newest first", key: (k) => k.createdAt, desc: true },
-  { value: "oldest", label: "Oldest first", key: (k) => k.createdAt },
-  { value: "name", label: "Name, A to Z", key: (k) => k.label },
-  { value: "size", label: "Biggest first", key: (k) => k.bytes, desc: true },
+  { value: "newest", label: "Made", key: (k) => k.createdAt, desc: true, ways: ["newest first", "oldest first"] },
+  { value: "name", label: "Name", key: (k) => k.label, ways: ["A to Z", "Z to A"] },
+  { value: "size", label: "Size on disk", key: (k) => k.bytes, desc: true, ways: ["biggest first", "smallest first"] },
 ];
 
 const { Download, Trash2, AlertTriangle, FolderInput, MessageSquare, Check, Send, Star, Copy, Sparkles, Maximize2, MoreHorizontal, Tag } = icons;
@@ -105,7 +105,7 @@ export function KnitsView({ projectId }: { projectId: string }) {
   const filtering = !!q.trim() || format !== "all" || kind !== "all" || size !== "all" || !!tag || (onlyNew && unseen > 0) || onlyFavorites || every;
   const here = view.sorted((knits ?? []).filter((k) => (filtering ? isInside(k.folder, kit.here) && k.label.toLowerCase().includes(q.trim().toLowerCase()) && (format === "all" || k.format === format) && (kind === "all" || k.kind === kind) && (size === "all" || (sizeNamed(k.width, k.height) ?? "Other") === size) && (!tag || k.tags.includes(tag)) && (!onlyNew || !unseen || !k.seenAt) && (!onlyFavorites || k.favorite) : k.folder === kit.here)));
   // Batches are kept together only newest first: sorted another way, each knit stands on its own.
-  const batched = view.sort === "newest";
+  const batched = view.sort === "newest" && !view.reverse;
   // A batch of several is a set under its own header. The knits between batches share one grid, keyed by the
   // batch above them, so a new knit at the top leaves the rest of the grid as it is.
   const inBatch = new Map<string, number>();
@@ -130,6 +130,19 @@ export function KnitsView({ projectId }: { projectId: string }) {
   const [posting, setPosting] = useState<KnitRecord[] | null>(null);
   const pickedNew = sel.picked.filter((k) => !k.seenAt);
   const pickedAllFavorites = sel.picked.length > 0 && sel.picked.every((k) => k.favorite);
+  // What the keys and the menus do, on one knit or on the ones picked.
+  const act = {
+    move: (them: KnitRecord[]) => kit.askMove(them, them.length > 1 ? `${them.length} knits` : them[0]!.label),
+    tag: (them: KnitRecord[]) => setTagFor(them),
+    favourite: async (them: KnitRecord[]) => {
+      const on = !them.every((x) => x.favorite);
+      for (const x of them) await api.knit.favorite(x.id, on);
+      await refresh();
+      toast(them.length > 1 ? (on ? `Added ${them.length} to your favourites` : `Took ${them.length} off your favourites`) : on ? `${them[0]!.label} is a favourite` : `Took ${them[0]!.label} off your favourites`);
+    },
+    delete: (them: KnitRecord[]) => setDeleteFor(them),
+  };
+  useListKeys(here, sel, { move: act.move, tag: act.tag, favourite: (t) => void act.favourite(t), delete: act.delete });
   /**
    * A knit's menu, the same from its ... button and a right-click. On one of several picked, it
    * acts on all of them and says so; what works on one only, like Open, acts on the one clicked.
@@ -149,13 +162,12 @@ export function KnitsView({ projectId }: { projectId: string }) {
         { label: "Ask your model", icon: <Sparkles size={14} aria-hidden />, onSelect: () => setAsking(k) },
       ]),
       "separator",
-      { label: many ? `Move ${n} to folder` : "Move to folder", icon: <FolderInput size={14} aria-hidden />, onSelect: () => kit.askMove(them, many ? `${n} knits` : k.label) },
-      { label: many ? `Tag ${n}` : "Add a tag", icon: <Tag size={14} aria-hidden />, onSelect: () => setTagFor(them) },
-      { label: allFav ? (many ? `Take ${n} off favourites` : "Take off favourites") : (many ? `Add ${n} to favourites` : "Favourite"), icon: <Star size={14} aria-hidden />,
-        onSelect: async () => { for (const x of them) await api.knit.favorite(x.id, !allFav); await refresh(); if (many) toast(allFav ? `Took ${n} off your favourites` : `Added ${n} to your favourites`); } },
+      { label: many ? `Move ${n} to folder` : "Move to folder", icon: <FolderInput size={14} aria-hidden />, shortcut: "M", onSelect: () => act.move(them) },
+      { label: many ? `Tag ${n}` : "Add a tag", icon: <Tag size={14} aria-hidden />, shortcut: "T", onSelect: () => act.tag(them) },
+      { label: allFav ? (many ? `Take ${n} off favourites` : "Take off favourites") : (many ? `Add ${n} to favourites` : "Favourite"), icon: <Star size={14} aria-hidden />, shortcut: "F", onSelect: () => act.favourite(them) },
       { label: many ? `Download ${n}, as a zip` : "Download", icon: <Download size={14} aria-hidden />, onSelect: () => saveHref(many ? `/api/projects/${projectId}/knits/zip?ids=${them.map((x) => x.id).join(",")}` : knitFileUrl(k, true)) },
       "separator",
-      { label: every ? (many ? `Delete ${n} files` : "Delete this file") : many ? `Delete ${n} knits` : deep ? "Delete, every version" : "Delete", icon: <Trash2 size={14} aria-hidden />, danger: true, onSelect: () => setDeleteFor(them) },
+      { label: every ? (many ? `Delete ${n} files` : "Delete this file") : many ? `Delete ${n} knits` : deep ? "Delete, every version" : "Delete", icon: <Trash2 size={14} aria-hidden />, danger: true, shortcut: keyText(["Delete"]), onSelect: () => act.delete(them) },
     ];
   };
   const more = (k: KnitRecord, inRow?: boolean) => <Menu trigger={<IconButton label={`Actions for ${k.label}`} className={`card-more${inRow ? " in-row" : ""}`}><MoreHorizontal size={16} /></IconButton>} items={menuFor(k)} />;
@@ -222,7 +234,7 @@ export function KnitsView({ projectId }: { projectId: string }) {
                   const fresh = Date.parse(k.createdAt) > openedAt;
                   const warn = (k.report.issues ?? []).filter((i) => i.level === "warning").length;
                   if (view.mode === "list") return (
-                    <li key={k.id} className={`pickable${fresh ? " stitching-in" : ""}`} data-selected={sel.has(k.id)} draggable onDragStart={kit.dragThings(sel.has(k.id) ? sel.picked.map((x) => x.id) : [k.id])}>
+                    <li key={k.id} data-thing={k.id} className={`pickable${fresh ? " stitching-in" : ""}`} data-selected={sel.has(k.id)} draggable onDragStart={kit.dragThings(sel.has(k.id) ? sel.picked.map((x) => x.id) : [k.id])}>
                       <PickBox sel={sel} id={k.id} name={k.label} className="pick-box" />
                       <ContextMenu items={menuFor(k)}>
                       <div className="card card-link" style={{ position: "relative", padding: "6px var(--space-3) 6px 6px", display: "grid", gridTemplateColumns: "56px minmax(0, 1fr) auto", gap: "var(--space-3)", alignItems: "center" }}>
@@ -241,7 +253,7 @@ export function KnitsView({ projectId }: { projectId: string }) {
                     </li>
                   );
                   return (
-                    <li key={k.id} className={`pickable${fresh ? " stitching-in" : ""}`} data-selected={sel.has(k.id)} draggable onDragStart={kit.dragThings(sel.has(k.id) ? sel.picked.map((x) => x.id) : [k.id])}>
+                    <li key={k.id} data-thing={k.id} className={`pickable${fresh ? " stitching-in" : ""}`} data-selected={sel.has(k.id)} draggable onDragStart={kit.dragThings(sel.has(k.id) ? sel.picked.map((x) => x.id) : [k.id])}>
                       <PickBox sel={sel} id={k.id} name={k.label} className="pick-box" />
                       <ContextMenu items={menuFor(k)}>
                       <div className={`card card-link${(k.versions ?? 1) > 1 ? " knit-stack" : ""}`} style={{ position: "relative", height: "100%", padding: "var(--space-2)" }}>

@@ -6,7 +6,7 @@ import * as M from "@radix-ui/react-dropdown-menu";
 import * as C from "@radix-ui/react-context-menu";
 import * as T from "@radix-ui/react-tooltip";
 import * as P from "@radix-ui/react-popover";
-import { X } from "lucide-react";
+import { Check, X } from "lucide-react";
 import { Button } from "./button.tsx";
 import { cx } from "./cx.ts";
 
@@ -183,6 +183,10 @@ export interface MenuEntry {
   label: string; onSelect: () => void; icon?: React.ReactNode; danger?: boolean; disabled?: boolean; shortcut?: string;
   /** A quiet line under the label: what it does to what is inside, or why it cannot be done now. */
   hint?: string;
+  /** For a menu that picks one: a tick on the one picked, and room for it on the rest. */
+  checked?: boolean;
+  /** A quiet word at the end, like "newest first". */
+  aside?: string;
 }
 export type MenuItems = (MenuEntry | "separator")[];
 
@@ -191,21 +195,23 @@ function renderItems(items: MenuItems, Item: typeof M.Item, Sep: typeof M.Separa
     it === "separator" ? (
       <Sep key={`s${i}`} className="menu-sep" />
     ) : (
-      <Item key={it.label} className={cx("menu-item", it.danger && "danger", it.hint && "menu-item-hinted")} disabled={it.disabled} onSelect={it.onSelect}>
-        {it.icon}
+      <Item key={it.label} className={cx("menu-item", it.danger && "danger", it.hint && "menu-item-hinted")} disabled={it.disabled} onSelect={it.onSelect}
+        {...(it.checked !== undefined ? { role: "menuitemradio", "aria-checked": it.checked } : {})}>
+        {it.checked !== undefined ? <span className="menu-check" aria-hidden>{it.checked && <Check size={14} />}</span> : it.icon}
         <span className="menu-text">{it.label}{it.hint && <span className="menu-hint">{it.hint}</span>}</span>
+        {it.aside && <span className="menu-aside">{it.aside}</span>}
         {it.shortcut && <span className="menu-kbd">{it.shortcut}</span>}
       </Item>
     ),
   );
 }
 
-export function Menu({ trigger, items, align = "end" }: { trigger: React.ReactElement; items: MenuItems; align?: "start" | "end" | "center" }) {
+export function Menu({ trigger, items, align = "end", label }: { trigger: React.ReactElement; items: MenuItems; align?: "start" | "end" | "center"; label?: string }) {
   return (
     <M.Root>
       <M.Trigger asChild>{trigger}</M.Trigger>
       <M.Portal>
-        <M.Content className="menu" align={align} sideOffset={6}>{renderItems(items, M.Item, M.Separator)}</M.Content>
+        <M.Content className="menu" align={align} sideOffset={6} aria-label={label}>{label && <M.Label className="select-label">{label}</M.Label>}{renderItems(items, M.Item, M.Separator)}</M.Content>
       </M.Portal>
     </M.Root>
   );

@@ -18,7 +18,8 @@ import { TagFilter, ViewBar, commonSorts, layout, useView, type SortBy } from ".
 import { AskModelButton, AskModelDialog, aboutDrawing, aboutYarn } from "./AskModel";
 import { RenameDialog } from "./ProjectsView";
 import { MakeDialog, type MakeStart } from "./MakeDialog";
-import { PickBox, SelectionBar, TagDialog, picking, tagWords, useSelection } from "./Selection";
+import { PickBox, SelectionBar, TagDialog, picking, tagWords, useListKeys, useSelection } from "./Selection";
+import { keyText } from "./Shortcuts";
 
 const { Upload, Plus, Search, FileText, Music, Film, Type, Image: ImageIcon, X, AlertTriangle, Trash2, Download, Link2: LinkIcon, RotateCcw, FolderInput, FilePdf, Crop, BookOpen, Monitor, Smartphone, ChevronLeft, ChevronRight, Play, Library, Images, Copy, ExternalLink, Wand2, ChevronDown, Maximize2, MoreHorizontal, Pencil, Sparkles, Tag } = icons;
 const spoken = (path: string) => path.split("/").join(" / ");
@@ -41,8 +42,8 @@ const factsOf = (y: Yarn) => `${y.kind === "pdf" ? "PDF" : y.kind}${y.width ? ` 
 
 const YARN_SORTS: SortBy<Yarn>[] = [
   ...commonSorts<Yarn>(),
-  { value: "kind", label: "Kind", key: (y) => `${y.kind} ${y.name}` },
-  { value: "size", label: "Biggest first", key: (y) => y.bytes, desc: true },
+  { value: "kind", label: "Kind", key: (y) => `${y.kind} ${y.name}`, ways: ["A to Z", "Z to A"] },
+  { value: "size", label: "Size on disk", key: (y) => y.bytes, desc: true, ways: ["biggest first", "smallest first"] },
 ];
 
 function useFontFace(y: Yarn): boolean {
@@ -184,6 +185,12 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
   };
   const toLibrary = (list: Yarn[]) => share(list, LIBRARY_ID, "to the Library. Every project can use it now.");
 
+  // What the keys and the menus do, on one file or on the ones picked.
+  const act = {
+    move: (them: Yarn[]) => kit.askMove(them, them.length > 1 ? counted(them.length, section) : them[0]!.name),
+    delete: (them: Yarn[]) => (them.length > 1 || (sel.has(them[0]!.id) && sel.count > 1) ? setBulkDelete(true) : void removeOne(them[0]!)),
+  };
+  useListKeys(shown, sel, { move: act.move, tag: setTagFor, rename: (t) => setRenaming(t[0]!), delete: act.delete });
   /**
    * A file's menu, the same from its ... button and a right-click, in the order every menu has.
    * On one of several picked, it acts on all of them and says so.
@@ -200,12 +207,12 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
         { label: "Ask your model", icon: <Sparkles size={14} aria-hidden />, onSelect: () => setAsking(y) },
       ]),
       "separator",
-      ...(many ? [] : [{ label: "Rename", icon: <Pencil size={14} aria-hidden />, onSelect: () => setRenaming(y) }]),
-      { label: many ? `Move ${n} to folder` : "Move to folder", icon: <FolderInput size={14} aria-hidden />, onSelect: () => kit.askMove(many ?? [y], many ? counted(n, section) : y.name) },
-      { label: many ? `Tag ${n}` : "Add a tag", icon: <Tag size={14} aria-hidden />, onSelect: () => setTagFor(many ?? [y]) },
+      ...(many ? [] : [{ label: "Rename", icon: <Pencil size={14} aria-hidden />, shortcut: "R", onSelect: () => setRenaming(y) }]),
+      { label: many ? `Move ${n} to folder` : "Move to folder", icon: <FolderInput size={14} aria-hidden />, shortcut: "M", onSelect: () => act.move(many ?? [y]) },
+      { label: many ? `Tag ${n}` : "Add a tag", icon: <Tag size={14} aria-hidden />, shortcut: "T", onSelect: () => setTagFor(many ?? [y]) },
       ...(many ? [] : [{ label: "Download", icon: <Download size={14} aria-hidden />, onSelect: () => { const a = document.createElement("a"); a.href = yarnFileUrl(y); a.download = y.originalName; document.body.append(a); a.click(); a.remove(); } }]),
       "separator",
-      { label: many ? `Delete ${counted(n, section)}` : "Delete", icon: <Trash2 size={14} aria-hidden />, danger: true, onSelect: () => (many ? setBulkDelete(true) : void removeOne(y)) },
+      { label: many ? `Delete ${counted(n, section)}` : "Delete", icon: <Trash2 size={14} aria-hidden />, danger: true, shortcut: keyText(["Delete"]), onSelect: () => act.delete(many ?? [y]) },
     ];
   };
   const more = (y: Yarn, inRow?: boolean) => <Menu trigger={<IconButton label={`Actions for ${y.name}`} className={`card-more${inRow ? " in-row" : ""}`}><MoreHorizontal size={16} /></IconButton>} items={menuFor(y)} />;
@@ -301,7 +308,7 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
             const cover = <button aria-label={`${y.name} ${facts}${from ? `, in ${spoken(from)}` : ""}`} onClick={(e) => (picking(e) ? sel.toggle(y.id, e.shiftKey) : setDetail(y.id))} style={{ position: "absolute", inset: 0, zIndex: 1, background: "transparent", border: 0, borderRadius: "var(--radius-md)", cursor: "pointer" }} />;
             const warn = y.meta.warnings?.length ? <span title={y.meta.warnings[0]} style={{ color: "var(--danger)" }}><AlertTriangle size={12} aria-hidden /></span> : null;
             return view.mode === "grid" ? (
-            <li key={y.id} className="yarn-card" data-selected={sel.has(y.id)} draggable onDragStart={kit.dragThings(sel.has(y.id) ? picked.map((x) => x.id) : [y.id])}>
+            <li key={y.id} data-thing={y.id} className="yarn-card" data-selected={sel.has(y.id)} draggable onDragStart={kit.dragThings(sel.has(y.id) ? picked.map((x) => x.id) : [y.id])}>
               <PickBox sel={sel} id={y.id} name={y.name} className="yarn-check" />
               <ContextMenu items={menuFor(y)}>
               <div className="card card-link" style={{ position: "relative", padding: "var(--space-2)", outline: sel.has(y.id) ? "2px solid var(--ember)" : undefined }}>
@@ -321,7 +328,7 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
               </ContextMenu>
             </li>
             ) : (
-            <li key={y.id} className="yarn-row" data-selected={sel.has(y.id)} draggable onDragStart={kit.dragThings(sel.has(y.id) ? picked.map((x) => x.id) : [y.id])}>
+            <li key={y.id} data-thing={y.id} className="yarn-row" data-selected={sel.has(y.id)} draggable onDragStart={kit.dragThings(sel.has(y.id) ? picked.map((x) => x.id) : [y.id])}>
               <PickBox sel={sel} id={y.id} name={y.name} style={{ position: "relative", zIndex: 2 }} />
               <ContextMenu items={menuFor(y)}>
               <div className="card card-link" style={{ position: "relative", display: "grid", gridTemplateColumns: "48px minmax(0, 1fr) auto auto", gap: "var(--space-3)", alignItems: "center", padding: "6px var(--space-3) 6px 6px", outline: sel.has(y.id) ? "2px solid var(--ember)" : undefined }}>

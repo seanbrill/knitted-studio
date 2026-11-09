@@ -1,17 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api } from "@knitted/core/client";
 import { instanceOf, isInside, partFromStitches, uniqueSlotName, detachInstance, type Part, type PartCategory, type PartSlot, type Stitch } from "@knitted/core";
-import { Button, Chip, Dialog, EmptyState, Field, Input, Select, Switch, icons, useToast } from "@knitted/ui";
+import { Button, Chip, Dialog, EmptyState, Field, Input, SegmentedControl, Select, Switch, icons, useToast } from "@knitted/ui";
 import { useEditor } from "@/lib/editor/store";
 import { byFolder, FolderCrumbs, InFolder, useFolders } from "../Folders";
 import { PanelFolders } from "./Panels";
 import { PartThumb } from "./PartThumb";
 
-const { Search, Package } = icons;
+const { Search, Package, Lock } = icons;
 const rid = () => `st_${Math.random().toString(36).slice(2, 9)}`;
 const CATS: { value: PartCategory; label: string }[] = [{ value: "text", label: "Text" }, { value: "media", label: "Media" }, { value: "motion", label: "Motion" }, { value: "frame", label: "Frame" }, { value: "cta", label: "Call to action" }, { value: "other", label: "Other" }];
 
@@ -73,48 +73,92 @@ export function PartsPanel({ projectId, onPartsChanged }: { projectId: string; o
   );
 }
 
-/** "Save as part": choose a name, say which slots are the brand's to lock, and swap the selection for a linked instance. */
+/** The kind a selection most likely is, to start the choice from: words, pictures, or neither. */
+function kindOf(sel: Stitch[]): PartCategory {
+  if (sel.every((s) => s.kind === "text")) return "text";
+  if (sel.some((s) => s.kind === "image" || s.kind === "video")) return "media";
+  return "other";
+}
+
+/**
+ * "Save as part": the selection as it will look, a name, and who decides each slot: each
+ * pattern fills it, or the brand fixes it everywhere. The selection becomes a linked instance.
+ */
 export function SavePartDialog({ open, onOpenChange, projectId }: { open: boolean; onOpenChange: (o: boolean) => void; projectId: string }) {
   const st = useEditor();
   const toast = useToast();
-  const sel = st.pattern.stitches.filter((s) => st.selection.includes(s.id));
+  const sel = useMemo(() => st.pattern.stitches.filter((s) => st.selection.includes(s.id)), [st.pattern.stitches, st.selection]);
   const [name, setName] = useState("");
   const [category, setCategory] = useState<PartCategory>("other");
   const [library, setLibrary] = useState(false);
   const [locked, setLocked] = useState<string[]>([]);
   const [err, setErr] = useState<string | undefined>();
-  const slots = sel.filter((s) => s.slot && (s.kind === "text" || s.kind === "image")).map((s) => s.slot!);
-  const save = async () => {
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (open) { setCategory(kindOf(sel)); setLocked([]); setErr(undefined); }
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  const slots = sel.filter((s) => s.slot && (s.kind === "text" || s.kind === "image")).map((s) => ({ name: s.slot!, kind: s.kind as "text" | "image" }));
+  // What the part will look like: the same draft that is saved, drawn by the real renderer.
+  const preview = useMemo<Part | null>(() => {
+    if (!open || !sel.length) return null;
     try {
-      const { draft, box } = partFromStitches(sel, st.pattern.size, { name, category, lockedSlots: locked });
+      const { draft } = partFromStitches(sel, st.pattern.size, { name: "Part" });
+      return { ...draft, id: "draft", projectId, builtin: false, description: "", tags: [], kind: "stitches", durationMs: 0, version: 1, folder: "", createdAt: "", updatedAt: "" } as Part;
+    } catch { return null; }
+  }, [open, sel, st.pattern.size, projectId]);
+  const n = sel.length;
+  const stitches = `${n} ${n === 1 ? "stitch" : "stitches"}`;
+  const ready = n > 0 && !!name.trim();
+  const save = async () => {
+    if (!ready) return;
+    try {
+      const { draft, box } = partFromStitches(sel, st.pattern.size, { name: name.trim(), category, lockedSlots: locked });
       const part = await api.parts.create(projectId, { ...draft, scope: library ? "library" : "project" });
       st.setParts([...Object.values(useEditor.getState().parts), part]);
-      const inst = instanceOf(part, box, uniqueSlotName(name, st.pattern.stitches.filter((s) => !st.selection.includes(s.id)).map((s) => s.slot)));
-      st.dispatch({ type: "batch", commands: [...sel.map((s) => ({ type: "removeStitch" as const, id: s.id })), { type: "addStitch" as const, stitch: inst }] }, { label: `Save ${name} as a part` });
+      const inst = instanceOf(part, box, uniqueSlotName(part.name, st.pattern.stitches.filter((s) => !st.selection.includes(s.id)).map((s) => s.slot)));
+      st.dispatch({ type: "batch", commands: [...sel.map((s) => ({ type: "removeStitch" as const, id: s.id })), { type: "addStitch" as const, stitch: inst }] }, { label: `Save ${part.name} as a part` });
       st.select([inst.id]);
       onOpenChange(false); setName(""); setErr(undefined);
       toast(`Saved ${part.name}. It is in your Parts panel now.`);
     } catch (e) { setErr((e as Error).message); }
   };
+  const tw = preview ? Math.round(Math.min(176, 200 * preview.aspect)) : 0;
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} title="Save as part" description={`Turn the ${sel.length} selected ${sel.length === 1 ? "stitch" : "stitches"} into something you can reuse.`}
-      actions={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" disabled={!sel.length} onClick={save}>Save part</Button></>}>
-      <div style={{ display: "grid", gap: "var(--space-4)" }}>
-        <Field label="Name" error={err} htmlFor="sp-name"><Input id="sp-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Lower third" /></Field>
-        <Field label="Kind of part"><Select aria-label="Kind of part" value={category} onValueChange={(v) => setCategory(v as PartCategory)} options={CATS} /></Field>
-        {slots.length > 0 && (
-          <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
-            <legend className="field-label" style={{ marginBottom: 6 }}>Slots people can fill</legend>
-            {slots.map((s) => (
-              <label key={s} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0" }}>
-                <span className="body-sm"><span className="code">{s}</span> {locked.includes(s) ? "is locked: the brand decides" : "is free to fill"}</span>
-                <Switch label={`Lock ${s}`} checked={locked.includes(s)} onCheckedChange={(c) => setLocked((cur) => (c ? [...cur, s] : cur.filter((x) => x !== s)))} />
-              </label>
-            ))}
-          </fieldset>
-        )}
-        <label style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span className="body-sm">Keep it in the library<br /><span style={{ color: "var(--ink-muted)" }}>Every project can use it.</span></span><Switch label="Keep in the library" checked={library} onCheckedChange={setLibrary} /></label>
-      </div>
+    <Dialog open={open} onOpenChange={onOpenChange} size="lg" title="Save as part"
+      description={`${stitches}, to add to any pattern ${library ? "in any project" : "in this project"}`}
+      actions={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" disabled={!ready} onClick={save}>Save the part</Button></>}>
+      <form className="save-part" onSubmit={(e) => { e.preventDefault(); void save(); }}>
+        <figure className="save-part-preview" aria-label={`What the part looks like: the ${stitches} picked`}>
+          {preview && <PartThumb part={preview} swatch={st.swatch} projectId={projectId} width={tw} />}
+          <figcaption>As it is picked now. A slot each pattern decides starts with this.</figcaption>
+        </figure>
+        <div style={{ display: "grid", gap: "var(--space-4)", alignContent: "start" }}>
+          <div className="save-part-names">
+            <Field label="Name" error={err} htmlFor="sp-name"><Input id="sp-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Title block" /></Field>
+            <Field label="Kind of part"><Select aria-label="Kind of part" value={category} onValueChange={(v) => setCategory(v as PartCategory)} options={CATS} /></Field>
+          </div>
+          {slots.length > 0 ? (
+            <fieldset className="slot-rows">
+              <legend className="field-label">Who decides each slot</legend>
+              <ul>
+                {slots.map((s) => {
+                  const brand = locked.includes(s.name);
+                  return (
+                    <li key={s.name} className="slot-row" data-brand={brand || undefined}>
+                      <span><span className="code">{s.name}</span><small>{s.kind === "image" ? "picture" : "text"}</small>{brand && <Lock size={12} aria-hidden />}</span>
+                      <SegmentedControl<"pattern" | "brand"> label={`Who decides ${s.name}`} value={brand ? "brand" : "pattern"}
+                        onChange={(v) => setLocked((cur) => (v === "brand" ? [...cur.filter((x) => x !== s.name), s.name] : cur.filter((x) => x !== s.name)))}
+                        options={[{ value: "pattern", label: "Each pattern" }, { value: "brand", label: "The brand" }]} />
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="field-hint" style={{ margin: 0 }}>A slot the brand decides is the same in every pattern, and nobody can change it there. The {stitches} here become the part.</p>
+            </fieldset>
+          ) : <p className="field-hint" style={{ margin: 0 }}>None of these has a slot, so the part is the same in every pattern. The {stitches} here become the part.</p>}
+          <label className="save-part-library"><span>Keep it in the library<small>Every project can use it, not only this one.</small></span><Switch label="Keep in the library" checked={library} onCheckedChange={setLibrary} /></label>
+        </div>
+      </form>
     </Dialog>
   );
 }
