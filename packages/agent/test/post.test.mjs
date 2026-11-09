@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createCopy, importYarn, insertKnit, openStore, saveProfile, setKnitPost, uploadTempPath } from "@knitted/core/node";
 import { AgentError } from "../src/index.mjs";
-import { POST_SYSTEM, readPost, writePost } from "../src/post.mjs";
+import { POST_SCHEMA, POST_SYSTEM, readPost, writePost } from "../src/post.mjs";
 
 const store = openStore(join(mkdtempSync(join(tmpdir(), "knitted-post-")), "k.db"));
 const project = store.createProject({ name: "Hollow Oak" });
@@ -58,4 +58,33 @@ test("a track not on the list is let go, an answer with no caption is an error, 
   await assert.rejects(writePost(store, knit.id, { apiKey: null, fetchImpl: answer("{}") }), /Add your Anthropic key/);
   const k = setKnitPost(store, knit.id, { caption: "My own words", by: "human" });
   assert.deepEqual([k.post.caption, k.post.by, k.post.hashtags], ["My own words", "human", ["#saturday"]], "the person's change keeps the rest");
+});
+
+test("it is asked for by schema, with room to think first, and streamed", async () => {
+  const fetchImpl = answer(`{"caption": "Warm bread, Saturday.", "hashtags": ["#bread"], "audio": null}`);
+  await writePost(store, knit.id, { apiKey: "sk-test-not-real", baseUrl: "http://127.0.0.1:9", fetchImpl });
+  const sent = answer.last.body;
+  assert.equal(sent.stream, true);
+  assert.ok(sent.max_tokens >= 16000, "the models think before they write, and the thinking counts");
+  assert.deepEqual(sent.output_config.format, { type: "json_schema", schema: POST_SCHEMA });
+  assert.equal(POST_SCHEMA.additionalProperties, false);
+});
+
+test("an answer cut off at the longest it may be says so, instead of that it could not be read", async () => {
+  const cut = async () => new Response(JSON.stringify({ stop_reason: "max_tokens", content: [{ type: "text", text: `{"caption": "Once upon a ti` }] }), { status: 200 });
+  await assert.rejects(writePost(store, knit.id, { ask: "longer, for LinkedIn", apiKey: "sk-test-not-real", baseUrl: "http://127.0.0.1:9", fetchImpl: cut }), /cut off/);
+});
+
+test("an address that turns the schema down is asked plainly, and plainly from then on", async () => {
+  const bodies = [];
+  const fetchImpl = async (url, init) => {
+    const b = JSON.parse(init.body); bodies.push(b);
+    if (b.output_config) return new Response(JSON.stringify({ error: { message: "output_config: Extra inputs are not permitted" } }), { status: 400 });
+    return new Response(JSON.stringify({ stop_reason: "end_turn", content: [{ type: "text", text: `{"caption": "Plain.\nTwo lines.", "hashtags": [], "audio": null}` }] }), { status: 200 });
+  };
+  const k = await writePost(store, knit.id, { apiKey: "sk-test-not-real", baseUrl: "http://127.0.0.1:8", fetchImpl });
+  assert.equal(k.post.caption, "Plain.\nTwo lines.", "a raw line break inside the JSON is read");
+  assert.deepEqual(bodies.map((b) => !!b.output_config), [true, false]);
+  await writePost(store, knit.id, { apiKey: "sk-test-not-real", baseUrl: "http://127.0.0.1:8", fetchImpl });
+  assert.deepEqual(bodies.map((b) => !!b.output_config), [true, false, false]);
 });
