@@ -1,13 +1,15 @@
 {
-  "next": {
-    "title": "Hide a sheet's comments, and Night on the board",
-    "items": [
-      "A design sheet's comments can be hidden on the board, to see the design without the pins: press the eye beside Comments, or Shift+C. It stays that way on every sheet until you show them again. The comments are still in the pane, and the one you are writing or have open still shows.",
-      "The design sheet's bar has the switch between Day and Night, so you can change it without leaving the board. Your frames stay in your brand's colours."
-    ]
-  },
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
   "entries": [
+    {
+      "version": "0.1.57",
+      "date": "2026-11-10",
+      "title": "Hide a sheet's comments, and Night on the board",
+      "items": [
+        "A design sheet's comments can be hidden on the board, to see the design without the pins: press the eye beside Comments, or Shift+C. It stays that way on every sheet until you show them again. The comments are still in the pane, and the one you are writing or have open still shows.",
+        "The design sheet's bar has the switch between Day and Night, so you can change it without leaving the board. Your frames stay in your brand's colours."
+      ]
+    },
     {
       "version": "0.1.56",
       "date": "2026-11-10",
