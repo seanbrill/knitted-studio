@@ -50,7 +50,7 @@ before(async () => {
   browser = await launchBrowser();
   context = await browser.newContext({ viewport: { width: 1500, height: 1100 } });
   // The platform's own sign-in page is never opened: the test plays the platform's part.
-  await context.route(/^https:\/\/(x\.com|www\.linkedin\.com|www\.instagram\.com)\//, (r) => r.fulfill({ body: "the platform's sign-in page", contentType: "text/plain" }));
+  await context.route(/^https:\/\/(x\.com|www\.linkedin\.com|www\.instagram\.com|www\.facebook\.com)\//, (r) => r.fulfill({ body: "the platform's sign-in page", contentType: "text/plain" }));
   page = await context.newPage();
   projectId = (await j("POST", "/api/projects", { name: "Social e2e", starter: "social" })).body.id;
   const patternId = (await j("GET", `/api/projects/${projectId}/patterns`)).body[0].id;
@@ -233,3 +233,39 @@ for (const theme of ["day", "night"]) {
     assert.deepEqual(await axeProblems(page), []);
   });
 }
+
+test("Settings, Social: Instagram with a Configuration ID signs in through Meta's Unified login, on Facebook", async () => {
+  await page.goto(`${studio.url}/settings?tab=social&network=instagram`);
+  const card = page.getByRole("region", { name: "Instagram" });
+  await card.getByText("Not set up").waitFor();
+  // The Meta app's own App ID and secret, as Meta's apps have them now.
+  await card.getByLabel("App ID", { exact: true }).fill("1157590070094212");
+  await card.getByLabel("App ID", { exact: true }).blur();
+  await card.getByLabel(/App secret/).fill("meta-app-secret");
+  await card.getByRole("button", { name: "Save", exact: true }).click();
+  await card.getByText("Ready to connect").waitFor();
+  // A configuration's ID is a number.
+  const config = card.getByLabel("Configuration ID");
+  await config.fill("my config");
+  await config.blur();
+  await page.getByText(/A Configuration ID is a number/).first().waitFor();
+  await config.fill("998877");
+  await config.blur();
+  for (let i = 0; i < 40 && (await j("GET", "/api/social/config")).body.apps.instagram.configId !== "998877"; i++) await new Promise((r) => setTimeout(r, 100));
+  const cfg = (await j("GET", "/api/social/config")).body.apps.instagram;
+  assert.equal(cfg.configId, "998877");
+  assert.equal(cfg.secret, true);
+  assert.equal(JSON.stringify(cfg).includes("meta-app-secret"), false, "the secret never comes back");
+  // Connect opens Facebook's sign-in with the configuration, and no list of permissions.
+  const popup = page.waitForEvent("popup");
+  await card.getByRole("button", { name: "Connect Instagram" }).click();
+  const p = await popup;
+  const url = new URL(p.url());
+  await p.close();
+  assert.equal(`${url.origin}${url.pathname}`, "https://www.facebook.com/dialog/oauth");
+  assert.equal(url.searchParams.get("client_id"), "1157590070094212");
+  assert.equal(url.searchParams.get("config_id"), "998877");
+  assert.equal(url.searchParams.get("redirect_uri"), "https://knitted.filefreak.page/oauth/");
+  assert.equal(url.searchParams.get("scope"), null);
+  assert.deepEqual(await axeProblems(page), []);
+});

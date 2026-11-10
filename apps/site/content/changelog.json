@@ -1,5 +1,14 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
+  "next": {
+    "title": "Instagram through Meta's Unified login",
+    "items": [
+      "Meta no longer gives new apps an Instagram app ID, and Instagram's own sign-in turns their App ID away as an invalid platform app. Instagram in Settings, Social now takes your Meta app's App ID and App secret with a Configuration ID from its API setup with Unified login, and Connect signs you in on Facebook with that configuration.",
+      "Pick your business and your Instagram accounts as you sign in: each one you pick is connected. The sign-in is your business's, so it does not run out.",
+      "Posts, Stories, Reels, carousels and their numbers work as before, through Facebook's Graph. An older app with an Instagram app ID keeps Instagram's own sign-in: leave the Configuration ID empty.",
+      "The guide's Instagram steps are rewritten for Unified login, with the older app's steps after them."
+    ]
+  },
   "entries": [
     {
       "version": "0.1.52",

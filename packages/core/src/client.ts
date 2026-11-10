@@ -392,7 +392,8 @@ export type { SpendLimits, UsageSummary };
 
 export type { SocialAccount, SocialPost, PostChange, Platform, Insights };
 export interface SocialConfigView {
-  apps: Record<Platform, { clientId: string; secret: boolean }>;
+  /** Instagram's has `configId`: a configuration of the Meta app, for Meta's Unified login ("" for Instagram's own sign-in). */
+  apps: Record<Platform, { clientId: string; secret: boolean; configId?: string }>;
   host: {
     kind: "none" | "s3" | "filefreak";
     s3: { endpoint: string; region: string; bucket: string; keyId: string; publicBase: string; prefix: string; secret: boolean };
@@ -407,7 +408,7 @@ export interface SocialConfigView {
   port: number;
 }
 export interface SocialConfigChange {
-  apps?: Partial<Record<Platform, { clientId?: string; clientSecret?: string; clearSecret?: boolean }>>;
+  apps?: Partial<Record<Platform, { clientId?: string; clientSecret?: string; clearSecret?: boolean; configId?: string }>>;
   host?: { kind?: "none" | "s3" | "filefreak"; s3?: Partial<{ endpoint: string; region: string; bucket: string; keyId: string; publicBase: string; prefix: string; secret: string }>; filefreak?: Partial<{ folder: string; apiKey: string }> };
   modelMaySchedule?: boolean;
   metricsX?: boolean;

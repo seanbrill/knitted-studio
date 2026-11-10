@@ -53,6 +53,8 @@ export async function setSocialConfig(store, change, deps = {}) {
   for (const [p, a] of Object.entries(change.apps ?? {})) {
     if (!ADAPTERS[p]) continue;
     if (a.clientId !== undefined) next.apps[p] = { ...next.apps[p], clientId: String(a.clientId).trim() };
+    // Instagram through Meta's Unified login: the configuration that says what knitted may do.
+    if (a.configId !== undefined && p === "instagram") next.apps[p] = { ...next.apps[p], configId: String(a.configId).trim() };
     if (a.clientSecret) await setSecret(KEY.app(p), a.clientSecret, dir, deps.secrets);
     if (a.clearSecret) await deleteSecret(KEY.app(p), dir, deps.secrets);
   }
@@ -72,7 +74,7 @@ export async function socialView(store, deps = {}) {
   const c = socialConfig(store);
   const dir = store.paths.root;
   const apps = {};
-  for (const p of PLATFORM_IDS) apps[p] = { clientId: c.apps[p].clientId, secret: (await secretStatus(KEY.app(p), dir, deps.secrets)).present };
+  for (const p of PLATFORM_IDS) apps[p] = { clientId: c.apps[p].clientId, secret: (await secretStatus(KEY.app(p), dir, deps.secrets)).present, ...(p === "instagram" ? { configId: c.apps[p].configId ?? "" } : {}) };
   return {
     apps, modelMaySchedule: c.modelMaySchedule, metricsX: c.metricsX, stayOpen: c.stayOpen,
     host: { ...c.host, s3: { ...c.host.s3, secret: (await secretStatus(KEY.s3, dir, deps.secrets)).present }, filefreak: { ...c.host.filefreak, apiKey: (await secretStatus(KEY.filefreak, dir, deps.secrets)).present } },
@@ -85,7 +87,7 @@ export async function appCredentials(store, platform, deps = {}) {
   const secret = await getSecret(KEY.app(platform), store.paths.root, deps.secrets);
   const optional = platform === "x";
   if (!c.clientId || (!secret && !optional)) throw new SocialError(`Set up your ${ADAPTERS[platform] ? platformName(platform) : platform} app first: its client id${optional ? "" : " and secret"}, in Settings, Social.`);
-  return { clientId: c.clientId, clientSecret: secret ?? null };
+  return { clientId: c.clientId, clientSecret: secret ?? null, configId: c.configId || null };
 }
 const platformName = (p) => ({ instagram: "Instagram", tiktok: "TikTok", linkedin: "LinkedIn", threads: "Threads", x: "X", youtube: "YouTube" })[p];
 

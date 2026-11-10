@@ -27,7 +27,7 @@ export const redirectFor = (platform, port) => (PLATFORMS[platform].redirect ===
 export async function startConnect(store, platform, { port }, deps = {}) {
   const adapter = ADAPTERS[platform];
   if (!adapter) throw new SocialError("knitted does not post there.");
-  const { clientId } = await appCredentials(store, platform, deps);
+  const { clientId, configId } = await appCredentials(store, platform, deps);
   for (const [k, v] of pending) if (Date.now() - v.at > FOR) pending.delete(k);
   const nonce = randomBytes(16).toString("hex");
   const verifier = adapter.pkce ? newVerifier() : null;
@@ -35,7 +35,7 @@ export async function startConnect(store, platform, { port }, deps = {}) {
   pending.set(nonce, { platform, verifier, redirectUri, at: Date.now() });
   const state = `${nonce}.${port}`;
   const challenge = adapter.pkce === "hex" ? challengeHex(verifier) : adapter.pkce ? challengeS256(verifier) : undefined;
-  return { url: adapter.authorizeUrl({ clientId, redirectUri, state, challenge }), state };
+  return { url: adapter.authorizeUrl({ clientId, redirectUri, state, challenge, configId }), state };
 }
 
 /** Whether a sign-in with this state is one knitted is waiting for. */
@@ -52,7 +52,11 @@ export function readPasted(text) {
   return { code: q.get("code"), state: q.get("state"), error: q.get("error"), errorDescription: q.get("error_description") };
 }
 
-/** The code is back: swap it for tokens, ask who it is, and keep the account. */
+/**
+ * The code is back: swap it for tokens, ask who it is, and keep the account. One sign-in can
+ * be for several accounts (Meta's Unified login gives a business's token for each Instagram
+ * account picked): each is kept, with the same tokens, and the first is returned.
+ */
 export async function finishConnect(store, { code, state, error, errorDescription }, deps = {}) {
   const nonce = String(state ?? "").split(".")[0];
   const p = pending.get(nonce);
@@ -64,13 +68,18 @@ export async function finishConnect(store, { code, state, error, errorDescriptio
   const http = deps.http ?? makeHttp({ fetch: deps.fetch });
   const adapter = ADAPTERS[p.platform];
   const tokens = await adapter.exchange(http, { ...(await appCredentials(store, p.platform, deps)), code, redirectUri: p.redirectUri, verifier: p.verifier });
-  const me = await adapter.me(http, tokens);
-  const account = saveAccount(store, {
-    platform: p.platform, externalId: String(me.externalId), name: me.name, handle: me.handle, avatar: me.avatar,
-    scopes: String(tokens.scope ?? "").split(/[\s,]+/).filter(Boolean),
-    // A sign-in that cannot be renewed ends when its token does: Settings says when.
-    expiresAt: adapter.canRefresh && !adapter.canRefresh(tokens) && tokens.expiresAt ? new Date(tokens.expiresAt).toISOString() : null,
-  });
-  await saveTokens(store, account.id, tokens, deps);
-  return account;
+  const found = await adapter.me(http, tokens);
+  let first = null;
+  for (const me of Array.isArray(found) ? found : [found]) {
+    const account = saveAccount(store, {
+      platform: p.platform, externalId: String(me.externalId), name: me.name, handle: me.handle, avatar: me.avatar,
+      scopes: String(tokens.scope ?? "").split(/[\s,]+/).filter(Boolean),
+      // A sign-in that cannot be renewed ends when its token does: Settings says when.
+      expiresAt: adapter.canRefresh && !adapter.canRefresh(tokens) && tokens.expiresAt ? new Date(tokens.expiresAt).toISOString() : null,
+    });
+    await saveTokens(store, account.id, tokens, deps);
+    first ??= account;
+  }
+  if (!first) throw new SocialError(`${name} gave knitted no account. Press Connect and try again.`);
+  return first;
 }

@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 // Secrets go in and never come back out: the answer says only whether each is there.
 export const GET = route(async (req: Request) => ok({ ...(await socialView(store())), port: portOf(req) }));
 
-const app = z.object({ clientId: z.string().max(300).optional(), clientSecret: z.string().max(500).optional(), clearSecret: z.boolean().optional() }).strict();
+const app = z.object({ clientId: z.string().max(300).optional(), clientSecret: z.string().max(500).optional(), clearSecret: z.boolean().optional(), configId: z.string().max(64).optional() }).strict();
 const Put = z.object({
   apps: z.object({ instagram: app, tiktok: app, linkedin: app, threads: app, x: app, youtube: app }).partial().optional(),
   host: z.object({
@@ -26,6 +26,8 @@ const isUrl = (v?: string) => !v || /^https?:\/\/[^\s]+$/.test(v);
 export const PUT = route(async (req: Request) => {
   const b = await body(req, Put);
   if (!isUrl(b.host?.s3?.endpoint) || !isUrl(b.host?.s3?.publicBase)) return Response.json({ error: { kind: "validation", message: "The bucket's address and its public address have to start with https://." } }, { status: 400 });
+  const configId = b.apps?.instagram?.configId?.trim();
+  if (configId && !/^\d+$/.test(configId)) return Response.json({ error: { kind: "validation", message: "A Configuration ID is a number, like 1234567890123456. Meta shows it once the configuration is saved." } }, { status: 400 });
   await setSocialConfig(store(), b);
   return ok({ ...(await socialView(store())), port: portOf(req) });
 });

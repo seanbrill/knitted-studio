@@ -20,8 +20,8 @@ export const GUIDE = "https://knitted.filefreak.page/docs/social/";
 
 /** What each platform calls its app's id and secret, and what knitted posts there. */
 const ABOUT: Record<Platform, { id: string; secret: string; does: string; where?: string }> = {
-  instagram: { id: "Instagram app ID", secret: "Instagram app secret", does: "Pictures, carousels of up to 10, and Reels. A tall picture goes to your Story. Needs a media host.",
-    where: "In your Meta app, on the Instagram use case's page, API setup with Instagram login. Not the App ID in App settings: Instagram turns that one away as an invalid platform app." },
+  instagram: { id: "App ID", secret: "App secret", does: "Pictures, carousels of up to 10, and Reels. A tall picture goes to your Story. Needs a media host.",
+    where: "Your Meta app's App ID, in App settings, Basic, with its App secret, and a Configuration ID below. An older app with an Instagram app ID (on API setup with Instagram login) can use that ID and its secret instead, and no Configuration ID." },
   tiktok: { id: "Client key", secret: "Client secret", does: "Videos. Until TikTok reviews your app, a post is seen only by you, and the account has to be private." },
   linkedin: { id: "Client ID", secret: "Client secret", does: "Words, pictures (up to 20 at once) and video, as you. A sign-in lasts 60 days." },
   threads: { id: "Threads app ID", secret: "Threads app secret", does: "Words, pictures, video and carousels. Needs a media host.",
@@ -120,6 +120,7 @@ function Network({ platform, cfg, accounts, save, open, onToggle }: { platform: 
             <li>
               <p className="net-step">{redirect ? `Register this redirect in your ${info.name} app` : "Make your client a Desktop app"}</p>
               {redirect ? <CopyLine text={redirect} label={`the ${info.name} redirect`} /> : <p className="body-sm net-say">Google needs no redirect registered for one.</p>}
+              {platform === "instagram" && <p className="body-sm net-say">With a Configuration ID, it is the configuration&apos;s Redirect URL. With an Instagram app ID, it goes in the business login settings, under OAuth redirect URIs.</p>}
               {platform === "tiktok" && <>
                 <p className="body-sm net-say">If TikTok will not take the star, this one, with the port knitted uses now. knitted keeps the same port from one launch to the next when it can.</p>
                 <CopyLine text={appCallback(cfg.port, "tiktok")} label="the TikTok redirect with its port" />
@@ -136,6 +137,13 @@ function Network({ platform, cfg, accounts, save, open, onToggle }: { platform: 
                     onSave={(clientSecret) => throwing({ apps: { [platform]: { clientSecret } } })()}
                     onRemove={throwing({ apps: { [platform]: { clearSecret: true } } })} />
                 </Field>
+                {platform === "instagram" && (
+                  <Field label="Configuration ID" htmlFor="so-instagram-config"
+                    hint="For a Meta app with no Instagram app ID, as Meta makes them now. In its Instagram use case, API setup with Unified login: create a configuration with a system-user token that never expires and your Instagram account, add the permissions instagram_manage_insights and business_management, and save it. Meta then shows its ID.">
+                    <Input id="so-instagram-config" mono inputMode="numeric" defaultValue={app.configId ?? ""} key={`cfg-${app.configId ?? ""}`} autoComplete="off"
+                      onBlur={(e) => e.target.value.trim() !== (app.configId ?? "") && void save({ apps: { instagram: { configId: e.target.value } } })} />
+                  </Field>
+                )}
               </div>
             </li>
             <li>

@@ -300,6 +300,80 @@ test("Instagram: a tall picture goes to Stories, and a video is a Reel", async (
   assert.equal(made[1].share_to_feed, "true");
 });
 
+test("Instagram, Meta's Unified login: Facebook's sign-in with the configuration, a token that does not run out, every account it was given, and posts on graph.facebook.com", async () => {
+  const { store, project, secrets } = setup();
+  await setSocialConfig(store, { apps: { instagram: { clientId: "1157590070094212", clientSecret: "msec", configId: "998877" } }, host: S3 }, { secrets });
+  const { url, account, n: signIn } = await connect(store, secrets, "instagram", {
+    "GET graph.facebook.com/v27.0/oauth/access_token": ({ url: u }) => {
+      assert.equal(u.searchParams.get("client_id"), "1157590070094212", "the Meta app's own App ID");
+      assert.equal(u.searchParams.get("client_secret"), "msec");
+      assert.equal(u.searchParams.get("code"), "abc");
+      assert.equal(u.searchParams.get("redirect_uri"), SITE_CALLBACK);
+      return { access_token: "suat", token_type: "bearer" };
+    },
+    "GET graph.facebook.com/v27.0/me/assigned_instagram_accounts": ({ url: u }) => { assert.equal(u.searchParams.get("access_token"), "suat"); return { data: [{ id: "17841400000000002", username: "knit" }, { id: "17841400000000003", username: "knit.shop" }] }; },
+    "GET graph.facebook.com/v27.0/17841400000000002": () => ({ name: "Knit", username: "knit", profile_picture_url: "https://cdn.example.test/k.jpg" }),
+    "GET graph.facebook.com/v27.0/17841400000000003": () => ({ error: { message: "no picture for you", code: 100 } }),
+  }, { code: "abc#_=_" });
+  // Facebook's own sign-in, with the configuration and no list of permissions.
+  assert.equal(`${url.origin}${url.pathname}`, "https://www.facebook.com/dialog/oauth");
+  assert.equal(url.searchParams.get("client_id"), "1157590070094212");
+  assert.equal(url.searchParams.get("config_id"), "998877");
+  assert.equal(url.searchParams.get("response_type"), "code");
+  assert.equal(url.searchParams.get("redirect_uri"), SITE_CALLBACK);
+  assert.equal(url.searchParams.get("scope"), null);
+  assert.equal(signIn.find("GET graph.instagram.com/*").length, 0, "nothing asked of Instagram's own sign-in");
+  // Each account the business gave knitted, with one token between them that does not run out.
+  assert.equal(account.externalId, "17841400000000002");
+  assert.equal(account.avatar, "https://cdn.example.test/k.jpg");
+  assert.equal(account.expiresAt, null);
+  const both = listAccounts(store).filter((a) => a.platform === "instagram");
+  assert.deepEqual(both.map((a) => a.handle).sort(), ["knit", "knit.shop"]);
+  const tokens = JSON.parse(await getSecret(`social_token_${account.id}`, store.paths.root, secrets));
+  assert.equal(tokens.via, "unified");
+  assert.equal(tokens.expiresAt, null);
+
+  // A post goes to graph.facebook.com, as the same calls Instagram's own sign-in makes.
+  const k = await png(store, project, "feed", 1080, 1350);
+  const p = createPost(store, { projectId: project.id, accountId: account.id, knitIds: [k.id], caption: "Feed post" });
+  const n = net({
+    "PUT s3.example.test/b/*": () => new Response(null, { status: 200 }), "DELETE s3.example.test/b/*": () => new Response(null, { status: 204 }),
+    "POST graph.facebook.com/v27.0/17841400000000002/media": ({ body }) => { assert.equal(body.caption, "Feed post"); assert.equal(body.access_token, "suat"); return { id: "c1" }; },
+    "GET graph.facebook.com/v27.0/c1": () => ({ status_code: "FINISHED" }),
+    "POST graph.facebook.com/v27.0/17841400000000002/media_publish": ({ body }) => { assert.equal(body.creation_id, "c1"); return { id: "p1" }; },
+    "GET graph.facebook.com/v27.0/p1": () => ({ permalink: "https://www.instagram.com/p/uni/" }),
+  });
+  await runDue(store, deps(n, secrets));
+  const done = getPost(store, p.id);
+  assert.equal(done.status, "posted", done.error);
+  assert.equal(done.url, "https://www.instagram.com/p/uni/");
+  assert.equal(n.find("GET graph.instagram.com/*").length + n.find("POST graph.instagram.com/*").length, 0);
+});
+
+test("Instagram, Meta's Unified login: a configuration that gave knitted no account says what to add", async () => {
+  const { store, secrets } = setup();
+  await setSocialConfig(store, { apps: { instagram: { clientId: "1157590070094212", clientSecret: "msec", configId: "998877" } } }, { secrets });
+  await assert.rejects(connect(store, secrets, "instagram", {
+    "GET graph.facebook.com/v27.0/oauth/access_token": () => ({ access_token: "suat" }),
+    "GET graph.facebook.com/v27.0/me/assigned_instagram_accounts": () => ({ data: [] }),
+    "GET graph.facebook.com/v27.0/me/accounts": () => ({ data: [{ id: "page1" }] }),
+  }), /no Instagram account.*business_management/s);
+});
+
+test("Instagram, Meta's Unified login: a person's token, not the business's, is made long-lived and found through its Page", async () => {
+  const { store, secrets } = setup();
+  await setSocialConfig(store, { apps: { instagram: { clientId: "1157590070094212", clientSecret: "msec", configId: "998877" } } }, { secrets });
+  const { account } = await connect(store, secrets, "instagram", {
+    "GET graph.facebook.com/v27.0/oauth/access_token": ({ url: u }) => u.searchParams.get("grant_type") === "fb_exchange_token"
+      ? (assert.equal(u.searchParams.get("fb_exchange_token"), "short"), { access_token: "long", expires_in: 5183944 })
+      : { access_token: "short", expires_in: 5400 },
+    "GET graph.facebook.com/v27.0/me/assigned_instagram_accounts": () => Response.json({ error: { message: "Unsupported get request.", code: 100 } }, { status: 400 }),
+    "GET graph.facebook.com/v27.0/me/accounts": ({ url: u }) => { assert.equal(u.searchParams.get("access_token"), "long"); return { data: [{ id: "page1", instagram_business_account: { id: "1784", username: "knit", name: "Knit" } }, { id: "page2" }] }; },
+  });
+  assert.equal(account.externalId, "1784");
+  assert.ok(account.expiresAt, "a person's token runs out, and Settings says when");
+});
+
 test("Threads: a carousel is each picture as an item, then one post of them", async () => {
   const { store, project, secrets } = setup();
   await setSocialConfig(store, { apps: { threads: { clientId: "tid", clientSecret: "tsec" } }, host: S3 }, { secrets });

@@ -56,14 +56,24 @@ What each platform gives:
 Posts pictures, carousels of up to 10 and Reels. A picture taller than 4:5 goes to your Story. Instagram needs a [media host](#media-host).
 
 1. Your Instagram account has to be a professional one, Business or Creator. In Instagram: **Settings, Account type and tools, Switch to professional account**.
-2. At [developers.facebook.com/apps](https://developers.facebook.com/apps/), create an app. Pick the use case for managing content on Instagram (or **Other**, then **Business**), and add the **Instagram** product. Choose **API setup with Instagram login**.
-3. Under **Set up Instagram business login**, open the business login settings and add this to the OAuth redirect URIs: `https://knitted.filefreak.page/oauth/`
-4. In **App roles, Roles**, add your Instagram account as an **Instagram Tester**, then accept the invitation in Instagram (**Settings, Apps and websites, Tester invites**). Your own account needs no review by Meta.
-5. Copy the **Instagram app ID** and **Instagram app secret** (on the Instagram API setup page, not the Facebook app's ID) into knitted, then press **Connect Instagram**.
+2. At [developers.facebook.com/apps](https://developers.facebook.com/apps/), create an app with the use case **Manage messaging & content on Instagram**. The app has to belong to a business portfolio: Meta asks for one as you make it, or set it in **App settings, Basic**.
+3. In **Use cases**, choose **Customize** beside the Instagram one, then **API setup with Unified login**. Under **Configure your app**, choose **Create new configuration**:
+   - the access token: a **system-user access token**, set to never expire
+   - the asset: your Instagram account
+   - under **Edit permissions**, add `instagram_manage_insights` (for a post's numbers) and `business_management`, beside the ones it starts with
+   - under **Redirect URL**: `https://knitted.filefreak.page/oauth/`
+4. Save it. Meta shows its **Configuration ID**.
+5. In knitted, give Instagram the app's **App ID** and **App secret**, from **App settings, Basic**, and the **Configuration ID**. Press **Connect Instagram**, sign in with Facebook or Instagram, and pick your business and your Instagram account. Pick more than one, and each is connected.
 
-If Instagram says **Invalid Request: Request parameters are invalid: Invalid platform app**, knitted has the Meta app's own App ID, from **App settings, Basic**. Instagram's sign-in takes only the Instagram app ID. If the app has no Instagram app ID yet, add the Instagram use case with **API setup with Instagram login** (step 2), and it appears on that page.
+Until Meta reviews your app, only people with a role on it can connect, and you have one as its maker.
 
-The sign-in lasts 60 days and knitted renews it while it is open, so it does not run out unless knitted stays closed that long.
+The sign-in is your business's, not yours: it does not run out, and it keeps working if you leave the business. It stops when the app is taken off the business's connected apps (**Business settings, Integrations, Connected apps**), or the Instagram account moves to another business. Then connect it again.
+
+If Instagram says **Invalid Request: Request parameters are invalid: Invalid platform app**, knitted is using Instagram's own sign-in with your Meta app's App ID, which it never takes. Meta has made new apps without an Instagram app ID since late October 2026: add the Configuration ID (steps 3 and 4), and knitted signs in through Unified login instead.
+
+### An app with an Instagram app ID
+
+An older app, with **API setup with Instagram login** in its Instagram use case, has an **Instagram app ID** and secret of its own on that page. Give knitted those, with no Configuration ID. Under **Set up Instagram business login**, add `https://knitted.filefreak.page/oauth/` to the business login settings' OAuth redirect URIs, and in **App roles, Roles**, add your account as an **Instagram Tester**, then accept it in Instagram (**Settings, Apps and websites, Tester invites**). That sign-in lasts 60 days and knitted renews it while it is open, so it does not run out unless knitted stays closed that long.
 
 ## Threads
 

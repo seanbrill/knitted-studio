@@ -4,6 +4,13 @@
 // A post is made as a container, which Meta fetches and checks, then published.
 //
 // Sign-ins last an hour, then are swapped for ones that last 60 days, renewed once a day old.
+//
+// Instagram has a second way in, Meta's Unified login, for apps Meta made from late October
+// 2026: those have no Instagram app ID, and Instagram's own sign-in turns them away as an
+// "invalid platform app". With a Configuration ID from the app's "API setup with Unified login",
+// the person signs in on Facebook, picks their business and Instagram accounts, and knitted
+// gets a token for the business's system user. It does not run out unless the configuration
+// says so, covers every account the business gave knitted, and works on graph.facebook.com.
 
 import { SocialError, expiry, form } from "../http.mjs";
 
@@ -38,9 +45,11 @@ async function ready(http, ctx, url, field, fail) {
 function graph({ name, host, version, authHost, scopes, exchangeGrant, refreshGrant, me, mediaPath, publishPath, statusField, textField }) {
   const ctx = { name, explain: explainer(name) };
   const api = `https://${host}/${version}`;
+  // A Unified login's token works on Facebook's Graph, with the same calls.
+  const apiOf = (t) => (t?.via === "unified" ? `https://graph.facebook.com/${version}` : api);
   const q = (t, o = {}) => new URLSearchParams({ ...o, access_token: t.access });
   return {
-    scopes, pkce: null, ctx, api,
+    scopes, pkce: null, ctx, api, apiOf,
     authorizeUrl({ clientId, redirectUri, state }) {
       return `https://${authHost}/oauth/authorize?${new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri, response_type: "code", scope: scopes.join(","), state })}`;
     },
@@ -61,20 +70,20 @@ function graph({ name, host, version, authHost, scopes, exchangeGrant, refreshGr
     async me(http, t) { return me(http, ctx, api, t, q); },
     /** Make a container with these fields, and wait for Meta to have fetched what it points at. */
     async container(http, c, fields) {
-      const r = await http.json(`${api}/${c.account.externalId}/${mediaPath}`, { method: "POST", body: form({ ...fields, access_token: c.tokens.access }) }, ctx);
-      await ready(http, ctx, `${api}/${r.id}?${q(c.tokens, { fields: statusField === "status_code" ? "status_code,status" : "status,error_message" })}`, statusField, "it would not say why");
+      const r = await http.json(`${apiOf(c.tokens)}/${c.account.externalId}/${mediaPath}`, { method: "POST", body: form({ ...fields, access_token: c.tokens.access }) }, ctx);
+      await ready(http, ctx, `${apiOf(c.tokens)}/${r.id}?${q(c.tokens, { fields: statusField === "status_code" ? "status_code,status" : "status,error_message" })}`, statusField, "it would not say why");
       return r.id;
     },
     async publishContainer(http, c, id) {
       c.commit();
-      const r = await http.json(`${api}/${c.account.externalId}/${publishPath}`, { method: "POST", body: form({ creation_id: id, access_token: c.tokens.access }) }, ctx);
+      const r = await http.json(`${apiOf(c.tokens)}/${c.account.externalId}/${publishPath}`, { method: "POST", body: form({ creation_id: id, access_token: c.tokens.access }) }, ctx);
       let url = null;
-      try { url = (await http.json(`${api}/${r.id}?${q(c.tokens, { fields: "permalink" })}`, {}, ctx)).permalink ?? null; } catch { /* the post is out; its link is a nicety */ }
+      try { url = (await http.json(`${apiOf(c.tokens)}/${r.id}?${q(c.tokens, { fields: "permalink" })}`, {}, ctx)).permalink ?? null; } catch { /* the post is out; its link is a nicety */ }
       return { externalId: r.id, url };
     },
     /** A post's lifetime numbers, by Meta's names. One Meta has none of yet is left out, not 0. */
     async insights(http, t, id, metrics) {
-      const r = await http.json(`${api}/${id}/insights?${q(t, { metric: metrics.join(",") })}`, {}, ctx);
+      const r = await http.json(`${apiOf(t)}/${id}/insights?${q(t, { metric: metrics.join(",") })}`, {}, ctx);
       return Object.fromEntries((r.data ?? []).filter((d) => d.values?.length).map((d) => [d.name, Number(d.values[0].value)]));
     },
     textField,
@@ -101,8 +110,55 @@ const ig = graph({
   },
 });
 
+/** The Instagram accounts a Unified login's token was given, each with its name and picture where Meta gives them. */
+async function unifiedAccounts(http, t) {
+  const api = ig.apiOf(t), ctx = ig.ctx;
+  const q = (o) => new URLSearchParams({ ...o, access_token: t.access });
+  let found = [];
+  // The business's system user: the accounts the person picked for knitted. A person's token
+  // (a configuration made for one) has none, and finds them through the Pages they run instead.
+  try { found = ((await http.json(`${api}/me/assigned_instagram_accounts?${q({ fields: "id,username" })}`, {}, ctx)).data ?? []).filter((a) => a.id); } catch (e) { if (e.reconnect) throw e; }
+  if (!found.length) {
+    try {
+      const pages = (await http.json(`${api}/me/accounts?${q({ fields: "instagram_business_account{id,username,name,profile_picture_url}" })}`, {}, ctx)).data ?? [];
+      found = pages.map((p) => p.instagram_business_account).filter((a) => a?.id);
+    } catch (e) { if (e.reconnect) throw e; }
+  }
+  if (!found.length) throw new SocialError("Meta gave knitted no Instagram account. In your Meta app, open the configuration (API setup with Unified login), add your Instagram account as its asset and the business_management permission, then connect again and pick the account.");
+  const out = [];
+  for (const a of found) {
+    let more = a;
+    if (!a.name && !a.profile_picture_url) { try { more = { ...a, ...(await http.json(`${api}/${a.id}?${q({ fields: "name,username,profile_picture_url" })}`, {}, ctx)) }; } catch { /* its id and handle are enough */ } }
+    out.push({ externalId: String(a.id), name: more.name ?? "", handle: more.username ?? a.username ?? "", avatar: more.profile_picture_url ?? null });
+  }
+  return out;
+}
+
 export const instagram = {
   id: "instagram", ...ig,
+  /** With a Configuration ID, Meta's Unified login: Facebook's sign-in for the app's own App ID, and no list of permissions (the configuration has them). */
+  authorizeUrl({ clientId, redirectUri, state, configId }) {
+    if (!configId) return ig.authorizeUrl({ clientId, redirectUri, state });
+    return `https://www.facebook.com/dialog/oauth?${new URLSearchParams({ client_id: clientId, config_id: configId, redirect_uri: redirectUri, response_type: "code", override_default_response_type: "true", state })}`;
+  },
+  async exchange(http, o) {
+    if (!o.configId) return ig.exchange(http, o);
+    const api = ig.apiOf({ via: "unified" });
+    const got = await http.json(`${api}/oauth/access_token?${new URLSearchParams({ client_id: o.clientId, client_secret: o.clientSecret, redirect_uri: o.redirectUri, code: o.code.replace(/#_=?_?$/, "") })}`, {}, ig.ctx);
+    if (!got.access_token) throw new SocialError("Facebook gave knitted no sign-in for Instagram. Press Connect and try again.");
+    let t = { access: got.access_token, refresh: null, expiresAt: expiry(got.expires_in), issuedAt: Date.now(), scope: "", via: "unified" };
+    // The business's token does not run out. A person's runs out in hours, so it is swapped for one that lasts 60 days.
+    if (got.expires_in && got.expires_in < 7 * 86400) {
+      const long = await http.json(`${api}/oauth/access_token?${new URLSearchParams({ grant_type: "fb_exchange_token", client_id: o.clientId, client_secret: o.clientSecret, fb_exchange_token: got.access_token })}`, {}, ig.ctx);
+      if (long.access_token) t = { ...t, access: long.access_token, expiresAt: expiry(long.expires_in ?? 60 * 86400) };
+    }
+    return t;
+  },
+  /** Instagram's own sign-in renews; a Unified login's does not, and needs none unless its configuration sets an end. */
+  canRefresh: (t) => t.via !== "unified",
+  async refresh(http, o) { return o.tokens.via === "unified" ? o.tokens : ig.refresh(http, o); },
+  /** Who signed in: with a Unified login, every account the business gave knitted. */
+  async me(http, t) { return t.via === "unified" ? unifiedAccounts(http, t) : ig.me(http, t); },
   async publish(http, c) {
     const tall = (m) => m.width / m.height < 0.79;
     const [one] = c.media;
@@ -133,7 +189,7 @@ export const instagram = {
       if (/\(#10\)|not enough viewers/i.test(e.message)) return { metrics: null, note: "Instagram shows a Story's numbers once 5 people have seen it." };
       if (story && /\(#100\)|does not exist|expired/i.test(e.message)) return { metrics: null, note: "Instagram keeps a Story's numbers only while the Story is up, for a day." };
       if (e.reconnect) throw e;
-      const r = await http.json(`${this.api}/${post.externalId}?${new URLSearchParams({ fields: "like_count,comments_count", access_token: tokens.access })}`, {}, this.ctx);
+      const r = await http.json(`${this.apiOf(tokens)}/${post.externalId}?${new URLSearchParams({ fields: "like_count,comments_count", access_token: tokens.access })}`, {}, this.ctx);
       const m = {};
       if (Number.isFinite(r.like_count)) m.likes = r.like_count;
       if (Number.isFinite(r.comments_count)) m.comments = r.comments_count;
