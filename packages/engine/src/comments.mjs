@@ -87,7 +87,8 @@ export async function lookAtComment(store, commentId, { renderer: injected } = {
     const renderer = await browser();
     const frame = thread.frameId ? withPieces(store, getDesign(store, thread.designId)).sections.flatMap((s) => s.frames).find((f) => f.id === thread.frameId) : undefined;
     const here = !!frame;
-    const png = await renderDesign(store, thread.designId, { frameId: here ? thread.frameId : undefined, renderer });
+    // Not on a frame: the whole sheet, drawn as a model sees it.
+    const png = await renderDesign(store, thread.designId, { frameId: here ? thread.frameId : undefined, renderer, model: !here });
     if (thread.frameId && !here) return { thread, png: await withPin(png, {}), under: null, patternId: null, frameGone: true };
     const pinned = thread.x != null && thread.y != null;
     // A pattern on the sheet: the comment is about the pattern, and what is under the pin is its stitches, drawn as the sheet shows it.

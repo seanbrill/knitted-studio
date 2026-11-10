@@ -27,7 +27,7 @@ const send = (path, { method = "GET", headers = {}, body } = {}) => new Promise(
   const req = request({ host: "127.0.0.1", port, path, method, headers: { ...(body ? { "content-type": "application/json" } : {}), ...headers } }, (res) => {
     let text = "";
     res.setEncoding("utf8"); res.on("data", (d) => (text += d));
-    res.on("end", () => resolve({ status: res.statusCode, json: () => JSON.parse(text) }));
+    res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, json: () => JSON.parse(text) }));
   });
   req.on("error", reject); req.end(body === undefined ? undefined : JSON.stringify(body));
 });
@@ -74,6 +74,21 @@ test("an MCP client gets in at the address with no launch token, and talks MCP",
   assert.ok((await mcpPost(mcp, rpc("tools/list"))).json().result.tools.some((t) => t.name === "list_projects"));
   const call = (await mcpPost(mcp, rpc("tools/call", { name: "list_projects", arguments: {} }))).json().result;
   assert.ok(Array.isArray(JSON.parse(call.content[0].text)));
+});
+test("a session names the tools it was given, and one given another knitted's is told to reconnect", opts, async () => {
+  const mcp = await address();
+  const init = await mcpPost(mcp, rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } }));
+  const id = init.headers["mcp-session-id"];
+  assert.match(id, /^[\x21-\x7e]+\.[0-9a-f]{12}\.[0-9a-f]{12}$/);
+  const call = (session) => mcpPost(mcp, rpc("tools/call", { name: "list_projects", arguments: {} }), session ? { "mcp-session-id": session } : {});
+  assert.equal((await call(id)).json().result.content.length, 1, "this knitted's tools: nothing more to say");
+  assert.equal((await call()).json().result.content.length, 1, "no session: answered as before");
+  assert.equal((await call(id)).headers["mcp-session-id"], undefined, "a session keeps its name until it reconnects");
+  const old = "0.1.1.0123456789ab.0123456789ab";
+  const told = (await call(old)).json().result.content;
+  assert.ok(Array.isArray(JSON.parse(told[0].text)), "the result itself, first");
+  assert.match(told.at(-1).text, /updated since you connected: .*those of 0\.1\.1.*reconnect knitted \(in Claude Code, \/mcp, then Reconnect\)/);
+  assert.equal((await mcpPost(mcp, rpc("tools/list"), { "mcp-session-id": old })).status, 200, "nothing is refused");
 });
 test("a wrong key, a web page, a foreign Host or a GET does not get in", opts, async () => {
   const mcp = await address();

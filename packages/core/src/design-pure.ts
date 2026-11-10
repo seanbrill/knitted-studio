@@ -200,8 +200,13 @@ export type DesignOp =
   /** To a place on the board, its top left corner at x, y; null for both puts it back in the column. */
   | { op: "placeSection"; section: string; x: number | null; y: number | null }
   | { op: "removeSection"; section: string }
-  /** On a pattern placed on the sheet, `size` shows it at one of SIZES (null: its own). */
-  | { op: "setFrame"; section: string; frameId?: string; name?: string; width?: number; height?: number | null; html?: string; css?: string; note?: string; at?: number; size?: string | null }
+  /**
+   * A section and its frames, copied: from this sheet, or from another of the project's
+   * (`source`, which the store fills in from `from`). The copies get new ids.
+   */
+  | { op: "copySection"; section: string; from?: string; name?: string; at?: number; x?: number | null; y?: number | null; source?: DesignSection }
+  /** On a pattern placed on the sheet, `size` shows it at one of SIZES (null: its own). A frame changed by id stays in its section when none is given. */
+  | { op: "setFrame"; section?: string; frameId?: string; name?: string; width?: number; height?: number | null; html?: string; css?: string; note?: string; at?: number; size?: string | null }
   /**
    * One of the project's patterns, Yarn pictures or videos, or parts, onto the sheet as it is. The
    * store fills in its name and its size from the thing itself; `width` draws it that wide instead.
@@ -298,15 +303,20 @@ function place2(s: DesignSection, x: unknown, y: unknown) {
   s.x = cleanAt(x, "x"); s.y = cleanAt(y, "y");
 }
 
+/** A section copied: where from, its copy, and each frame's copy by the old frame's id. */
+export interface SectionCopy { from?: string; section: string; to: string; frames: Record<string, string> }
+/** The ids a change made: sections and frames, and what each copied section became. */
+export interface DesignMade { sections: string[]; frames: string[]; copies?: SectionCopy[] }
+
 /**
  * Apply changes in order, all or none. Returns the sheet as it is after them, and the ids of
  * the sections and frames they made, so the caller can say where its work went.
  */
 export function applyDesignOps(design: { name: string; sections: DesignSection[] }, ops: DesignOp[], by: "human" | "model", now = new Date().toISOString()):
-  { name: string; sections: DesignSection[]; made: { sections: string[]; frames: string[] }; lint: Record<string, DesignLint[]> } {
+  { name: string; sections: DesignSection[]; made: DesignMade; lint: Record<string, DesignLint[]> } {
   let name = design.name;
   const sections: DesignSection[] = structuredClone(design.sections);
-  const made = { sections: [] as string[], frames: [] as string[] };
+  const made: DesignMade = { sections: [], frames: [] };
   const lint: Record<string, DesignLint[]> = {};
   for (const o of ops) {
     switch (o.op) {
@@ -328,9 +338,25 @@ export function applyDesignOps(design: { name: string; sections: DesignSection[]
       case "moveSection": { const s = findSection(sections, o.section); sections.splice(sections.indexOf(s), 1); place(sections, s, o.to); break; }
       case "placeSection": { place2(findSection(sections, o.section), o.x, o.y); break; }
       case "removeSection": { const s = findSection(sections, o.section); sections.splice(sections.indexOf(s), 1); break; }
+      case "copySection": {
+        const src = o.source ?? findSection(sections, o.section);
+        const s: DesignSection = { ...structuredClone(src), id: nextId(sections, "s"), name: o.name ? cleanName(o.name, "section") : src.name, frames: [] };
+        // Copied, it stands in the column unless placed: on top of the one it came from, it would hide it.
+        delete s.x; delete s.y;
+        if (o.x != null || o.y != null) place2(s, o.x, o.y);
+        place(sections, s, o.at);
+        const frames: Record<string, string> = {};
+        for (const f of src.frames) {
+          const copy: DesignFrame = { ...structuredClone(f), id: nextId(sections, "f"), by, updatedAt: now };
+          s.frames.push(copy); frames[f.id] = copy.id; made.frames.push(copy.id);
+        }
+        made.sections.push(s.id);
+        (made.copies ??= []).push({ ...(o.from ? { from: o.from } : {}), section: src.id, to: s.id, frames });
+        break;
+      }
       case "setFrame": {
-        const s = findSection(sections, o.section);
         const found = o.frameId ? findFrame(sections, o.frameId) : null;
+        const s = o.section == null && found ? found.section : findSection(sections, o.section as string);
         // A piece is the thing itself: it has no code to change, and keeps the thing's shape.
         if (found?.frame.piece) {
           const f = found.frame;

@@ -20,7 +20,7 @@
 import { applyCommand, claimTexts, findSection, frameSize, DESIGN_DEVICES, TOKEN_NAMES, instanceOf, joinFolder, motionLint, sceneChange, parentOf, partFromStitches, preflight, uniqueSlotName, checkPost, metricsLine, COLOR_ROLES, FOLDER_SECTIONS, PLATFORMS, PRESETS, SIZES, KNIT_SIZES, sizeNamed, CommandSchema } from "@knitted/core";
 import { GUIDE, GUIDE_TOPICS } from "./guide.mjs";
 import { LIBRARY_ID } from "@knitted/core";
-import { setYarnScope, activeSwatch, cancelPost, createPost, getAccount, getPost, listAccounts, listPosts, postInsights, validatePost, cleanFolder, cropToYarn, getBrief, pdfText, readWebsite, setProfile, viewVideo, viewYarn, createFolder, createPart, editPart, partUsage, createSwatch, createSwatchFromProposal, folderCounts, getKnit, getPart, getYarn, setKnitFavorite, setKnitPost, setKnitTags, importYarn, importYarnFromPath, importYarnFromUrl, searchStock, addStock, saveDrawing, drawSheet, planGeneration, startGeneration, createCopy, createDesign, changeDesign, getDesign, listDesigns, withPieces, listComments, replyComment, knitPath, listFolders, listKnits, countKnits, changedSince, withVersions, listParts, listYarn, moveAllToFolder, proposeFromWebsite, renameFolder, setCopyText, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
+import { setYarnScope, activeSwatch, cancelPost, createPost, getAccount, getPost, listAccounts, listPosts, postInsights, validatePost, cleanFolder, cropToYarn, getBrief, pdfText, readWebsite, setProfile, viewVideo, viewYarn, createFolder, createPart, editPart, partUsage, createSwatch, createSwatchFromProposal, folderCounts, getKnit, getPart, getYarn, setKnitFavorite, setKnitPost, setKnitTags, importYarn, importYarnFromPath, importYarnFromUrl, searchStock, addStock, saveDrawing, drawSheet, planGeneration, startGeneration, createCopy, createDesign, changeDesign, codeHash, getDesign, listDesigns, withPieces, listComments, replyComment, knitPath, listFolders, listKnits, countKnits, changedSince, withVersions, listParts, listYarn, moveAllToFolder, proposeFromWebsite, renameFolder, setCopyText, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
 
 const obj = (properties, required = []) => ({ type: "object", properties, required, additionalProperties: false });
 const str = (description) => ({ type: "string", description });
@@ -72,22 +72,96 @@ const pieceOut = (p) => ({ kind: p.kind, id: p.id, ...(p.size ? { size: p.size }
   change: p.gone ? "It is not in the project any more: take it off with removeFrame, or ask the person."
     : p.kind === "pattern" ? "Change the pattern itself (describe_pattern, then update_stitch or apply_batch); the sheet shows it as it is."
     : p.kind === "part" ? "Change the part itself with edit_part; the sheet shows it as it is." : "A file from Yarn, shown as it is." });
-/** A sheet as a model reads it: sections and frames by id, with each frame's code only when asked. A piece has no code: it says what it is. */
-function designOut(store, raw, { code = false, frameId } = {}) {
+/** A frame in an outline: what it is, its size and note, and its code by a hash (the same hash is the same code) and its length; the code itself only when asked. */
+const frameOut = (f, code) => ({
+  id: f.id, name: f.name, size: frameSize(f), width: f.width, ...(f.height ? { height: f.height } : {}), ...(f.note ? { note: f.note } : {}), ...(f.by ? { by: f.by } : {}),
+  ...(f.piece ? { piece: pieceOut(f.piece) } : code ? { html: f.html, css: f.css } : { hash: codeHash(f.html, f.css), codeChars: f.html.length + f.css.length }),
+});
+/** A section's name, note, place and width, without its frames. */
+const sectionHead = (s) => ({ id: s.id, name: s.name, ...(s.note ? { note: s.note } : {}), ...(s.x != null ? { at: { x: s.x, y: s.y } } : {}), ...(s.width ? { width: s.width } : {}) });
+const frameTotal = (sections) => sections.reduce((n, s) => n + s.frames.length, 0);
+/** How many frames an outline holds: a sheet of hundreds is read a page at a time, and its code a few frames at a time. */
+const OUTLINE_PAGE = 80;
+const CODE_PAGE = 15;
+/**
+ * A sheet as a model reads it: its sections, and their frames by id, with each frame's code only
+ * when asked; or one section of it. More frames than a page holds come a page at a time, and each
+ * section then says how many it has.
+ */
+function designOut(store, raw, { code = false, sectionId, page } = {}) {
   const d = withPieces(store, raw);
+  const sections = sectionId ? [findSection(d.sections, sectionId)] : d.sections;
+  const total = frameTotal(sections);
+  const per = code ? CODE_PAGE : OUTLINE_PAGE;
+  const pages = Math.max(1, Math.ceil(total / per));
+  const n = Math.min(pages, Math.max(1, Math.round(Number(page) || 1)));
+  const from = (n - 1) * per, to = from + per;
+  let i = 0;
+  const out = sections.map((s) => {
+    const start = i; i += s.frames.length;
+    if (pages === 1) return { ...sectionHead(s), frames: s.frames.map((f) => frameOut(f, code)) };
+    const on = s.frames.slice(Math.max(0, from - start), Math.max(0, to - start));
+    return { ...sectionHead(s), frameCount: s.frames.length, ...(on.length ? { frames: on.map((f) => frameOut(f, code)) } : {}) };
+  });
   return {
-    id: d.id, name: d.name, version: d.version,
-    sections: d.sections.map((s) => ({
-      id: s.id, name: s.name, ...(s.note ? { note: s.note } : {}), ...(s.x != null ? { at: { x: s.x, y: s.y } } : {}), ...(s.width ? { width: s.width } : {}),
-      frames: s.frames.map((f) => ({ id: f.id, name: f.name, size: frameSize(f), width: f.width, ...(f.height ? { height: f.height } : {}), ...(f.note ? { note: f.note } : {}), ...(f.by ? { by: f.by } : {}),
-        ...(f.piece ? { piece: pieceOut(f.piece) } : code || f.id === frameId ? { html: f.html, css: f.css } : { codeChars: f.html.length + f.css.length }) })),
-    })),
+    id: d.id, name: d.name, version: d.version, frameCount: total, sections: out,
+    ...(pages > 1 ? { page: n, pages, ...(n < pages ? { next: `page ${n + 1} for frames ${to + 1} to ${Math.min(total, to + per)} of ${total}` } : {}) } : {}),
   };
 }
-/** A frame, a section or the sheet, drawn for a model to look at; or why it could not be. */
-async function lookAt(engine, store, designId, o) {
-  try { return await engine.forModel(await engine.renderDesign(store, designId, o)); }
+/** One frame and its code, with the section it is in. */
+function frameAlone(store, raw, frameId) {
+  const d = withPieces(store, raw);
+  for (const s of d.sections) {
+    const f = s.frames.find((x) => x.id === frameId);
+    if (f) return { id: d.id, name: d.name, version: d.version, section: { id: s.id, name: s.name }, frame: frameOut(f, true), ...(f.piece ? {} : { tokens: TOKEN_NAMES, pictures: "yarn:<id> in src or url(), or yarn:logo for the brand's logo" }) };
+  }
+  throw new Error(`There is no frame "${frameId}" in this design. get_design lists its frames.`);
+}
+/**
+ * What arrange_design did, small: the ids it made and removed, and the sections it changed (each
+ * with its place in the order and how many frames it has), not the whole sheet.
+ */
+function arranged(before, r, ops) {
+  const ids = (d) => ({ s: d.sections.map((x) => x.id), f: d.sections.flatMap((x) => x.frames.map((f) => f.id)) });
+  const was = ids(before), is = ids(r);
+  const removed = { sections: was.s.filter((x) => !is.s.includes(x)), frames: was.f.filter((x) => !is.f.includes(x)) };
+  const old = new Map(before.sections.map((x) => [x.id, JSON.stringify(x)]));
+  const named = new Set(ops.flatMap((o) => {
+    try { return typeof o.section === "string" && !o.from ? [findSection(r.sections, o.section).id] : []; } catch { return []; }
+  }));
+  const changed = r.sections.map((x, index) => ({ x, index })).filter(({ x }) => named.has(x.id) || old.get(x.id) !== JSON.stringify(x));
+  const lint = Object.fromEntries(Object.entries(r.lint ?? {}).map(([id, l]) => [id, l.map((x) => x.message)]));
+  return {
+    id: r.id, name: r.name, version: r.version, made: r.made,
+    ...(removed.sections.length || removed.frames.length ? { removed } : {}),
+    sections: changed.map(({ x, index }) => ({ ...sectionHead(x), index, frames: x.frames.length })),
+    total: { sections: r.sections.length, frames: frameTotal(r.sections) },
+    ...(Object.keys(lint).length ? { warnings: lint } : {}),
+    next: "get_design with a sectionId reads a section's frames; view_design with it shows them.",
+  };
+}
+/** A frame, a section or the sheet, drawn for a model to look at, `max` pixels a side at most; or null when it could not be. */
+async function lookAt(engine, store, designId, o, max) {
+  try { return await engine.forModel(await engine.renderDesign(store, designId, o), max ? { max } : undefined); }
   catch (e) { if (browserGate(e?.message)) return null; throw e; }
+}
+/** How big a frame comes back drawn small: enough to see the layout, at a fraction of the cost. */
+const SMALL = 640;
+/** An arrange_design change, as the sheet takes it: a frame added or changed in a batch is a setFrame. */
+function designOp(c) {
+  if (c.op !== "addFrame" && c.op !== "updateFrame") return c;
+  const { op, device, width, height, size, frameId, section, ...rest } = c;
+  if (device !== undefined && !DESIGN_DEVICES[device]) throw new Error(`device is desktop, tablet or mobile, not "${device}". Or give width.`);
+  const w = width ?? (device ? DESIGN_DEVICES[device].width : undefined);
+  const h = height === 0 ? null : height;
+  if (op === "addFrame") {
+    if (!c.name) throw new Error("addFrame needs the frame's name, like \"Home\".");
+    if (c.html === undefined) throw new Error(`addFrame "${c.name}" needs its html.`);
+    if (section === undefined) throw new Error(`addFrame "${c.name}" needs its section: an id, or the name of one (added earlier in the same changes, if it is new).`);
+    return { ...rest, op: "setFrame", section, width: w, height: h };
+  }
+  if (!frameId) throw new Error("updateFrame needs the frameId of the frame to change.");
+  return { ...rest, op: "setFrame", frameId, width: w, height: h, ...(size ? { size: size === "own" ? null : size } : {}) };
 }
 // ── comments ──────────────────────────────────────────────────────────────────
 const COMMENT = str("The comment's id, like cm_01...");
@@ -106,7 +180,7 @@ function commentOut(t) {
   };
 }
 
-const DESIGN_OPS = ["rename", "addSection", "updateSection", "moveSection", "placeSection", "removeSection", "addPiece", "moveFrame", "duplicateFrame", "removeFrame"];
+const DESIGN_OPS = ["rename", "addSection", "updateSection", "moveSection", "placeSection", "removeSection", "copySection", "addFrame", "updateFrame", "addPiece", "moveFrame", "duplicateFrame", "removeFrame"];
 
 const tagList = (tags) => { if (tags !== undefined && !(Array.isArray(tags) && tags.every((t) => typeof t === "string"))) throw new Error("tags is a list of words, like [\"product\", \"shot\"]."); };
 /** What an import added. The same file twice is the same Yarn, so the tags asked for land on the one there, and it stays where it is filed. */
@@ -712,42 +786,60 @@ export const TOOLS = [
   // Each section of a project has folders of its own, which hold things and other folders.
   // Filing a thing changes nothing about it. There is no tool to delete a folder: a person
   // does that in the studio, and what was in it moves up, so nothing is lost either way.
-  { name: "list_designs", description: "A project's design sheets: whole sites on one board, like a Figma file, in labelled sections of frames. Each frame is a screen or a piece of one, in HTML and CSS.", inputSchema: obj({ projectId: PROJECT }, ["projectId"]),
-    async handler({ projectId }, { store }) { return listDesigns(store, projectId).map((d) => ({ ...designOut(store, d), updatedAt: d.updatedAt })); } },
-  { name: "get_design", description: "Read a design sheet: its sections and frames by id. Give frameId for that frame's HTML and CSS, or code: true for every frame's. Look at it with view_design.", inputSchema: obj({ designId: DESIGN, frameId: str("A frame's id, like f7, for its code"), code: { type: "boolean", description: "Every frame's HTML and CSS. A sheet's code can be long: ask for one frame when that is enough." } }, ["designId"]),
-    async handler({ designId, frameId, code }, { store }) { return { ...designOut(store, getDesign(store, designId), { code, frameId }), tokens: TOKEN_NAMES, pictures: "yarn:<id> in src or url(), or yarn:logo for the brand's logo" }; } },
+  { name: "list_designs", description: "A project's design sheets: whole sites on one board, like a Figma file, in labelled sections of frames. Each frame is a screen or a piece of one, in HTML and CSS. Says each sheet's sections and how many frames each has: get_design reads one.", inputSchema: obj({ projectId: PROJECT }, ["projectId"]),
+    async handler({ projectId }, { store }) {
+      return listDesigns(store, projectId).map((d) => ({ id: d.id, name: d.name, version: d.version, frameCount: frameTotal(d.sections), sections: d.sections.map((s) => ({ id: s.id, name: s.name, frames: s.frames.length })), updatedAt: d.updatedAt }));
+    } },
+  { name: "get_design", description: `Read a design sheet: its sections, and their frames by id with each one's size, note and a hash of its code (the same hash is the same code, so a copy can be checked without reading it). Give sectionId for one section, frameId for one frame with its HTML and CSS, or code: true for every frame's. A sheet of more than ${OUTLINE_PAGE} frames (${CODE_PAGE} with code) comes a page at a time: each section says how many frames it has, and page asks for the next. Look at it with view_design.`, inputSchema: obj({ designId: DESIGN, sectionId: str("A section's id or name, for just that section"), frameId: str("A frame's id, like f7, for just that frame and its code"), code: { type: "boolean", description: "Every frame's HTML and CSS. A sheet's code can be long: ask for one frame, or one section, when that is enough." }, page: { type: "number", description: "Which page of a big sheet's frames, from 1" } }, ["designId"]),
+    async handler({ designId, sectionId, frameId, code, page }, { store }) {
+      const d = getDesign(store, designId);
+      if (frameId) return frameAlone(store, d, frameId);
+      return { ...designOut(store, d, { code, sectionId, page }), ...(code ? { tokens: TOKEN_NAMES, pictures: "yarn:<id> in src or url(), or yarn:logo for the brand's logo" } : {}) };
+    } },
   { name: "create_design", description: "START a design sheet for a whole site. start \"brand\" (the default) begins with Foundations (colours, type, buttons and fields), Components (header, footer) and Pages (a home page on desktop and mobile), all drawn with the brand's Swatch, to make into the business's own; \"blank\" begins with one empty Pages section. Then design with set_design_frame. Read get_guide designing first.", inputSchema: obj({ projectId: PROJECT, name: str("Like \"Website\" or \"Spring launch page\""), start: { type: "string", enum: ["brand", "blank"] } }, ["projectId", "name"]),
     async handler({ projectId, name, start }, { store }) { const d = createDesign(store, projectId, { name, start }, "model"); return { ...designOut(store, d), next: "view_design to see it, then set_design_frame to make each frame the business's own." }; } },
-  { name: "set_design_frame", description: "DESIGN one frame of a sheet: a page, a screen or a piece of one, as HTML and CSS, and SEE it. Give frameId to change one, or leave it out to add one to the section (by id or name; a section that is not there yet is added). The brand is in CSS variables: var(--color-primary) and the other roles, var(--color-on-primary) for text on it, var(--font-display), var(--font-body), var(--radius). Pictures from Yarn are yarn:<id>, the logo yarn:logo. No scripts, and nothing from the web. It comes back drawn: look, and fix what is off.", inputSchema: obj({ designId: DESIGN, section: str("The section's id or name, like s3 or \"Pages\""), frameId: str("The frame to change, like f7. Leave out to add a frame"), name: str("Like \"Home\" or \"Pricing, mobile\""), device: DEVICE, width: { type: "number", description: "In pixels, 240 to 3840, when not a device's" }, height: { type: "number", description: "A fixed height, like one phone screen (844). Leave it out to keep the height it has; 0 for a frame as tall as what is in it." }, html: str("The frame's body, without <html>, <head> or <body>"), css: str("Its styles. They are its own: no other frame sees them"), note: str("What it is for, or what is still to do"), size: { type: "string", enum: [...SIZES.map((x) => x.name), "own"], description: "Only for a pattern placed on the sheet: the size it is shown at there, or own. The pattern itself is not changed" } }, ["designId", "section"]),
-    async handler({ designId, section, frameId, name, device, width, height, html, css, note, size }, { store, engine }) {
+  { name: "set_design_frame", description: "DESIGN one frame of a sheet: a page, a screen or a piece of one, as HTML and CSS, and SEE it. Give frameId to change one, or leave it out to add one to the section (by id or name; a section that is not there yet is added, and the result says so). The brand is in CSS variables: var(--color-primary) and the other roles, var(--color-on-primary) for text on it, var(--font-display), var(--font-body), var(--radius). Pictures from Yarn are yarn:<id>, the logo yarn:logo. No scripts, and nothing from the web. A change to its code or size comes back drawn: look, and fix what is off. A new name or note alone comes back in words. To add many frames at once, use arrange_design addFrame, then look at them together with view_design.", inputSchema: obj({ designId: DESIGN, section: str("The section's id or name, like s3 or \"Pages\". Changing a frame by frameId, leave it out to keep it where it is"), frameId: str("The frame to change, like f7. Leave out to add a frame"), name: str("Like \"Home\" or \"Pricing, mobile\""), device: DEVICE, width: { type: "number", description: "In pixels, 240 to 3840, when not a device's" }, height: { type: "number", description: "A fixed height, like one phone screen (844). Leave it out to keep the height it has; 0 for a frame as tall as what is in it." }, html: str("The frame's body, without <html>, <head> or <body>"), css: str("Its styles. They are its own: no other frame sees them"), note: str("What it is for, or what is still to do"), size: { type: "string", enum: [...SIZES.map((x) => x.name), "own"], description: "Only for a pattern placed on the sheet: the size it is shown at there, or own. The pattern itself is not changed" }, draw: { type: "string", enum: ["full", "small", "none"], description: `How it comes back: drawn in full (the default for new code or a new size), drawn small (${SMALL} pixels a side at most: the layout, not the detail), or not drawn (the default for a name or a note alone)` } }, ["designId"]),
+    async handler({ designId, section, frameId, name, device, width, height, html, css, note, size, draw }, { store, engine }) {
       const d = getDesign(store, designId);
       const w = width ?? (device ? DESIGN_DEVICES[device]?.width : undefined);
       if (!frameId && !name) throw new Error("Give the new frame a name, like \"Home\".");
       if (!frameId && html === undefined) throw new Error("A new frame needs its html.");
-      let known = true; try { findSection(d.sections, section); } catch (e) { if (/^s\d+$/.test(String(section).trim())) throw e; known = false; }
-      const ops = [...(known ? [] : [{ op: "addSection", name: section }]), { op: "setFrame", section, frameId, name, width: w, height: height === 0 ? null : height, html, css, note, ...(size ? { size: size === "own" ? null : size } : {}) }];
+      if (!frameId && !section) throw new Error("Say which section the new frame goes in, by id or name.");
+      let known = true; if (section) try { findSection(d.sections, section); } catch (e) { if (/^s\d+$/.test(String(section).trim())) throw e; known = false; }
+      const ops = [...(known ? [] : [{ op: "addSection", name: section }]), { op: "setFrame", section: section || undefined, frameId, name, width: w, height: height === 0 ? null : height, html, css, note, ...(size ? { size: size === "own" ? null : size } : {}) }];
       const r = changeDesign(store, designId, ops, "model");
       const id = frameId ?? r.made.frames[0];
       const s = r.sections.find((x) => x.frames.some((f) => f.id === id));
       const f = s.frames.find((x) => x.id === id);
-      const said = [`${frameId ? "Saved" : "Added"} ${f.name} (${f.id}) in ${s.name} (${s.id}), ${frameSize(f)}${known ? "" : ", a new section"}.`, ...(r.lint[id] ?? []).map((l) => l.message)].join(" ");
-      const png = await lookAt(engine, store, designId, { frameId: id });
-      return png ? { __image: png.toString("base64"), mime: "image/png", caption: `${said} This is it, drawn.${f.height ? "" : " A tall page is cut into columns, left to right."}`, id: designId, frameId: id } : { saved: said, frameId: id, note: "It could not be drawn here: knitted's browser is not ready, so look later with view_design." };
+      const said = [`${frameId ? "Saved" : "Added"} ${f.name} (${f.id}) in ${s.name} (${s.id}), ${frameSize(f)}.`,
+        ...(known ? [] : [`There was no section "${section}", so it is a new one. If you meant another, move the frame there (arrange_design moveFrame) and removeSection ${s.id}.`]),
+        ...(r.lint[id] ?? []).map((l) => l.message)].join(" ");
+      const looks = !frameId || [html, css, width, device, height, size].some((x) => x !== undefined);
+      const how = draw ?? (looks ? "full" : "none");
+      if (how === "none") return { saved: said, id: designId, frameId: id, version: r.version };
+      const png = await lookAt(engine, store, designId, { frameId: id }, how === "small" ? SMALL : undefined);
+      // Which frame, and which version of the sheet, the picture is of: a caller can tell it is the one it saved.
+      return png ? { __image: png.toString("base64"), mime: "image/png", caption: `${said} This is ${f.id} as saved, at version ${r.version} of the sheet, drawn${how === "small" ? " small" : ""}.${f.height ? "" : " A tall page is cut into columns, left to right."}`, id: designId, frameId: id, version: r.version } : { saved: said, frameId: id, version: r.version, note: "It could not be drawn here: knitted's browser is not ready, so look later with view_design." };
     } },
-  { name: "arrange_design", description: "ARRANGE a design sheet, all changes or none: rename it, add, rename, place, wrap, move or remove sections, and move, copy or remove frames. Each change is { op, ... }: rename {name}; addSection {name, note?, at?, x?, y?, width?}; updateSection {section, name?, note?, width?}; moveSection {section, to}; placeSection {section, x, y}; removeSection {section}; addPiece {section, kind, id, width?, size?, note?, at?}; moveFrame {frameId, section, at?}; duplicateFrame {frameId, name?}; removeFrame {frameId}. at and to count from 0. addPiece puts one of the project's own things on the sheet beside the pages, drawn as it is now: kind \"pattern\" (from list_patterns), \"yarn\" (a picture or video, from list_yarn) or \"part\" (from list_parts); at its own size, or width pixels wide in its own shape. A pattern's size (one of " + SIZES.map((x) => x.name).join(", ") + ") shows it laid out at that size on the sheet, the pattern itself unchanged, such as a Story beside the Post. A piece has no code: change the thing itself, and the sheet shows the change. The board is in the frames' pixels: placeSection puts a section's top left corner at x, y (multiples of 40 line up with the grid), and null for both puts it back in the column of sections not placed, which stands under the placed ones in order. A section's width wraps its frames into rows (null: one row). The person can undo it.", inputSchema: obj({ designId: DESIGN, changes: { type: "array", minItems: 1, maxItems: 50, items: { type: "object", properties: { op: { type: "string", enum: DESIGN_OPS } }, required: ["op"] } } }, ["designId", "changes"]),
+  { name: "arrange_design", description: "ARRANGE a design sheet, all changes or none: rename it, add, rename, place, wrap, move, copy or remove sections, add or change many frames at once, and move, copy or remove frames. Each change is { op, ... }: rename {name}; addSection {name, note?, at?, x?, y?, width?}; updateSection {section, name?, note?, width?}; moveSection {section, to}; placeSection {section, x, y}; removeSection {section}; copySection {section, from?, name?, at?, x?, y?}; addFrame {section, name, html, css?, device?, width?, height?, note?, at?}; updateFrame {frameId, name?, html?, css?, device?, width?, height?, note?, size?}; addPiece {section, kind, id, width?, size?, note?, at?}; moveFrame {frameId, section, at?}; duplicateFrame {frameId, name?}; removeFrame {frameId}. at and to count from 0. addFrame and updateFrame take what set_design_frame takes, for up to 50 frames in one call, and draw nothing: look at them with view_design and the section after. A section added in the same changes can be named in addFrame by its name. copySection copies a section with all its frames, from this sheet or from another of the project's (from: its design id), as a new section with new ids; the result maps each frame's id to its copy's. To move one, copy it, then removeSection it on the sheet it came from. addPiece puts one of the project's own things on the sheet beside the pages, drawn as it is now: kind \"pattern\" (from list_patterns), \"yarn\" (a picture or video, from list_yarn) or \"part\" (from list_parts); at its own size, or width pixels wide in its own shape. A pattern's size (one of " + SIZES.map((x) => x.name).join(", ") + ") shows it laid out at that size on the sheet, the pattern itself unchanged, such as a Story beside the Post. A piece has no code: change the thing itself, and the sheet shows the change. The board is in the frames' pixels: placeSection puts a section's top left corner at x, y (multiples of 40 line up with the grid), and null for both puts it back in the column of sections not placed, which stands under the placed ones in order. A section's width wraps its frames into rows (null: one row). Returns the ids it made and removed and the sections it changed, not the whole sheet. The person can undo it.", inputSchema: obj({ designId: DESIGN, changes: { type: "array", minItems: 1, maxItems: 50, items: { type: "object", properties: { op: { type: "string", enum: DESIGN_OPS } }, required: ["op"] } } }, ["designId", "changes"]),
     async handler({ designId, changes }, { store }) {
       const bad = changes.find((c) => !DESIGN_OPS.includes(c?.op));
-      if (bad) throw new Error(`"${bad?.op}" is not a change arrange_design makes. Design a frame with set_design_frame.`);
-      const r = changeDesign(store, designId, changes, "model");
-      return { ...designOut(store, r), made: r.made };
+      if (bad) throw new Error(`"${bad?.op}" is not a change arrange_design makes. Its changes are ${DESIGN_OPS.join(", ")}.`);
+      const before = getDesign(store, designId);
+      const ops = changes.map(designOp);
+      return arranged(before, changeDesign(store, designId, ops, "model"), ops);
     } },
   { name: "view_design", description: "LOOK at a design sheet as the person sees it: the whole board with its labelled sections, one section, or one frame. A whole sheet is small: look at a frame or a section to check the detail. A tall frame is cut into columns, left to right.", inputSchema: obj({ designId: DESIGN, sectionId: str("A section's id or name, for just that section"), frameId: str("A frame's id, for just that frame") }, ["designId"]),
     async handler({ designId, sectionId, frameId }, { store, engine }) {
       const d = getDesign(store, designId);
-      const png = await lookAt(engine, store, designId, { sectionId, frameId });
+      const png = await lookAt(engine, store, designId, { sectionId, frameId, model: true });
       if (!png) throw new Error("knitted's browser is not ready yet, so the design cannot be drawn. get_design still reads it.");
-      const what = frameId ? `the frame ${frameId}` : sectionId ? `the section ${sectionId}` : `${d.name}: ${d.sections.map((s) => `${s.name} (${s.frames.map((f) => f.name).join(", ") || "empty"})`).join("; ")}`;
-      return { __image: png.toString("base64"), mime: "image/png", caption: `This is ${what}.`, id: designId };
+      const f = frameId ? d.sections.flatMap((s) => s.frames).find((x) => x.id === frameId) : undefined;
+      const s = sectionId && !frameId ? findSection(d.sections, sectionId) : undefined;
+      const many = frameTotal(d.sections) > 60;
+      const what = f ? `the frame ${f.id}, "${f.name}"` : s ? `the section ${s.name} (${s.id}), ${s.frames.length} frame${s.frames.length === 1 ? "" : "s"}`
+        : `${d.name}: ${d.sections.map((x) => (many ? `${x.name} (${x.id}, ${x.frames.length})` : `${x.name} (${x.frames.map((y) => y.name).join(", ") || "empty"})`)).join("; ")}`;
+      return { __image: png.toString("base64"), mime: "image/png", caption: `This is ${what}, at version ${d.version}.`, id: designId };
     } },
   { name: "list_comments", description: "The person's comments: notes pinned to a spot on a knit (and a moment, in a video) or on a frame of a design sheet, saying what to change there. Each says where it is and what is under it can be seen with view_comment. Open ones only, unless open is false. Look at one with view_comment before you change anything, and answer it with reply_comment when it is done.", inputSchema: obj({ projectId: PROJECT, knitId: str("A knit's id, for its comments"), designId: DESIGN, frameId: str("With designId, one frame's comments"), open: { type: "boolean", description: "Only those not resolved yet. True unless said." } }),
     async handler({ projectId, knitId, designId, frameId, open = true }, { store }) {

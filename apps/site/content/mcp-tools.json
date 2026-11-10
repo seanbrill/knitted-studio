@@ -1760,7 +1760,7 @@
   },
   {
     "name": "list_designs",
-    "summary": "A project's design sheets: whole sites on one board, like a Figma file, in labelled sections of frames. Each frame is a screen or a piece of one, in HTML and CSS.",
+    "summary": "A project's design sheets: whole sites on one board, like a Figma file, in labelled sections of frames. Each frame is a screen or a piece of one, in HTML and CSS. Says each sheet's sections and how many frames each has: get_design reads one.",
     "params": [
       {
         "name": "projectId",
@@ -1772,7 +1772,7 @@
   },
   {
     "name": "get_design",
-    "summary": "Read a design sheet: its sections and frames by id. Give frameId for that frame's HTML and CSS, or code: true for every frame's. Look at it with view_design.",
+    "summary": "Read a design sheet: its sections, and their frames by id with each one's size, note and a hash of its code (the same hash is the same code, so a copy can be checked without reading it). Give sectionId for one section, frameId for one frame with its HTML and CSS, or code: true for every frame's. A sheet of more than 80 frames (15 with code) comes a page at a time: each section says how many frames it has, and page asks for the next. Look at it with view_design.",
     "params": [
       {
         "name": "designId",
@@ -1781,16 +1781,28 @@
         "description": "The design id, like ds_01..."
       },
       {
+        "name": "sectionId",
+        "type": "string",
+        "required": false,
+        "description": "A section's id or name, for just that section"
+      },
+      {
         "name": "frameId",
         "type": "string",
         "required": false,
-        "description": "A frame's id, like f7, for its code"
+        "description": "A frame's id, like f7, for just that frame and its code"
       },
       {
         "name": "code",
         "type": "boolean",
         "required": false,
-        "description": "Every frame's HTML and CSS. A sheet's code can be long: ask for one frame when that is enough."
+        "description": "Every frame's HTML and CSS. A sheet's code can be long: ask for one frame, or one section, when that is enough."
+      },
+      {
+        "name": "page",
+        "type": "number",
+        "required": false,
+        "description": "Which page of a big sheet's frames, from 1"
       }
     ]
   },
@@ -1820,7 +1832,7 @@
   },
   {
     "name": "set_design_frame",
-    "summary": "DESIGN one frame of a sheet: a page, a screen or a piece of one, as HTML and CSS, and SEE it. Give frameId to change one, or leave it out to add one to the section (by id or name; a section that is not there yet is added). The brand is in CSS variables: var(--color-primary) and the other roles, var(--color-on-primary) for text on it, var(--font-display), var(--font-body), var(--radius). Pictures from Yarn are yarn:<id>, the logo yarn:logo. No scripts, and nothing from the web. It comes back drawn: look, and fix what is off.",
+    "summary": "DESIGN one frame of a sheet: a page, a screen or a piece of one, as HTML and CSS, and SEE it. Give frameId to change one, or leave it out to add one to the section (by id or name; a section that is not there yet is added, and the result says so). The brand is in CSS variables: var(--color-primary) and the other roles, var(--color-on-primary) for text on it, var(--font-display), var(--font-body), var(--radius). Pictures from Yarn are yarn:<id>, the logo yarn:logo. No scripts, and nothing from the web. A change to its code or size comes back drawn: look, and fix what is off. A new name or note alone comes back in words. To add many frames at once, use arrange_design addFrame, then look at them together with view_design.",
     "params": [
       {
         "name": "designId",
@@ -1831,8 +1843,8 @@
       {
         "name": "section",
         "type": "string",
-        "required": true,
-        "description": "The section's id or name, like s3 or \"Pages\""
+        "required": false,
+        "description": "The section's id or name, like s3 or \"Pages\". Changing a frame by frameId, leave it out to keep it where it is"
       },
       {
         "name": "frameId",
@@ -1887,12 +1899,18 @@
         "type": "string",
         "required": false,
         "description": "Only for a pattern placed on the sheet: the size it is shown at there, or own. The pattern itself is not changed. One of Story, Post, Square, Landscape, Banner, own."
+      },
+      {
+        "name": "draw",
+        "type": "string",
+        "required": false,
+        "description": "How it comes back: drawn in full (the default for new code or a new size), drawn small (640 pixels a side at most: the layout, not the detail), or not drawn (the default for a name or a note alone). One of full, small, none."
       }
     ]
   },
   {
     "name": "arrange_design",
-    "summary": "ARRANGE a design sheet, all changes or none: rename it, add, rename, place, wrap, move or remove sections, and move, copy or remove frames. Each change is { op, ... }: rename {name}; addSection {name, note?, at?, x?, y?, width?}; updateSection {section, name?, note?, width?}; moveSection {section, to}; placeSection {section, x, y}; removeSection {section}; addPiece {section, kind, id, width?, size?, note?, at?}; moveFrame {frameId, section, at?}; duplicateFrame {frameId, name?}; removeFrame {frameId}. at and to count from 0. addPiece puts one of the project's own things on the sheet beside the pages, drawn as it is now: kind \"pattern\" (from list_patterns), \"yarn\" (a picture or video, from list_yarn) or \"part\" (from list_parts); at its own size, or width pixels wide in its own shape. A pattern's size (one of Story, Post, Square, Landscape, Banner) shows it laid out at that size on the sheet, the pattern itself unchanged, such as a Story beside the Post. A piece has no code: change the thing itself, and the sheet shows the change. The board is in the frames' pixels: placeSection puts a section's top left corner at x, y (multiples of 40 line up with the grid), and null for both puts it back in the column of sections not placed, which stands under the placed ones in order. A section's width wraps its frames into rows (null: one row). The person can undo it.",
+    "summary": "ARRANGE a design sheet, all changes or none: rename it, add, rename, place, wrap, move, copy or remove sections, add or change many frames at once, and move, copy or remove frames. Each change is { op, ... }: rename {name}; addSection {name, note?, at?, x?, y?, width?}; updateSection {section, name?, note?, width?}; moveSection {section, to}; placeSection {section, x, y}; removeSection {section}; copySection {section, from?, name?, at?, x?, y?}; addFrame {section, name, html, css?, device?, width?, height?, note?, at?}; updateFrame {frameId, name?, html?, css?, device?, width?, height?, note?, size?}; addPiece {section, kind, id, width?, size?, note?, at?}; moveFrame {frameId, section, at?}; duplicateFrame {frameId, name?}; removeFrame {frameId}. at and to count from 0. addFrame and updateFrame take what set_design_frame takes, for up to 50 frames in one call, and draw nothing: look at them with view_design and the section after. A section added in the same changes can be named in addFrame by its name. copySection copies a section with all its frames, from this sheet or from another of the project's (from: its design id), as a new section with new ids; the result maps each frame's id to its copy's. To move one, copy it, then removeSection it on the sheet it came from. addPiece puts one of the project's own things on the sheet beside the pages, drawn as it is now: kind \"pattern\" (from list_patterns), \"yarn\" (a picture or video, from list_yarn) or \"part\" (from list_parts); at its own size, or width pixels wide in its own shape. A pattern's size (one of Story, Post, Square, Landscape, Banner) shows it laid out at that size on the sheet, the pattern itself unchanged, such as a Story beside the Post. A piece has no code: change the thing itself, and the sheet shows the change. The board is in the frames' pixels: placeSection puts a section's top left corner at x, y (multiples of 40 line up with the grid), and null for both puts it back in the column of sections not placed, which stands under the placed ones in order. A section's width wraps its frames into rows (null: one row). Returns the ids it made and removed and the sections it changed, not the whole sheet. The person can undo it.",
     "params": [
       {
         "name": "designId",

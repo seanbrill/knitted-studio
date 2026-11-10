@@ -13,7 +13,8 @@ import { openRenderer, renderDesign } from "@knitted/engine";
 
 const store = openStore(join(mkdtempSync(join(tmpdir(), "knitted-designr-")), "k.db"));
 const renderer = await openRenderer();
-after(async () => { await renderer.close(); });
+// The board's pictures are drawn in a browser of their own, shared and closed a minute after: closed here.
+after(async () => { await renderer.close(); await globalThis.__knittedSheetRenderer?.opening?.then((r) => r.close()).catch(() => {}); });
 const project = store.createProject({ name: "Design render", starter: "blank" });
 
 // Twelve frames, each one solid colour of its own, in three sections of four, each 6,000 tall.
@@ -113,4 +114,58 @@ test("a pattern and a Yarn picture on a sheet are drawn as they are, by the rend
   const low = addComment(store, { designId: d.id, frameId: made[0], x: 0.5, y: 0.6, text: "Something here" });
   assert.deepEqual((await lookAtComment(store, low.id, { renderer })).under.map((u) => u.stitchId), ["bg"]);
   assert.equal(store.getPattern(post.id).size.h, 1350, "the pattern keeps its own size");
+});
+
+/** How many pixels of a picture are each of these colours, give or take `near`. */
+async function colourCounts(png, rgbs, near = 10) {
+  const { data, info } = await sharp(png, { limitInputPixels: false }).raw().toBuffer({ resolveWithObject: true });
+  const counts = new Array(rgbs.length).fill(0);
+  for (let i = 0; i < data.length; i += info.channels) {
+    for (let k = 0; k < rgbs.length; k++) {
+      const c = rgbs[k];
+      if (Math.abs(data[i] - c[0]) <= near && Math.abs(data[i + 1] - c[1]) <= near && Math.abs(data[i + 2] - c[2]) <= near) { counts[k]++; break; }
+    }
+  }
+  return { counts, info };
+}
+/** Colours far enough apart to tell from each other, and from the board. */
+const spread = (n) => Array.from({ length: n }, (_, i) => [30 + 60 * (i % 4), 30 + 60 * (Math.floor(i / 4) % 4), 30 + 70 * (Math.floor(i / 16) % 4)]);
+const hex = (rgb) => `#${rgb.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+
+test("frames of one sheet drawn at the same moment each come back as the frame asked for", async () => {
+  // Once, two drawings in the same millisecond shared a page file, and one came back as the other's frame.
+  const rgbs = spread(8);
+  const d = createDesign(store, project.id, { name: "At once", start: "blank", ops: rgbs.map((c, i) => ({ op: "setFrame", section: "Pages", name: `Solid ${i + 1}`, width: 400, height: 300, html: "<main></main>", css: `html,body,main{margin:0;height:100%;background:${hex(c)}}` })) });
+  const ids = d.sections[0].frames.map((f) => f.id);
+  const pngs = await Promise.all(ids.map((frameId) => renderDesign(store, d.id, { frameId, renderer })));
+  for (const [k, png] of pngs.entries()) {
+    const { counts, info } = await colourCounts(png, rgbs, 2);
+    assert.ok(counts[k] > 0.98 * info.width * info.height, `${ids[k]} came back as ${counts.map((n, j) => (n ? `${ids[j]}: ${n}` : "")).filter(Boolean).join(", ")}`);
+  }
+});
+
+test("a model's view of a big sheet is drawn from the frames' kept pictures, in one shot, every frame in it", async () => {
+  const { readdirSync } = await import("node:fs");
+  // Forty desktop screens, each its own colour, in four sections of ten.
+  const rgbs = spread(40);
+  const ops = [];
+  for (let s = 0; s < 4; s++) {
+    ops.push({ op: "addSection", name: `Part ${s + 1}` });
+    for (let f = 0; f < 10; f++) ops.push({ op: "setFrame", section: `Part ${s + 1}`, name: `Screen ${s * 10 + f + 1}`, width: 1440, height: 900, html: "<main></main>", css: `html,body,main{margin:0;height:100%;background:${hex(rgbs[s * 10 + f])}}` });
+  }
+  const d = createDesign(store, project.id, { name: "Big", start: "blank", ops });
+  const png = await renderDesign(store, d.id, { renderer, model: true });
+  const { counts, info } = await colourCounts(png, rgbs);
+  assert.ok(Math.max(info.width, info.height) <= 4096, `one shot, no tiles to stitch: ${info.width}x${info.height}`);
+  // The board: ten screens and the gaps between them, and the section's padding and the margin round it.
+  const scale = info.width / (10 * 1440 + 9 * 80 + 2 * 80 + 2 * 96);
+  const each = 1440 * 900 * scale * scale;
+  counts.forEach((n, k) => assert.ok(n > each * 0.85, `Screen ${k + 1} shows ${Math.round((100 * n) / each)}% of itself`));
+  // From the pictures the board keeps: one for each frame.
+  const kept = readdirSync(join(store.paths.cacheDir, "sheets", d.id)).filter((f) => f.endsWith(".webp"));
+  assert.equal(kept.length, 40);
+  // A small sheet is still drawn live, for the detail.
+  const small = createDesign(store, project.id, { name: "Small", start: "blank", ops: [{ op: "setFrame", section: "Pages", name: "One", width: 1440, height: 900, html: "<main></main>", css: "main{height:100%}" }] });
+  await renderDesign(store, small.id, { renderer, model: true });
+  assert.equal(readdirSync(join(store.paths.cacheDir, "sheets")).includes(small.id), false);
 });

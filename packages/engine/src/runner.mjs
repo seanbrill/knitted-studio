@@ -8,7 +8,7 @@
 // time is SET, never waited for, so two knits of the same inputs are the same
 // bytes. The hash below is how we know "the same inputs".
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { copyFile, mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
@@ -239,7 +239,7 @@ export async function renderPreview(store, patternId, { timeMs = 0, scale = 1, r
   const ctx = renderContext(store, pattern.projectId, pattern, swatch, yarn, yarnMap);
   const dir = join(store.paths.projectDir(pattern.projectId), ".pages");
   await mkdir(dir, { recursive: true });
-  const file = join(dir, `preview-${patternId}-${Date.now()}.html`);
+  const file = join(dir, `preview-${patternId}-${randomUUID()}.html`);
   await writeFile(file, pageFor({ ...pattern, background: swatch.colors.find((c) => c.role === "background")?.hex }, ctx), "utf8");
   const renderer = injected ?? (await openRenderer());
   const page = await renderer.newPage({ width: pattern.size.w, height: pattern.size.h, scale });
@@ -266,7 +266,7 @@ export async function stitchesAt(store, patternId, { x, y, timeMs = 0, renderer:
   const ctx = renderContext(store, pattern.projectId, pattern, swatch, yarn, Object.fromEntries(yarn.map((v) => [v.id, v])));
   const dir = join(store.paths.projectDir(pattern.projectId), ".pages");
   await mkdir(dir, { recursive: true });
-  const file = join(dir, `at-${patternId}-${Date.now()}.html`);
+  const file = join(dir, `at-${patternId}-${randomUUID()}.html`);
   await writeFile(file, pageFor({ ...pattern, background: swatch.colors.find((c) => c.role === "background")?.hex }, ctx), "utf8");
   const renderer = injected ?? (await openRenderer());
   const page = await renderer.newPage({ width: pattern.size.w, height: pattern.size.h, scale: 1 });

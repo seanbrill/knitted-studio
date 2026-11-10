@@ -805,22 +805,37 @@ test("design sheets: the model starts one from the brand, designs a frame and se
 
   const r = await t.set_design_frame.handler({ designId: d.id, section: "Pricing", name: "Pricing", device: "mobile", html: '<h1>Plans</h1><img src="yarn:logo">', css: "h1{color:var(--color-primary)}" }, { store, engine });
   assert.equal(r.mime, "image/png");
-  assert.match(r.caption, /^Added Pricing \(f9\) in Pricing \(s4\), Mobile 390, a new section\. A picture has no alt text/);
+  assert.match(r.caption, /^Added Pricing \(f9\) in Pricing \(s4\), Mobile 390\. There was no section "Pricing", so it is a new one\. If you meant another, .*removeSection s4\. A picture has no alt text/);
+  assert.match(r.caption, /This is f9 as saved, at version \d+ of the sheet, drawn\./, "it names the frame and the version it drew");
   assert.deepEqual(drawn.at(-1), { id: d.id, frameId: "f9" });
   await assert.rejects(t.set_design_frame.handler({ designId: d.id, section: "s9", name: "X", html: "" }, { store, engine }), /no section "s9"/);
   await assert.rejects(t.set_design_frame.handler({ designId: d.id, section: "Pages", name: "X", html: "<script>1</script>" }, { store, engine }), /Scripts do not run/);
+  // One frame is that frame, not the sheet with it.
   const one = await tools.get_design({ designId: d.id, frameId: "f9" });
-  assert.equal(one.sections[3].frames[0].html, '<h1>Plans</h1><img src="yarn:logo">');
+  assert.deepEqual([one.section, one.frame.id, one.frame.html, one.sections], [{ id: "s4", name: "Pricing" }, "f9", '<h1>Plans</h1><img src="yarn:logo">', undefined]);
   assert.ok(one.tokens.includes("--color-on-primary"));
+  // A note alone comes back in words, not drawn; asked, it is drawn small.
+  const n = drawn.length;
+  const noted = await t.set_design_frame.handler({ designId: d.id, frameId: "f9", note: "Check the prices" }, { store, engine });
+  assert.match(noted.saved, /^Saved Pricing \(f9\) in Pricing \(s4\)/);
+  assert.equal(drawn.length, n, "nothing drawn for a note");
+  assert.equal(noted.__image, undefined);
+  const small = await t.set_design_frame.handler({ designId: d.id, frameId: "f9", css: "h1{color:var(--color-accent)}", draw: "small" }, { store, engine });
+  assert.match(small.caption, /drawn small\./);
+  assert.equal(drawn.length, n + 1);
 
   const a = await tools.arrange_design({ designId: d.id, changes: [{ op: "moveSection", section: "Pricing", to: 2 }, { op: "duplicateFrame", frameId: "f9", name: "Pricing, annual" }] });
-  assert.deepEqual(a.sections.map((s) => s.name), ["Foundations", "Components", "Pricing", "Pages"]);
+  // What it did, not the whole sheet: the section it moved and copied in, where it is now.
+  assert.deepEqual(a.sections, [{ id: "s4", name: "Pricing", index: 2, frames: 2 }]);
   assert.deepEqual(a.made.frames, ["f10"]);
-  await assert.rejects(tools.arrange_design({ designId: d.id, changes: [{ op: "setFrame", section: "s1" }] }), /set_design_frame/);
+  assert.equal(a.total.sections, 4);
+  assert.deepEqual((await tools.get_design({ designId: d.id })).sections.map((s) => s.name), ["Foundations", "Components", "Pricing", "Pages"]);
+  await assert.rejects(tools.arrange_design({ designId: d.id, changes: [{ op: "setFrame", section: "s1" }] }), /not a change arrange_design makes\. Its changes are .*addFrame/);
   assert.equal(lastCall().summary, 'Arranging "Website"');
 
   const v = await t.view_design.handler({ designId: d.id, sectionId: "Pricing" }, { store, engine });
-  assert.match(v.caption, /the section Pricing/);
+  assert.match(v.caption, /the section Pricing \(s4\), 2 frames/);
+  assert.equal(drawn.at(-1).model, true, "drawn as a model sees it");
   assert.ok(["list_designs", "get_design", "view_design"].every((n) => READ_ONLY.has(n)) && !READ_ONLY.has("set_design_frame"));
   const { pathFor } = await import("../apps/studio/lib/agent.ts");
   assert.equal(pathFor(lastCall()), `/projects/${project.id}/designs/${d.id}`);
@@ -832,10 +847,10 @@ test("a model puts a pattern on a sheet beside the pages, reads it as a piece wi
   const post = store.createPattern(project.id, { name: "Launch post", size: { name: "Instagram post", w: 1080, h: 1350 } });
   const d = await tools.create_design({ projectId: project.id, name: "Launch", start: "blank" });
   const a = await tools.arrange_design({ designId: d.id, changes: [{ op: "addPiece", section: "Pages", kind: "pattern", id: post.id }] });
-  const f = a.sections[0].frames.at(-1);
+  const f = (await tools.get_design({ designId: d.id })).sections[0].frames.find((x) => x.id === a.made.frames[0]);
   assert.deepEqual([f.name, f.size, f.width, f.height, f.piece.kind, f.piece.id], ["Launch post", "Pattern 1080 x 1350", 1080, 1350, "pattern", post.id]);
   assert.match(f.piece.change, /change the pattern itself \(describe_pattern/i);
-  assert.ok(f.html === undefined && f.codeChars === undefined, "a piece has no code");
+  assert.ok(f.html === undefined && f.codeChars === undefined && f.hash === undefined, "a piece has no code");
   const all = await tools.get_design({ designId: d.id, code: true });
   assert.equal(all.sections[0].frames.at(-1).html, undefined, "not even when all of it is asked for");
   await assert.rejects(t.set_design_frame.handler({ designId: d.id, section: "Pages", frameId: f.id, html: "<p>x</p>" }, { store, engine }), /placed on the sheet, not code: change the pattern itself/);
@@ -850,7 +865,75 @@ test("a model puts a pattern on a sheet beside the pages, reads it as a piece wi
   await t.set_design_frame.handler({ designId: d.id, section: "Pages", frameId: f.id, size: "own" }, { store, engine });
   assert.equal((await tools.get_design({ designId: d.id })).sections[0].frames.at(-1).piece.size, undefined);
   const b = await tools.arrange_design({ designId: d.id, changes: [{ op: "addPiece", section: "Pages", kind: "pattern", id: post.id, size: "Square" }] });
-  assert.deepEqual([b.sections[0].frames.at(-1).height, b.sections[0].frames.at(-1).piece.size], [1080, "Square"]);
+  const square = (await tools.get_design({ designId: d.id, frameId: b.made.frames[0] })).frame;
+  assert.deepEqual([square.height, square.piece.size], [1080, "Square"]);
+});
+
+test("a big sheet: frames added many at a time without a drawing each, read a page at a time, and sections copied from another sheet", async () => {
+  const drawn = [];
+  const engine = { renderDesign: async (_s, id, o) => { drawn.push({ id, ...o }); return Buffer.from("png"); }, forModel: async (b) => b };
+  const t = toolByName();
+  const old = await tools.create_design({ projectId: project.id, name: "Old site", start: "blank" });
+  // A new section and its frames in one call, all or none: the section named by its name, as it is new.
+  const frames = Array.from({ length: 45 }, (_, i) => ({ op: "addFrame", section: "Shop", name: `Shop ${i + 1}`, device: i % 2 ? "mobile" : "desktop", html: `<h1>Shop ${i + 1}</h1>`, css: "h1{margin:0}", note: `crop ${i}` }));
+  const a = await tools.arrange_design({ designId: old.id, changes: [{ op: "addSection", name: "Shop" }, ...frames.slice(0, 49)] });
+  assert.equal(a.made.sections.length, 1);
+  assert.equal(a.made.frames.length, 45);
+  assert.equal(drawn.length, 0, "a batch draws nothing");
+  assert.deepEqual(a.sections, [{ id: a.made.sections[0], name: "Shop", index: 1, frames: 45 }]);
+  assert.ok(JSON.stringify(a).length < 2000, `the result stays small: ${JSON.stringify(a).length}`);
+  await assert.rejects(tools.arrange_design({ designId: old.id, changes: [{ op: "addFrame", section: "Shop", name: "No code" }] }), /needs its html/);
+  await assert.rejects(tools.arrange_design({ designId: old.id, changes: [{ op: "addFrame", section: "Shop", name: "Bad", html: "<script>x</script>" }] }), /Scripts do not run/);
+  // Many notes at once, the code kept.
+  const u = await tools.arrange_design({ designId: old.id, changes: [{ op: "updateFrame", frameId: a.made.frames[0], note: "hero" }, { op: "updateFrame", frameId: a.made.frames[1], name: "Shop, phone", height: 844 }] });
+  assert.deepEqual(u.made.frames, []);
+  const first = await tools.get_design({ designId: old.id, frameId: a.made.frames[0] });
+  assert.deepEqual([first.frame.note, first.frame.html, first.section.name], ["hero", "<h1>Shop 1</h1>", "Shop"]);
+  assert.equal((await tools.get_design({ designId: old.id, frameId: a.made.frames[1] })).frame.size, "Mobile 390 x 844");
+
+  // Another sheet takes the section, with all its frames, as new ones: one call, and a map of what became what.
+  const site = await tools.create_design({ projectId: project.id, name: "New site", start: "blank" });
+  // How tall a frame was drawn goes with its copy, so the board lays it out before drawing it.
+  store.db.prepare("insert into design_sizes (design_id, frame_id, rev, height) values (?, ?, ?, ?)").run(old.id, a.made.frames[0], "r1", 1234);
+  const c = await tools.arrange_design({ designId: site.id, changes: [{ op: "copySection", from: old.id, section: "Shop", at: 0 }] });
+  const copy = c.made.copies[0];
+  assert.deepEqual([copy.from, copy.section, Object.keys(copy.frames).length], [old.id, a.made.sections[0], 45]);
+  assert.deepEqual(c.sections.map((s) => [s.name, s.index, s.frames]), [["Shop", 0, 45]]);
+  const theirs = await tools.get_design({ designId: old.id, sectionId: "Shop" });
+  const ours = await tools.get_design({ designId: site.id, sectionId: copy.to });
+  assert.deepEqual(ours.sections[0].frames.map((f) => [f.name, f.hash, f.note ?? null]), theirs.sections[0].frames.map((f) => [f.name, f.hash, f.note ?? null]), "the same frames, by their hashes");
+  assert.equal(ours.sections[0].frames[0].id, copy.frames[theirs.sections[0].frames[0].id]);
+  assert.deepEqual({ ...store.db.prepare("select rev, height from design_sizes where design_id = ? and frame_id = ?").get(site.id, copy.frames[a.made.frames[0]]) }, { rev: "r1", height: 1234 });
+  // A copy within the sheet, and the frames it was given are what the sheet holds, never what the caller says.
+  const evil = { id: "s1", name: "Evil", frames: [{ id: "f1", name: "x", width: 400, html: "<script>alert(1)</script>", css: "", updatedAt: "" }] };
+  const again = await tools.arrange_design({ designId: site.id, changes: [{ op: "copySection", section: "Shop", name: "Shop, again", source: evil }] });
+  assert.equal(again.sections[0].frames, 45);
+  assert.ok(!store.db.prepare("select data from designs where id = ?").get(site.id).data.includes("alert"));
+  const other = store.createProject({ name: "Other" });
+  const theirsToo = await tools.create_design({ projectId: other.id, name: "Elsewhere", start: "blank" });
+  await assert.rejects(tools.arrange_design({ designId: theirsToo.id, changes: [{ op: "copySection", from: old.id, section: "Shop" }] }), /in another project/);
+  await assert.rejects(tools.arrange_design({ designId: site.id, changes: [{ op: "copySection", from: old.id, section: "Nope" }] }), /In "Old site": There is no section "Nope"/);
+
+  // 90 frames and the empty Pages: a page of 80, then the rest, each section saying how many it has.
+  const p1 = await tools.get_design({ designId: site.id });
+  assert.deepEqual([p1.frameCount, p1.page, p1.pages], [90, 1, 2]);
+  assert.match(p1.next, /^page 2 for frames 81 to 90 of 90/);
+  assert.deepEqual(p1.sections.map((s) => [s.name, s.frameCount, s.frames?.length ?? 0]), [["Shop", 45, 45], ["Pages", 0, 0], ["Shop, again", 45, 35]]);
+  const p2 = await tools.get_design({ designId: site.id, page: 2 });
+  assert.deepEqual(p2.sections.map((s) => s.frames?.length ?? 0), [0, 0, 10]);
+  assert.equal(p2.next, undefined);
+  assert.ok(p1.sections[0].frames.every((f) => /^[0-9a-f]{16}$/.test(f.hash) && f.html === undefined));
+  assert.equal((await tools.get_design({ designId: site.id, code: true })).sections[0].frames.length, 15, "code a few frames at a time");
+  // The list says what each sheet holds, not every frame.
+  const list = await tools.list_designs({ projectId: project.id });
+  const listed = list.find((x) => x.id === site.id);
+  assert.deepEqual([listed.frameCount, listed.sections.map((s) => s.frames)], [90, [45, 0, 45]]);
+  assert.equal(listed.sections[0].frames, 45);
+
+  // A big sheet's view names its sections with how many frames each, not every frame.
+  const v = await t.view_design.handler({ designId: site.id }, { store, engine });
+  assert.match(v.caption, /^This is New site: Shop \(s\d+, 45\); Pages \(s1, 0\); Shop, again \(s\d+, 45\), at version \d+\.$/);
+  assert.deepEqual(drawn.at(-1), { id: site.id, model: true, sectionId: undefined, frameId: undefined });
 });
 
 test("a model reads the person's comments, looks at the spot each is pinned to, and answers them", async () => {

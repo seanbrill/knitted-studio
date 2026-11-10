@@ -12,7 +12,7 @@ import { tx } from "./db.ts";
 import { newId } from "./ids.ts";
 import { NotFoundError, ValidationError, type Store } from "./store.ts";
 import { activeSwatch } from "./swatch.ts";
-import { applyDesignOps, designStarter, DESIGN_LIMITS, DesignProblem, frameRev, PIECE_KINDS, type Design, type DesignFrame, type DesignLint, type DesignMeta, type DesignOp, type DesignPiece, type DesignSection, type FrameCode, type FrameMeta, type PieceNow } from "./design-pure.ts";
+import { applyDesignOps, designStarter, DESIGN_LIMITS, DesignProblem, findSection, frameRev, PIECE_KINDS, type Design, type DesignFrame, type DesignLint, type DesignMade, type DesignMeta, type DesignOp, type DesignPiece, type DesignSection, type FrameCode, type FrameMeta, type PieceNow } from "./design-pure.ts";
 import { getPart } from "./parts.ts";
 import { getYarn } from "./yarn.ts";
 import { LIBRARY_ID, SIZES, type Actor } from "./types.ts";
@@ -125,6 +125,25 @@ function fillPieces(store: Store, projectId: string, ops: DesignOp[]): DesignOp[
   });
 }
 
+/**
+ * Sections to copy from another of the project's sheets, read from it. A `source` given by the
+ * caller is never taken: what is copied is what that sheet holds, which was checked when it was saved.
+ */
+function fillCopies(store: Store, d: Design, ops: DesignOp[]): DesignOp[] {
+  return ops.map((o) => {
+    if (o.op !== "copySection") return o;
+    const { source: _, ...rest } = o;
+    if (!o.from || o.from === d.id) return rest;
+    let from: Design;
+    try { from = getDesign(store, o.from); } catch { throw new ValidationError(`There is no design "${o.from}" to copy from. list_designs shows the project's.`); }
+    if (from.projectId !== d.projectId) throw new ValidationError(`"${from.name}" is in another project: copy only between the sheets of one project.`);
+    if (from.deletedAt) throw new ValidationError(`"${from.name}" is deleted. The person can bring it back first.`);
+    try { return { ...rest, source: findSection(from.sections, o.section) }; } catch (e) {
+      throw new ValidationError(`In "${from.name}": ${(e as Error).message}`);
+    }
+  });
+}
+
 function metaOf(f: DesignFrame, measured?: { rev: string; height: number }): FrameMeta {
   const { html, css, piece: _, ...rest } = f;
   const meta: FrameMeta = { ...rest, code: codeHash(html, css), chars: html.length + css.length };
@@ -234,7 +253,7 @@ const run = <T,>(fn: () => T): T => {
  * A new sheet: from the brand (Foundations, Components and Pages, drawn with the Swatch), blank,
  * or with sections given by a model. `sections` are added after what `start` gives.
  */
-export function createDesign(store: Store, projectId: string, input: { name: string; start?: "brand" | "blank"; ops?: DesignOp[] }, actor: Actor = "human"): Design & { made: { sections: string[]; frames: string[] }; lint: Record<string, DesignLint[]> } {
+export function createDesign(store: Store, projectId: string, input: { name: string; start?: "brand" | "blank"; ops?: DesignOp[] }, actor: Actor = "human"): Design & { made: DesignMade; lint: Record<string, DesignLint[]> } {
   if (projectId === LIBRARY_ID) throw new ValidationError("A design belongs to a project, not the Library.");
   const project = store.getProject(projectId);
   const t = now();
@@ -251,12 +270,12 @@ export function createDesign(store: Store, projectId: string, input: { name: str
 }
 
 /** Changes, all or none, kept as one version: the one before goes to the history for Undo. */
-export function changeDesign(store: Store, id: string, ops: DesignOp[], actor: Actor = "human"): Design & { made: { sections: string[]; frames: string[] }; lint: Record<string, DesignLint[]> } {
+export function changeDesign(store: Store, id: string, ops: DesignOp[], actor: Actor = "human"): Design & { made: DesignMade; lint: Record<string, DesignLint[]> } {
   if (!ops.length) throw new ValidationError("Say what to change.");
   const d = getDesign(store, id);
   if (d.deletedAt) throw new ValidationError("That design is deleted. Bring it back first.");
   const t = now();
-  const applied = run(() => applyDesignOps(freshPieces(store, d), fillPieces(store, d.projectId, ops), byOf(actor), t));
+  const applied = run(() => applyDesignOps(freshPieces(store, d), fillPieces(store, d.projectId, fillCopies(store, d, ops)), byOf(actor), t));
   // A piece shown at its own size again takes that shape now, not at the next change.
   const out = { ...applied, sections: freshPieces(store, { ...d, sections: applied.sections }).sections };
   store.write(() => {
@@ -264,6 +283,9 @@ export function changeDesign(store: Store, id: string, ops: DesignOp[], actor: A
     const trimmed = store.db.prepare("delete from design_versions where design_id = ? and version <= ?").run(id, d.version - KEEP).changes;
     store.db.prepare("update designs set name = ?, data = ?, version = version + 1, updated_at = ? where id = ?").run(out.name, JSON.stringify({ sections: out.sections }), t, id);
     if (trimmed && d.version % 10 === 0) sweepCode(store, id);
+    // A copied frame is drawn as tall as the one it came from: its code and width are the same.
+    const size = store.db.prepare("insert or replace into design_sizes (design_id, frame_id, rev, height) select ?, ?, rev, height from design_sizes where design_id = ? and frame_id = ?");
+    for (const c of applied.made.copies ?? []) for (const [was, copy] of Object.entries(c.frames)) size.run(id, copy, c.from ?? id, was);
   });
   return { ...getDesign(store, id), made: out.made, lint: out.lint };
 }

@@ -98,4 +98,6 @@ A comment can be replied to, resolved, opened again or deleted. **Comments** on 
 
 Your model uses `create_design`, `set_design_frame`, `arrange_design`, `get_design` and `view_design`. Each frame it designs is drawn back to it, so it checks its own work. Its frames are marked **by your model** on the board. It puts patterns, Yarn and parts on a sheet with `arrange_design` too, and changes a pattern on the sheet with its pattern tools.
 
+On a big sheet, your model can add up to 50 frames in one go with `arrange_design`, then look at the section they are in once, instead of a picture for every frame. It can copy a section, with all its frames, from one of the project's sheets to another. Several models can work on one sheet at the same time: each change is kept whole, and each picture a model gets is of the frame it asked for.
+
 While it works, the frame it is designing or looking at is outlined in red on the board, with what it is doing, and a panel in the corner says the same. Press **Follow** there, and each frame it works on is brought into view.
