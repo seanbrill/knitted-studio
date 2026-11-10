@@ -6,7 +6,7 @@
 import { useEffect, useState } from "react";
 
 /** What the zoom buttons and keys step through: a quarter at most between two, finer near 100%. */
-export const ZOOM_STEPS = [0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5, 0.6, 0.67, 0.75, 0.85, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 3.5, 4];
+export const ZOOM_STEPS = [0.02, 0.03, 0.04, 0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5, 0.6, 0.67, 0.75, 0.85, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 3.5, 4];
 
 /** The next step in or out from `now`, which may fall between two, kept from `min` to `max`. */
 export function stepZoom(now: number, dir: 1 | -1, min = ZOOM_STEPS[0], max = ZOOM_STEPS[ZOOM_STEPS.length - 1]): number {

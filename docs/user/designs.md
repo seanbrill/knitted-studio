@@ -21,9 +21,22 @@ Or choose **Design with your model** and say what you want, like *our whole site
 
 - Each section has a name, and can have a note beside it. Use **Add a section** for one of your own, such as *Shop* or *Checkout*. A section's menu renames it, moves it up or down, downloads it (as a picture, as code, or everything in it with a style guide), or deletes it.
 - A frame is a page, a screen or a piece of one, at a width: **Desktop** 1440, **Tablet** 834, **Mobile** 390, or one of your own. A frame is as tall as what is in it, unless you give it a fixed height, such as one phone screen.
-- **Fit** shows the widest section across the window. Zoom in as far as 400% to read the detail. Pinch, or hold Ctrl and scroll, to zoom about the pointer, or use the zoom menu. The labels stay the same size at any zoom.
-- Double-click a frame to zoom to it, whole and in the middle. Double-click the space between frames to fit again.
+- **Fit the width** shows the widest section across the window, and **Whole sheet**, in the same zoom menu, shows all of it. Zoom goes from 2% to 400%. Pinch, or hold Ctrl and scroll, to zoom about the pointer; the zoom buttons and keys glide there. The labels stay the same size at any zoom.
+- Double-click a frame to zoom to it, whole and in the middle, or a section's name to zoom to that section. Double-click the space between frames to fit again.
 - Scroll to move about the board, or drag the space between frames. Hold Space, or turn on the **Hand** (press H), to drag over the frames too. The keys are the editor's: Shift+1 fits, Shift+2 zooms to the selected frame, and Shift+0 is 100%.
+- When the sheet is bigger than the window, a map in the bottom left corner shows its sections and the part you are looking at. Press or drag on it to go there.
+
+## Arranging the board
+
+The board is a canvas on a grid of dots, like a Figma file. Sections stand in a column until you place one.
+
+- Drag a section by its name to put it anywhere. It lands on the 40 pixel grid, and the sections you have not placed stay where they are. Or press its name and use the arrow keys: each press moves it 40 pixels, and 200 with Shift.
+- Drag a section's right edge in to wrap its frames into rows, and out again for one row. Pressed, the edge takes the left and right arrow keys too.
+- Sections never cover one another. One that grows, by wrapping or by more frames, pushes those under it down. Put a section down over another and it stays where you put it, while the other moves under it.
+- Drag a frame to move it along its section, or into another section. A bar shows where it will go.
+- **Tidy up**, on the board's bar once a section is placed, puts every section back in one column, in their order. **Undo** puts them back where they were.
+
+Your model can place sections too, with `arrange_design`.
 - **Undo** takes back the last change to the sheet, whether you made it or your model did. Press it again to go further back.
 
 ## Changing a frame

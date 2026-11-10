@@ -1,5 +1,21 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
+  "next": {
+    "title": "Move sections and frames about the sheet",
+    "items": [
+      "Drag a section by its name to anywhere on the board: it lands on the 40 pixel grid, and the sections you have not placed stay where they stood, so nothing else moves. With its name picked, the arrow keys move it 40 pixels, and 200 with Shift.",
+      "Drag a section's right edge in to wrap its frames into rows, and out to have them in one row again. With the edge picked, the left and right arrow keys do the same.",
+      "Sections never cover one another. One that grows, by wrapping or by more frames, pushes those under it down; a section put down over another stays where you put it, and the other moves under it. While you drag, nothing else moves.",
+      "Drag a frame to another place in its section, or into another section: a bar shows where it will go.",
+      "The board has a dot grid, which spreads out as you zoom out so it never crowds.",
+      "Tidy up puts every section back in one column, in their order, and Undo puts them back where they were.",
+      "Zooming keeps up. A pinch, or Ctrl with the wheel, is drawn at once about the pointer, and which frames are live or pictures is picked once it stops. The zoom buttons, the keys and a double-click glide there; with reduced motion on, they go straight there.",
+      "The zoom menu has Whole sheet, to see all of it, beside Fit the width. A double-click on a section's name zooms to that section, and the zoom buttons and keys go out to 2%, as a pinch did.",
+      "On a sheet bigger than the window, a map in the bottom left corner shows its sections and where you are; a press or a drag on it goes there.",
+      "A section or frame you add is brought into view when it is out of it. Dragging something at the fit keeps the zoom as it is, so the board does not zoom as it grows.",
+      "Settings, Social says where to find each Meta ID: the Instagram app ID is on the Instagram use case's API setup page, not the App ID in App settings, which Instagram turns away as an invalid platform app. The guide says so too."
+    ]
+  },
   "entries": [
     {
       "version": "0.1.49",

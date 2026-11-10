@@ -164,8 +164,10 @@ test("the board zooms past 100% and about the pointer, zooms to a frame, and dra
   // A double-click on a frame selects it and zooms to it: the whole frame, as big as the view holds it.
   await page.getByRole("button", { name: "Menu, Desktop 1440" }).dblclick();
   await page.getByRole("complementary", { name: "Frame: Menu" }).waitFor();
-  await page.waitForTimeout(300);
-  const v = await view.boundingBox(), m = await box("Menu");
+  // It glides there: looked at once it has stopped.
+  let m = await box("Menu");
+  for (let i = 0; i < 40; i++) { await page.waitForTimeout(60); const n = await box("Menu"); if (Math.abs(n.x - m.x) < 0.5 && Math.abs(n.width - m.width) < 0.5) break; m = n; }
+  const v = await view.boundingBox();
   assert.ok(m.x >= v.x && m.y >= v.y && m.x + m.width <= v.x + v.width && m.y + m.height <= v.y + v.height, "the whole frame is in view");
   assert.ok(Math.abs(m.width - (v.width - 96)) < 4 || Math.abs(m.height - (v.height - 120)) < 4, `and as big as the view holds it: ${m.width}x${m.height} in ${v.width}x${v.height}`);
 
@@ -365,4 +367,127 @@ test("a sheet of more than 200 frames loads only what is seen: small frames as p
   assert.ok(near >= 1 && near <= 16, `${near} drawn live`);
   assert.deepEqual(await axeProblems(page), []);
   await page.goto(`${studio.url}/projects/${projectId}/designs/${designId}`);
+});
+
+test("sections go anywhere on the grid, by a drag or the keys; a section wraps into rows; a frame is dragged to another section; Tidy up puts them back", async () => {
+  const sheet = (await j("POST", `/api/projects/${projectId}/designs`, { name: "Canvas", start: "blank" })).body;
+  const ops = [];
+  for (const [s, n] of [["Alpha", 3], ["Beta", 2], ["Gamma", 2]]) {
+    if (s !== "Alpha") ops.push({ op: "addSection", name: s });
+    for (let i = 1; i <= n; i++) ops.push({ op: "setFrame", section: s === "Alpha" ? sheet.sections[0].id : s, name: `${s[0]}${i}`, width: 390, html: `<main style="padding:40px"><h1>${s[0]}${i}</h1></main>` });
+  }
+  ops.unshift({ op: "updateSection", section: sheet.sections[0].id, name: "Alpha" });
+  assert.equal((await j("PATCH", `/api/designs/${sheet.id}`, { ops })).status, 200);
+  const board = async () => (await j("GET", `/api/designs/${sheet.id}/board`)).body;
+  const sec = async (name) => (await board()).sections.find((x) => x.name === name);
+  const onScreen = (name) => page.locator("section.design-section", { has: page.getByRole("heading", { name, exact: true }) });
+  const still = async (loc) => { let a = await loc.boundingBox(); for (let i = 0; i < 40; i++) { await page.waitForTimeout(60); const b = await loc.boundingBox(); if (Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) < 0.5 && Math.abs(a.width - b.width) < 0.5) return b; a = b; } return a; };
+
+  await page.goto(`${studio.url}/projects/${projectId}/designs/${sheet.id}`);
+  await page.getByRole("heading", { name: "Gamma", exact: true }).waitFor();
+  await serverHas(studio, `/api/designs/${sheet.id}/board`, (d) => d.sections.every((x) => x.frames.every((f) => f.measured > 0)));
+  await page.waitForTimeout(300);
+  const zoomOf = async () => Number((await page.locator(".design-board").evaluate((el) => getComputedStyle(el).getPropertyValue("--z"))) || 1);
+
+  // Dragged by its name, a section goes to a place on the grid; the others stay where they stood.
+  const g0 = await onScreen("Gamma").boundingBox();
+  const name = await page.getByRole("button", { name: "Beta", exact: true }).boundingBox();
+  await page.mouse.move(name.x + 10, name.y + 8); await page.mouse.down();
+  await page.mouse.move(name.x + 410, name.y + 8, { steps: 8 });
+  assert.ok(await onScreen("Beta").getAttribute("data-moving") !== null, "it shows where it goes as it is dragged");
+  await page.mouse.up();
+  await serverHas(studio, `/api/designs/${sheet.id}/board`, (d) => d.sections.every((x) => x.x != null));
+  const z1 = await zoomOf();
+  assert.match(await page.getByRole("button", { name: /^Zoom:/ }).getAttribute("aria-label"), /^Zoom: \d+%$/, "at the fit, the zoom stays as it was once a section moves");
+  const beta = await sec("Beta"), alpha = await sec("Alpha"), gamma = await sec("Gamma");
+  assert.equal(beta.x % 40, 0); assert.equal(beta.y % 40, 0);
+  assert.ok(Math.abs(beta.x - 400 / z1) <= 40, `moved about 400 pixels on screen: ${beta.x} at ${z1}`);
+  assert.deepEqual([alpha.x, alpha.y], [0, 0], "the section above is pinned where it stood");
+  assert.equal(gamma.x, 0);
+  const g1 = await still(onScreen("Gamma"));
+  assert.ok(Math.abs(g1.x - g0.x) < 2 && Math.abs(g1.y - g0.y) < 2, "and the one below did not jump");
+  assert.equal(await page.getByRole("complementary", { name: /^Frame:/ }).count(), 0, "a drag is not a click");
+
+  // The arrow keys move it a grid step, Shift five; saved once they stop.
+  await page.getByRole("button", { name: "Beta", exact: true }).focus();
+  await page.keyboard.press("ArrowRight"); await page.keyboard.press("ArrowRight"); await page.keyboard.press("Shift+ArrowDown");
+  await page.getByRole("status").filter({ hasText: `Beta at ${beta.x + 80}, ${beta.y + 200}` }).waitFor();
+  await serverHas(studio, `/api/designs/${sheet.id}/board`, (d) => { const b = d.sections.find((x) => x.name === "Beta"); return b.x === beta.x + 80 && b.y === beta.y + 200; });
+
+  // Dragged over another section, it moves nothing; put down there, it stays where it is put and
+  // the other makes room under it.
+  await page.getByRole("button", { name: /^Zoom:/ }).click();
+  await page.getByRole("menuitem", { name: "Whole sheet" }).click();
+  await still(page.locator(".design-board"));
+  const al = await onScreen("Alpha").boundingBox(), gn = await page.getByRole("button", { name: "Gamma", exact: true }).boundingBox(), gs = await onScreen("Gamma").boundingBox();
+  await page.mouse.move(gn.x + 10, gn.y + 8); await page.mouse.down();
+  await page.mouse.move(gn.x + 10, gn.y + 8 + (al.y + al.height / 2 - gs.y), { steps: 10 });
+  const mid = await onScreen("Alpha").boundingBox();
+  assert.ok(Math.abs(mid.y - al.y) < 1 && Math.abs(mid.x - al.x) < 1, "while it is dragged, nothing else moves");
+  await page.mouse.up();
+  await serverHas(studio, `/api/designs/${sheet.id}/board`, (d) => { const by = Object.fromEntries(d.sections.map((x) => [x.name, x])); return by.Alpha.y > by.Gamma.y; });
+  const boxes = await page.locator("section.design-section").evaluateAll((els) => els.map((e) => ({ x: parseFloat(e.style.left), y: parseFloat(e.style.top), w: parseFloat(e.style.width), h: parseFloat(e.style.height) })));
+  for (const a of boxes) for (const b of boxes) if (a !== b) assert.ok(!(a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h), `no two sections overlap: ${JSON.stringify(boxes)}`);
+
+  // Its right edge dragged in wraps its frames into rows; out past one row, they are one row again.
+  const frameTops = async () => new Set(await page.locator("section.design-section", { has: page.getByRole("heading", { name: "Alpha", exact: true }) }).locator("[data-frame-box]").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top))));
+  assert.equal((await frameTops()).size, 1);
+  await onScreen("Alpha").hover();
+  const h = await page.getByRole("button", { name: "Wrap Alpha into rows" }).boundingBox();
+  await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2); await page.mouse.down();
+  await page.mouse.move(h.x - 900 * (await zoomOf()), h.y + h.height / 2, { steps: 8 }); await page.mouse.up();
+  await serverHas(studio, `/api/designs/${sheet.id}/board`, (d) => d.sections.find((x) => x.name === "Alpha").width > 0);
+  assert.ok((await frameTops()).size >= 2, "in rows");
+  const h2 = await page.getByRole("button", { name: "Wrap Alpha into rows" }).boundingBox();
+  await page.mouse.move(h2.x + h2.width / 2, h2.y + h2.height / 2); await page.mouse.down();
+  await page.mouse.move(h2.x + 1600, h2.y + h2.height / 2, { steps: 8 }); await page.mouse.up();
+  await serverHas(studio, `/api/designs/${sheet.id}/board`, (d) => d.sections.find((x) => x.name === "Alpha").width == null);
+
+  // A frame dragged into another section goes where the bar shows, and is not picked.
+  const a1 = page.getByRole("button", { name: /^A1, / });
+  await a1.scrollIntoViewIfNeeded();
+  const from = await a1.boundingBox();
+  const g2 = page.getByRole("button", { name: /^G1, / });
+  await page.mouse.move(from.x + from.width / 2, from.y + 30); await page.mouse.down();
+  await page.mouse.move(from.x + from.width / 2 + 20, from.y + 50, { steps: 4 });
+  const to = await g2.boundingBox();
+  await page.mouse.move(to.x + 8, to.y + to.height / 2, { steps: 10 });
+  assert.equal(await page.locator(".design-ghost").count(), 1);
+  assert.equal(await page.locator(".design-drop").count(), 1, "a bar shows where it goes");
+  await page.mouse.up();
+  await serverHas(studio, `/api/designs/${sheet.id}/board`, (d) => d.sections.find((x) => x.name === "Gamma").frames[0].name === "A1");
+  assert.equal((await sec("Alpha")).frames.length, 2);
+  assert.equal(await page.getByRole("complementary", { name: /^Frame:/ }).count(), 0);
+
+  // A double-click on a section's name zooms to it; Whole sheet shows all of it.
+  await page.getByRole("button", { name: "Gamma", exact: true }).dblclick();
+  const gv = await still(onScreen("Gamma")), vv = await page.locator(".design-view").boundingBox();
+  assert.ok(gv.x >= vv.x - 1 && gv.y >= vv.y - 1 && gv.x + gv.width <= vv.x + vv.width + 1 && gv.y + gv.height <= vv.y + vv.height + 1, "the section is in view");
+  await page.getByRole("button", { name: /^Zoom:/ }).click();
+  await page.getByRole("menuitem", { name: "Whole sheet" }).click();
+  const all = await still(page.locator(".design-board"));
+  assert.ok(all.x >= vv.x - 1 && all.y >= vv.y - 1 && all.x + all.width <= vv.x + vv.width + 1 && all.y + all.height <= vv.y + vv.height + 1, `the whole board is in view: ${JSON.stringify(all)} in ${JSON.stringify(vv)}`);
+
+  // The grid's dots are never closer than 14 pixels on screen.
+  assert.ok(Number.parseFloat(await page.locator(".design-wrap").evaluate((el) => getComputedStyle(el).getPropertyValue("--dot"))) >= 14);
+
+  // Zoomed in, the map shows; a press on it goes there.
+  await page.keyboard.press("Shift+Digit0");
+  await page.getByRole("button", { name: "Zoom: 100%" }).waitFor();
+  await page.locator(".design-map svg").waitFor();
+  const s1 = await page.locator(".design-view").evaluate((el) => [el.scrollLeft, el.scrollTop]);
+  const map = await page.locator(".design-map svg").boundingBox();
+  await page.mouse.click(map.x + map.width - 3, map.y + map.height - 3);
+  const s2 = await page.locator(".design-view").evaluate((el) => [el.scrollLeft, el.scrollTop]);
+  assert.ok(s2[0] !== s1[0] || s2[1] !== s1[1], "the view moved");
+  assert.deepEqual(await axeProblems(page), []);
+
+  // Tidy up puts every section back in one column; Undo puts them back where they were.
+  await page.getByRole("button", { name: "Tidy up" }).click();
+  await serverHas(studio, `/api/designs/${sheet.id}/board`, (d) => d.sections.every((x) => x.x == null));
+  await page.getByRole("button", { name: "Tidy up" }).waitFor({ state: "detached" });
+  await page.getByText("Put the sections back in a column").waitFor();
+  await page.locator(".toast-action", { hasText: "Undo" }).click();
+  await serverHas(studio, `/api/designs/${sheet.id}/board`, (d) => d.sections.every((x) => x.x != null));
+  await page.getByRole("button", { name: "Tidy up" }).waitFor();
 });

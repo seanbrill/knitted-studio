@@ -8,7 +8,7 @@ import { keyText } from "./Shortcuts";
 
 const { ZoomIn, ZoomOut, ChevronDown, Hand } = icons;
 
-export function ZoomControls({ zoom, scale, onZoom, onStep, onSelection, selectionHint, hand, onHand }: {
+export function ZoomControls({ zoom, scale, onZoom, onStep, onSelection, selectionHint, hand, onHand, onWhole, fitLabel = "Fit to screen" }: {
   zoom: number | "fit";
   /** The zoom shown now: the fit's, when it fits. */
   scale: number;
@@ -19,6 +19,9 @@ export function ZoomControls({ zoom, scale, onZoom, onStep, onSelection, selecti
   selectionHint?: string;
   hand: boolean;
   onHand: (on: boolean) => void;
+  /** Zoom out to the whole sheet, where fitting fits only its width. */
+  onWhole?: () => void;
+  fitLabel?: string;
 }) {
   const pct = `${Math.round(scale * 100)}%`;
   return (
@@ -33,7 +36,8 @@ export function ZoomControls({ zoom, scale, onZoom, onStep, onSelection, selecti
         { label: "Zoom in", shortcut: "Ctrl +", onSelect: () => onStep(1) },
         { label: "Zoom out", shortcut: "Ctrl -", onSelect: () => onStep(-1) },
         "separator",
-        { label: "Fit to screen", shortcut: "Shift 1", onSelect: () => onZoom("fit") },
+        { label: fitLabel, shortcut: "Shift 1", onSelect: () => onZoom("fit") },
+        ...(onWhole ? [{ label: "Whole sheet", onSelect: onWhole }] : []),
         { label: onSelection ? "Zoom to selection" : selectionHint ?? "Zoom to selection", shortcut: "Shift 2", disabled: !onSelection, onSelect: () => onSelection?.() },
         "separator",
         { label: "50%", onSelect: () => onZoom(0.5) },

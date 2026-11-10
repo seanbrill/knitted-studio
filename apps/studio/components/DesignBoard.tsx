@@ -14,7 +14,7 @@
 import Link from "next/link";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { api, ApiError, subscribeChanges } from "@knitted/core/client";
-import { DESIGN_DEVICES, BOARD, deviceOf, frameRev, frameSize, guessHeight, layoutDesign, lintDesignCode, type BoardLayout, type DesignDevice, type DesignFrame, type DesignMeta, type DesignOp, type FrameCode, type FrameMeta, type LaidFrame, type SectionMeta, type Swatch } from "@knitted/core";
+import { DESIGN_DEVICES, BOARD, deviceOf, dropIndex, frameRev, frameSize, guessHeight, layoutDesign, lintDesignCode, snapToGrid, type BoardLayout, type DesignDevice, type DesignFrame, type DesignMeta, type DesignOp, type FrameCode, type FrameMeta, type LaidFrame, type LaidSection, type SectionMeta, type Swatch } from "@knitted/core";
 import { Button, ConfirmDialog, Dialog, Field, IconButton, Input, Menu, SegmentedControl, Select, Textarea, Tip, icons, useToast } from "@knitted/ui";
 import { useLive } from "@/lib/hooks";
 import { brandKey, frameDoc, frameHeight, framePicUrl, hashOf } from "@/lib/design";
@@ -27,7 +27,7 @@ import { ZoomControls } from "./ZoomControls";
 import { CommentThreads, PinCatch, Pins, shownThreads, useCommentState, useComments, type CommentsOn } from "./Comments";
 import { stepZoom, typingIn, useSpaceHeld, wheelZoom, zoomKey } from "@/lib/zoom";
 
-const { ArrowLeft, ArrowUp, ArrowDown, ChevronRight, Copy, Download, FileCode, MessageSquare, MoreHorizontal, Package, Pencil, Plus, Trash2, Undo2, X, AlertTriangle } = icons;
+const { ArrowLeft, ArrowUp, ArrowDown, ChevronRight, Copy, Download, FileCode, LayoutGrid, MessageSquare, MoreHorizontal, Package, Pencil, Plus, Trash2, Undo2, X, AlertTriangle } = icons;
 const ZOOM_MIN = 0.02;
 const ZOOM_MAX = 4;
 // Round a frame zoomed to: room to see it is the whole frame, and its label.
@@ -49,6 +49,49 @@ const LABELS_MIN = 14 / BOARD.pad;
 const HEAD_Z = 44 / BOARD.stack;
 /** An empty section's "Add a frame" (about 180 by 136 pixels) fits the room inside it (400 by 160) the same way. */
 const ADD_Z = 0.85;
+/** The grid's dots are at least this far apart on screen: closer than that at 40 board pixels, every fifth shows, and so on. */
+const DOTS_MIN = 14;
+/** A zoom from a button or a key glides there in this long; a pinch is settled this long after it stops. */
+const GLIDE_MS = 220;
+const SETTLE_MS = 120;
+/** The map's most room, in pixels. */
+const MAP_W = 180;
+const MAP_H = 128;
+const ARROWS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+const clampZ = (v: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, v));
+/** How far apart the grid's dots are on screen at zoom z, and where the board's 0, 0 is on the page round it. */
+const dotsAt = (z: number, x: number, y: number, mx: number, my: number) => {
+  let step = BOARD.grid * z;
+  while (step < DOTS_MIN) step *= 5;
+  return { "--dot": `${step}px`, "--dx": `${mx - x * z}px`, "--dy": `${my - y * z}px` };
+};
+
+/** Follow a press from where it went down until it lets go, anywhere in the window. A press that has not moved 4 pixels has not moved. */
+function follow(e: React.PointerEvent, onMove: (ev: PointerEvent) => void, onUp: (moved: boolean) => void) {
+  const id = e.pointerId, x0 = e.clientX, y0 = e.clientY;
+  let moved = false;
+  const move = (ev: PointerEvent) => {
+    if (ev.pointerId !== id || (!moved && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 4)) return;
+    moved = true;
+    onMove(ev);
+  };
+  const up = (ev: PointerEvent) => {
+    if (ev.pointerId !== id) return;
+    window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", up);
+    onUp(moved);
+  };
+  window.addEventListener("pointermove", move); window.addEventListener("pointerup", up); window.addEventListener("pointercancel", up);
+}
+
+/** Where a frame dropped at index `at` of a section goes, as a bar: before the frame at `at`, or after the one before it, whichever row the pointer (`py`) is nearer. */
+function dropBar(sec: LaidSection, id: string, at: number, py: number): Rect {
+  const others = sec.frames.filter((f) => f.id !== id);
+  if (!others.length) return { x: sec.x + BOARD.pad / 2, y: sec.y + BOARD.pad, w: 0, h: Math.max(160, sec.h - 2 * BOARD.pad) };
+  const before = others[at - 1], after = others[at];
+  const off = (f?: LaidFrame) => (f ? Math.abs(py - (f.y + f.h / 2)) : Infinity);
+  if (after && (!before || before.y === after.y || off(after) <= off(before))) return { x: after.x - BOARD.gap / 2, y: after.y, w: 0, h: after.h };
+  return { x: before!.x + before!.w + BOARD.gap / 2, y: before!.y, w: 0, h: before!.h };
+}
 const DEVICE_OPTIONS: { value: DesignDevice | "custom"; label: string }[] = [...(Object.keys(DESIGN_DEVICES) as DesignDevice[]).map((d) => ({ value: d, label: DESIGN_DEVICES[d].name })), { value: "custom", label: "Custom" }];
 
 /** A new frame's code: a heading in the brand, to write over. */
@@ -70,6 +113,27 @@ type Asking =
 type Mode = "live" | "pic";
 /** Part of the board, in the frames' pixels. */
 interface Rect { x: number; y: number; w: number; h: number }
+/** The part of the board in view, and at what zoom. */
+interface Seen extends Rect { z: number }
+/** A point on the board, to be at a point of the view. */
+interface Anchor { bx: number; by: number; sx: number; sy: number }
+/** What is being moved, before it is saved: a section to a place (and those not placed yet pinned where they stand), a section's wrap, or a frame. */
+type Moving = (
+  | { kind: "section"; id: string; x: number; y: number; pin: Record<string, { x: number; y: number }> }
+  | { kind: "wrap"; id: string; width: number | null }
+  | { kind: "frame"; id: string; x: number; y: number; w: number; h: number; to: { section: string; at: number; py: number } | null }
+) & {
+  /** The board's box when the move began: it is drawn no smaller until the move ends. */
+  keep: Rect;
+};
+type SectionMove = Extract<Moving, { kind: "section" }>;
+
+/** The sections with what is being moved or wrapped where it would go. */
+function shaped(sections: SectionMeta[], shape: Moving | null): SectionMeta[] {
+  if (shape?.kind === "section") return sections.map((s) => (s.id === shape.id ? { ...s, x: shape.x, y: shape.y } : shape.pin[s.id] ? { ...s, ...shape.pin[s.id] } : s));
+  if (shape?.kind === "wrap") return sections.map((s) => (s.id === shape.id ? { ...s, width: shape.width ?? undefined } : s));
+  return sections;
+}
 
 /** The sheet without its code, kept current: asked again when something changes, and only sent when it did. */
 function useSheet(initial: DesignMeta) {
@@ -132,6 +196,7 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
   const [noPic, setNoPic] = useState<Set<string>>(() => new Set());
   const view = useRef<HTMLDivElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
+  const boardEl = useRef<HTMLDivElement>(null);
 
   // ── code, a frame at a time ──
   // The code here, for drawing; the ref holds the same for asking, outside drawing.
@@ -197,22 +262,36 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
   // What is written in the inspector shows on the board a moment after the typing stops, at its size.
   const shownPreview = preview && selected === preview.id && drafts[preview.id] ? preview : null;
   const previewRev = shownPreview ? `p-${hashOf(shownPreview.draft.html + "\0" + shownPreview.draft.css)}-${shownPreview.draft.width}` : null;
-  const sections = useMemo(() => !shownPreview ? design.sections : design.sections.map((s) => ({
-    ...s, frames: s.frames.map((f) => (f.id === shownPreview.id ? { ...f, name: shownPreview.draft.name, width: shownPreview.draft.width, height: shownPreview.draft.height ?? undefined } : f)),
-  })), [design, shownPreview]);
-  const lay = useMemo(() => layoutDesign(sections, (f) => {
+  // What is being moved shows where it would go, before it is saved.
+  const [moving, setMoving] = useState<Moving | null>(null);
+  const shape = moving && moving.kind !== "frame" ? moving : null;
+  const shown = useMemo(() => (shownPreview
+    ? design.sections.map((s) => ({ ...s, frames: s.frames.map((f) => (f.id === shownPreview.id ? { ...f, name: shownPreview.draft.name, width: shownPreview.draft.width, height: shownPreview.draft.height ?? undefined } : f)) }))
+    : design.sections), [design, shownPreview]);
+  const sections = useMemo(() => shaped(shown, shape), [shown, shape]);
+  const heightOf = useCallback((f: Pick<DesignFrame, "id" | "width" | "height">) => {
     const m = f as FrameMeta;
     const seen = heights[m.id];
     const rev = shownPreview?.id === m.id ? previewRev : frameRev(m);
     return seen && seen.rev === rev ? seen.h : (shownPreview?.id !== m.id && m.measured) || guessHeight(m);
-  }), [sections, heights, shownPreview, previewRev]);
+  }, [heights, shownPreview, previewRev]);
+  // A section being dragged floats where it is; the others make room once it is put down. While
+  // something moves, the board only grows, so the point under the pointer stays under it.
+  const lay = useMemo(() => {
+    const L = layoutDesign(sections, heightOf, { float: shape?.kind === "section" ? shape.id : undefined });
+    const k = moving?.keep;
+    if (!k || !L.sections.length) return L;
+    const x = Math.min(L.x, k.x), y = Math.min(L.y, k.y);
+    return { ...L, x, y, w: Math.max(L.x + L.w, k.x + k.w) - x, h: Math.max(L.y + L.h, k.y + k.h) - y };
+  }, [sections, heightOf, shape, moving?.keep]);
   const boxOf = useMemo(() => new Map(lay.sections.flatMap((s) => s.frames.map((f) => [f.id, f] as const))), [lay]);
+  // The layout as last drawn, for handlers that run while a drag goes on.
+  const layRef = useRef(lay);
+  useLayoutEffect(() => { layRef.current = lay; });
 
   // The zoom that fits the board's width in the window, no bigger than the frames' own size.
   const fit = useMemo(() => (!viewW || !lay.w ? 0.25 : Math.max(ZOOM_MIN, Math.min(1, (viewW - 2 * EDGE) / lay.w))), [lay.w, viewW]);
   const z = zoom === "fit" ? fit : zoom;
-  // The zoom as last asked for: ahead of what is drawn while a pinch runs faster than drawing.
-  const zNow = useRef(z);
   // Room round the board, on screen: half the window, so any frame can be brought to its middle.
   const mx = Math.max(EDGE, Math.round(viewW / 2)), my = Math.max(EDGE, Math.round(viewH / 2));
 
@@ -223,99 +302,168 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
   }, []);
 
   // ── where the view is on the board ──
+  // Where the board was last drawn from: its corner, its zoom and the room round it. Points on the
+  // board are worked out from it, so they agree with the screen, even while a pinch runs.
+  const drawn = useRef<{ x: number; y: number; z: number; mx: number; my: number } | null>(null);
   /** A point in the view, as a point on the board. */
-  const toBoard = (sx: number, sy: number, at = { z: zNow.current, x: lay.x, y: lay.y }) => {
-    const v = view.current!;
-    return { bx: (v.scrollLeft + sx - mx) / at.z + at.x, by: (v.scrollTop + sy - my) / at.z + at.y };
+  const toBoard = (sx: number, sy: number) => {
+    const v = view.current!, d = drawn.current ?? { x: lay.x, y: lay.y, z, mx, my };
+    return { bx: (v.scrollLeft + sx - d.mx) / d.z + d.x, by: (v.scrollTop + sy - d.my) / d.z + d.y };
   };
-  /** Scroll so the board's point bx, by is at sx, sy in the view. */
-  const bring = (bx: number, by: number, sx: number, sy: number) => {
-    const v = view.current; if (!v) return;
-    v.scrollLeft = (bx - lay.x) * zNow.current + mx - sx;
-    v.scrollTop = (by - lay.y) * zNow.current + my - sy;
+  /** The point on the board under the pointer. */
+  const boardAt = (cx: number, cy: number) => { const r = view.current!.getBoundingClientRect(); return toBoard(cx - r.left, cy - r.top); };
+  /** Scroll so the board's point a.bx, a.by is at a.sx, a.sy in the view. */
+  const bring = (a: Anchor) => {
+    const v = view.current, d = drawn.current; if (!v || !d) return;
+    v.scrollLeft = (a.bx - d.x) * d.z + d.mx - a.sx;
+    v.scrollTop = (a.by - d.y) * d.z + d.my - a.sy;
   };
 
-  // A point on the board to keep where it is on screen while the zoom changes.
-  const anchor = useRef<{ bx: number; by: number; sx: number; sy: number } | null>(null);
-  // Where the board was last drawn from: when its corner moves (a section put above or left of
-  // the rest, or the window resized), the view moves with it, so nothing on screen jumps.
-  const drawn = useRef<{ x: number; y: number; z: number; mx: number; my: number } | null>(null);
+  // The map's box for the view, moved with the view a frame at a time.
+  const mapView = useRef<SVGRectElement>(null);
+  const mapRaf = useRef(0);
+  const mapSoon = () => {
+    if (mapRaf.current) return;
+    mapRaf.current = requestAnimationFrame(() => {
+      mapRaf.current = 0;
+      const v = view.current, d = drawn.current, r = mapView.current;
+      if (!v || !d || !r) return;
+      r.setAttribute("x", String((v.scrollLeft - d.mx) / d.z + d.x)); r.setAttribute("y", String((v.scrollTop - d.my) / d.z + d.y));
+      r.setAttribute("width", String(v.clientWidth / d.z)); r.setAttribute("height", String(v.clientHeight / d.z));
+    });
+  };
+
+  // A zoom can be drawn ahead of React: a pinch or a glide is drawn straight onto the board, and
+  // React is told once it stops, so the frames are not all drawn again at every step.
+  const zNow = useRef(z);
+  const ahead = useRef(false);
   const [ready, setReady] = useState(false);
   useLayoutEffect(() => {
     const v = view.current, w = wrap.current;
     if (!v || !w || !viewW) return;
-    zNow.current = z;
-    w.style.width = `${lay.w * z + 2 * mx}px`;
-    w.style.height = `${lay.h * z + 2 * my}px`;
+    const zz = ahead.current ? zNow.current : z;
+    zNow.current = zz;
+    w.style.width = `${lay.w * zz + 2 * mx}px`;
+    w.style.height = `${lay.h * zz + 2 * my}px`;
     const was = drawn.current;
-    const a = anchor.current;
-    anchor.current = null;
-    if (a) bring(a.bx, a.by, a.sx, a.sy);
-    else if (!was) { v.scrollLeft = mx - EDGE; v.scrollTop = my - EDGE_TOP; }
+    if (!was) { v.scrollLeft = mx - EDGE; v.scrollTop = my - EDGE_TOP; }
     else {
       // The board moved under the view (its corner, the window's size, or the fit with it): what
       // was at the view's top left stays there; at the fit, the board's left edge stays at its edge.
       const bx = (v.scrollLeft - was.mx) / was.z + was.x, by = (v.scrollTop - was.my) / was.z + was.y;
-      v.scrollLeft = zoom === "fit" && was.z !== z ? mx - EDGE : (bx - lay.x) * z + mx;
-      v.scrollTop = (by - lay.y) * z + my;
+      v.scrollLeft = zoom === "fit" && was.z !== zz ? mx - EDGE : (bx - lay.x) * zz + mx;
+      v.scrollTop = (by - lay.y) * zz + my;
     }
-    drawn.current = { x: lay.x, y: lay.y, z, mx, my };
+    drawn.current = { x: lay.x, y: lay.y, z: zz, mx, my };
+    mapSoon();
     // Shown once placed: the first scroll is set before the board is seen, so it does not jump.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!ready) setReady(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [z, lay.x, lay.y, lay.w, lay.h, mx, my, viewW]);
 
-  /** Zoom to `to`, keeping the point at x, y in the view (its middle, unless given) where it is. */
-  const zoomTo = (to: number | "fit", x?: number, y?: number, keep?: { bx: number; by: number; sx: number; sy: number }) => {
-    const v = view.current; if (!v) return;
-    const next = to === "fit" ? fit : Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, to));
-    const sx = x ?? v.clientWidth / 2, sy = y ?? v.clientHeight / 2;
-    // To fit is to fit the board's width: its middle comes to the middle of the view.
-    const a = keep ?? (to === "fit" ? { bx: lay.x + lay.w / 2, by: toBoard(sx, sy).by, sx: v.clientWidth / 2, sy } : { ...toBoard(sx, sy), sx, sy });
-    setZoom(to === "fit" ? "fit" : next);
-    if (Math.abs(next - zNow.current) < 1e-6) { zNow.current = next; bring(a.bx, a.by, a.sx, a.sy); return; }
-    zNow.current = next;
-    anchor.current = a;
+  /** Draw the board at zoom zz with the board's a.bx, a.by at a.sx, a.sy, straight away. */
+  const paint = (zz: number, a: Anchor) => {
+    const v = view.current, w = wrap.current, b = boardEl.current, d = drawn.current;
+    if (!v || !w || !b || !d) return;
+    const L = layRef.current;
+    ahead.current = true;
+    zNow.current = zz;
+    b.style.transform = `scale(${zz})`;
+    b.style.setProperty("--z", String(zz));
+    b.style.setProperty("--hz", String(Math.max(zz, HEAD_Z)));
+    b.style.setProperty("--az", String(Math.max(zz, ADD_Z)));
+    b.toggleAttribute("data-small", zz < LABELS_MIN);
+    w.style.width = `${L.w * zz + 2 * d.mx}px`;
+    w.style.height = `${L.h * zz + 2 * d.my}px`;
+    for (const [k, val] of Object.entries(dotsAt(zz, L.x, L.y, d.mx, d.my))) w.style.setProperty(k, val);
+    drawn.current = { x: L.x, y: L.y, z: zz, mx: d.mx, my: d.my };
+    bring(a);
+    lookSoon();
+    mapSoon();
   };
-  const step = (dir: 1 | -1) => zoomTo(stepZoom(z, dir, ZOOM_MIN, ZOOM_MAX));
-  /** A frame, whole and in the middle of the view, as big as the view holds it. */
-  const zoomToFrame = (id: string) => {
-    const v = view.current, f = boxOf.get(id);
-    if (!v || !f) return;
-    const want = Math.min((v.clientWidth - 2 * FRAME_ROOM) / f.w, (v.clientHeight - 2 * FRAME_ROOM - 24) / f.h);
-    zoomTo(want, undefined, undefined, { bx: f.x + f.w / 2, by: f.y + f.h / 2, sx: v.clientWidth / 2, sy: v.clientHeight / 2 + 12 });
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  /** Tell React the zoom drawn ahead of it, once it has stopped: the fit, or the zoom it is at. */
+  const settleZoom = (toFit: boolean, after = SETTLE_MS) => {
+    clearTimeout(settleTimer.current);
+    settleTimer.current = setTimeout(() => { ahead.current = false; setZoom(toFit ? "fit" : zNow.current); }, after);
+  };
+  const gliding = useRef<{ raf: number; goal: number } | null>(null);
+  const stopGlide = () => { if (gliding.current) cancelAnimationFrame(gliding.current.raf); gliding.current = null; };
+  useEffect(() => () => { clearTimeout(settleTimer.current); if (gliding.current) cancelAnimationFrame(gliding.current.raf); cancelAnimationFrame(mapRaf.current); }, []);
+  /** Go to zoom z1 with the board's to.bx, to.by at to.sx, to.sy: a short glide, or at once where motion is reduced. */
+  const glide = (z1: number, to: Anchor, toFit: boolean) => {
+    const v = view.current; if (!v || !drawn.current) return;
+    stopGlide();
+    clearTimeout(settleTimer.current);
+    const z0 = zNow.current, from = toBoard(to.sx, to.sy);
+    if (Math.abs(z1 - z0) < 1e-6 && Math.hypot(from.bx - to.bx, from.by - to.by) * z0 < 1) { ahead.current = false; setZoom(toFit ? "fit" : z1); return; }
+    const quick = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // Timed from its first frame.
+    let t0 = -1;
+    const frame = (t: number) => {
+      if (t0 < 0) t0 = t;
+      const k = quick ? 1 : Math.min(1, (t - t0) / GLIDE_MS), e = 1 - (1 - k) ** 3;
+      paint(z0 * Math.pow(z1 / z0, e), { bx: from.bx + (to.bx - from.bx) * e, by: from.by + (to.by - from.by) * e, sx: to.sx, sy: to.sy });
+      if (k < 1) gliding.current = { raf: requestAnimationFrame(frame), goal: z1 };
+      else { gliding.current = null; settleZoom(toFit, 0); }
+    };
+    gliding.current = { raf: requestAnimationFrame(frame), goal: z1 };
   };
 
-  // Ctrl or Cmd with the wheel, or a pinch, zooms about the pointer. Without, the board scrolls.
-  const zoomAtRef = useRef(zoomTo);
+  /** Zoom to `to`, keeping the point at x, y in the view (its middle, unless given) where it is. To fit is to fit the board's width, its middle to the view's. */
+  const zoomTo = (to: number | "fit", x?: number, y?: number) => {
+    const v = view.current; if (!v) return;
+    const sx = x ?? v.clientWidth / 2, sy = y ?? v.clientHeight / 2;
+    if (to === "fit") glide(fit, { bx: lay.x + lay.w / 2, by: toBoard(sx, sy).by, sx: v.clientWidth / 2, sy }, true);
+    else glide(clampZ(to), { ...toBoard(sx, sy), sx, sy }, false);
+  };
+  const step = (dir: 1 | -1) => zoomTo(stepZoom(gliding.current?.goal ?? zNow.current, dir, ZOOM_MIN, ZOOM_MAX));
+  /** Part of the board, whole and in the middle of the view, as big as the view holds it, up to `most`. */
+  const zoomToBox = (r: Rect, room: number, most = ZOOM_MAX) => {
+    const v = view.current; if (!v || !r.w || !r.h) return;
+    const want = clampZ(Math.min(most, (v.clientWidth - 2 * room) / r.w, (v.clientHeight - 2 * room - 24) / r.h));
+    glide(want, { bx: r.x + r.w / 2, by: r.y + r.h / 2, sx: v.clientWidth / 2, sy: v.clientHeight / 2 + 12 }, false);
+  };
+  const zoomToFrame = (id: string) => { const f = boxOf.get(id); if (f) zoomToBox(f, FRAME_ROOM); };
+  const zoomToSection = (id: string) => { const b = lay.sections.find((x) => x.id === id); if (b) zoomToBox(b, FRAME_ROOM, 1); };
+  const zoomToAll = () => zoomToBox(lay, EDGE, 1);
+
+  // Ctrl or Cmd with the wheel, or a pinch, zooms about the pointer, drawn at once. Without, the board scrolls.
+  const pinch = (e: WheelEvent) => {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    e.preventDefault();
+    const v = view.current; if (!v || !drawn.current) return;
+    stopGlide();
+    const r = v.getBoundingClientRect();
+    const sx = e.clientX - r.left, sy = e.clientY - r.top;
+    const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? v.clientHeight : 1);
+    paint(wheelZoom(zNow.current, dy, ZOOM_MIN, ZOOM_MAX), { ...toBoard(sx, sy), sx, sy });
+    settleZoom(false);
+  };
+  const pinchRef = useRef<(e: WheelEvent) => void>(() => {});
   useEffect(() => {
     const v = view.current; if (!v) return;
-    const onWheel = (e: WheelEvent) => {
-      if (!(e.ctrlKey || e.metaKey)) return;
-      e.preventDefault();
-      const r = v.getBoundingClientRect();
-      const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? v.clientHeight : 1);
-      zoomAtRef.current(wheelZoom(zNow.current, dy, ZOOM_MIN, ZOOM_MAX), e.clientX - r.left, e.clientY - r.top);
-    };
-    v.addEventListener("wheel", onWheel, { passive: false });
-    return () => v.removeEventListener("wheel", onWheel);
+    const on = (e: WheelEvent) => pinchRef.current(e);
+    v.addEventListener("wheel", on, { passive: false });
+    return () => v.removeEventListener("wheel", on);
   }, []);
 
   // ── what is seen: drawn live, as pictures, or as outlines ──
-  const [seen, setSeen] = useState<Rect | null>(null);
+  const [seen, setSeen] = useState<Seen | null>(null);
   const settle = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const look = useCallback(() => {
     const v = view.current, d = drawn.current;
     if (!v || !d) return;
-    const r = { x: (v.scrollLeft - d.mx) / d.z + d.x, y: (v.scrollTop - d.my) / d.z + d.y, w: v.clientWidth / d.z, h: v.clientHeight / d.z };
-    setSeen((o) => (o && Math.abs(o.x - r.x) < 1 && Math.abs(o.y - r.y) < 1 && Math.abs(o.w - r.w) < 1 && Math.abs(o.h - r.h) < 1 ? o : r));
+    const r = { x: (v.scrollLeft - d.mx) / d.z + d.x, y: (v.scrollTop - d.my) / d.z + d.y, w: v.clientWidth / d.z, h: v.clientHeight / d.z, z: d.z };
+    setSeen((o) => (o && o.z === r.z && Math.abs(o.x - r.x) < 1 && Math.abs(o.y - r.y) < 1 && Math.abs(o.w - r.w) < 1 && Math.abs(o.h - r.h) < 1 ? o : r));
   }, []);
   // Looked at a few times a second while the board moves, not at every step of a scroll or a pinch.
   const lookSoon = useCallback(() => { if (!settle.current) settle.current = setTimeout(() => { settle.current = undefined; look(); }, 100); }, [look]);
   useEffect(() => { if (ready) lookSoon(); }, [ready, z, lay, viewW, viewH, lookSoon]);
   useEffect(() => () => clearTimeout(settle.current), []);
-  const modes = useMemo(() => (seen ? pickModes(lay, seen, z, selected, pics, noPic) : new Map<string, Mode>()), [seen, lay, z, selected, pics, noPic]);
+  // At the zoom the board was seen at: ahead of React's while a pinch runs.
+  const modes = useMemo(() => (seen ? pickModes(lay, seen, seen.z, selected, pics, noPic) : new Map<string, Mode>()), [seen, lay, selected, pics, noPic]);
   useEffect(() => { need([...modes].filter(([, m]) => m === "live").map(([id]) => id)); }, [modes, need]);
 
   // ── heights: measured here, and kept for the next time ──
@@ -383,8 +531,156 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
     const d = drag.current; if (!d || d.id !== e.pointerId) return;
     drag.current = null;
     setDragging(false);
-    if (d.moved) { quiet.current = true; setTimeout(() => { quiet.current = false; }, 0); }
+    if (d.moved) hush();
   };
+  /** The click a drag ends with is not a click: it neither selects nor lets go. */
+  const hush = () => { quiet.current = true; setTimeout(() => { quiet.current = false; }, 0); };
+
+  // ── moving sections and frames ──
+  // Said to a screen reader as a section moves by the keys.
+  const [said, setSaid] = useState("");
+  /** At the fit, the zoom stays as it is once something moves, so the board does not zoom as it grows. */
+  const hold = () => { if (zoom === "fit") setZoom(zNow.current); };
+  /** The board's box as drawn now. */
+  const boxNow = (): Rect => { const L = layRef.current; return { x: L.x, y: L.y, w: L.w, h: L.h }; };
+  /** Where each section not placed yet stands now, kept there when another is placed, so none of them jumps. */
+  const standing = (but: string) => Object.fromEntries(layRef.current.sections.filter((x) => !x.placed && x.id !== but).map((x) => [x.id, { x: Math.round(x.x), y: Math.round(x.y) }]));
+  /** A section put somewhere: saves where it is, and where every section it pinned or pushed now stands. */
+  const place = async (m: SectionMove) => {
+    const now = layoutDesign(shaped(shown, m), heightOf, { first: m.id });
+    const was = new Map(design.sections.map((x) => [x.id, x]));
+    const ops: DesignOp[] = now.sections.filter((l) => l.placed && (was.get(l.id)?.x !== l.x || was.get(l.id)?.y !== l.y))
+      .map((l) => ({ op: "placeSection", section: l.id, x: Math.round(l.x), y: Math.round(l.y) }));
+    if (ops.length) await change(ops);
+    setMoving(null);
+  };
+  /** A section dragged by its name, to a place on the grid. */
+  const sectionDown = (e: React.PointerEvent, s: SectionMeta) => {
+    if (e.button !== 0 || handy) return;
+    const b = layRef.current.sections.find((x) => x.id === s.id); if (!b) return;
+    const p0 = boardAt(e.clientX, e.clientY), pin = standing(s.id), keep = boxNow();
+    let at: { x: number; y: number } | null = null;
+    follow(e, (ev) => {
+      const p = boardAt(ev.clientX, ev.clientY);
+      const x = snapToGrid(b.x + p.bx - p0.bx), y = snapToGrid(b.y + p.by - p0.by);
+      if (at && at.x === x && at.y === y) return;
+      at = { x, y };
+      hold();
+      setMoving({ kind: "section", id: s.id, x, y, pin, keep });
+    }, (moved) => {
+      if (!moved) return;
+      hush();
+      if (!at || (b.placed && at.x === b.x && at.y === b.y)) { setMoving(null); return; }
+      void place({ kind: "section", id: s.id, x: at.x, y: at.y, pin, keep });
+    });
+  };
+  // A section moved by the arrow keys is saved once they stop.
+  const nudging = useRef<{ id: string; x: number; y: number; pin: Record<string, { x: number; y: number }>; keep: Rect; timer?: ReturnType<typeof setTimeout> } | null>(null);
+  const sectionKeys = (e: React.KeyboardEvent, s: SectionMeta) => {
+    const d = ARROWS[e.key];
+    if (!d || e.metaKey || e.ctrlKey || e.altKey) return;
+    e.preventDefault();
+    let n = nudging.current;
+    if (!n || n.id !== s.id) {
+      const b = layRef.current.sections.find((x) => x.id === s.id); if (!b) return;
+      n = nudging.current = { id: s.id, x: snapToGrid(b.x), y: snapToGrid(b.y), pin: standing(s.id), keep: boxNow() };
+    }
+    const k = e.shiftKey ? BOARD.grid * 5 : BOARD.grid;
+    n.x += d[0] * k; n.y += d[1] * k;
+    hold();
+    setMoving({ kind: "section", id: s.id, x: n.x, y: n.y, pin: n.pin, keep: n.keep });
+    setSaid(`${s.name} at ${n.x}, ${n.y}`);
+    clearTimeout(n.timer);
+    const done = n;
+    n.timer = setTimeout(() => { if (nudging.current === done) nudging.current = null; void place({ kind: "section", id: done.id, x: done.x, y: done.y, pin: done.pin, keep: done.keep }); }, 600);
+  };
+
+  /** How narrow a section can wrap (its widest frame) and how wide its one row is. */
+  const wrapRoom = (s: SectionMeta) => ({
+    least: Math.max(...s.frames.map((f) => f.width)) + 2 * BOARD.pad,
+    row: s.frames.reduce((n, f) => n + f.width, 0) + BOARD.gap * (s.frames.length - 1) + 2 * BOARD.pad,
+  });
+  /** The width a section wraps at, from a width asked for: on the grid, no narrower than its widest frame, and none once it is one row. */
+  const wrapWidth = (s: SectionMeta, w: number) => { const { least, row } = wrapRoom(s); const v = Math.max(least, snapToGrid(w)); return v >= row ? null : v; };
+  const wrapTo = async (s: SectionMeta, width: number | null) => {
+    if (width !== (s.width ?? null)) await change([{ op: "updateSection", section: s.id, width }]);
+    setMoving(null);
+  };
+  /** A section's right edge dragged in, to wrap its frames into rows; out past one row, to unwrap them. */
+  const wrapDown = (e: React.PointerEvent, s: SectionMeta) => {
+    if (e.button !== 0 || handy) return;
+    const b = layRef.current.sections.find((x) => x.id === s.id); if (!b) return;
+    const p0 = boardAt(e.clientX, e.clientY), keep = boxNow();
+    let width: number | null | undefined;
+    follow(e, (ev) => {
+      const w = wrapWidth(s, b.w + boardAt(ev.clientX, ev.clientY).bx - p0.bx);
+      if (w === width) return;
+      width = w;
+      hold();
+      setMoving({ kind: "wrap", id: s.id, width: w, keep });
+    }, (moved) => {
+      if (!moved) return;
+      hush();
+      if (width === undefined) { setMoving(null); return; }
+      void wrapTo(s, width);
+    });
+  };
+  const wrapping = useRef<{ id: string; w: number; keep: Rect; timer?: ReturnType<typeof setTimeout> } | null>(null);
+  const wrapKeys = (e: React.KeyboardEvent, s: SectionMeta) => {
+    const d = e.key === "ArrowLeft" ? -1 : e.key === "ArrowRight" ? 1 : 0;
+    if (!d || e.metaKey || e.ctrlKey || e.altKey) return;
+    e.preventDefault();
+    const { least, row } = wrapRoom(s);
+    let n = wrapping.current;
+    if (!n || n.id !== s.id) { const b = layRef.current.sections.find((x) => x.id === s.id); if (!b) return; n = wrapping.current = { id: s.id, w: b.w, keep: boxNow() }; }
+    n.w = Math.min(row, Math.max(least, n.w + d * (e.shiftKey ? BOARD.grid * 5 : BOARD.grid)));
+    const width = wrapWidth(s, n.w);
+    hold();
+    setMoving({ kind: "wrap", id: s.id, width, keep: n.keep });
+    setSaid(width ? `${s.name} wraps at ${width} pixels` : `${s.name} is one row`);
+    clearTimeout(n.timer);
+    const done = n;
+    n.timer = setTimeout(() => { if (wrapping.current === done) wrapping.current = null; void wrapTo(s, width); }, 600);
+  };
+
+  /** A frame dragged to another place in its section, or into another. */
+  const frameDown = (e: React.PointerEvent, id: string) => {
+    if (e.button !== 0 || handy || commenting) return;
+    const from = layRef.current.sections.find((x) => x.frames.some((f) => f.id === id)); if (!from) return;
+    const fb = from.frames.find((f) => f.id === id)!, index = from.frames.indexOf(fb);
+    const p0 = boardAt(e.clientX, e.clientY), keep = boxNow();
+    let to: { section: string; at: number; py: number } | null = null;
+    follow(e, (ev) => {
+      const p = boardAt(ev.clientX, ev.clientY);
+      const sec = layRef.current.sections.find((x) => p.bx >= x.x && p.bx <= x.x + x.w && p.by >= x.y && p.by <= x.y + x.h);
+      to = sec ? { section: sec.id, at: dropIndex(sec, id, p.bx, p.by), py: p.by } : null;
+      hold();
+      setMoving({ kind: "frame", id, x: fb.x + p.bx - p0.bx, y: fb.y + p.by - p0.by, w: fb.w, h: fb.h, to, keep });
+    }, (moved) => {
+      if (!moved) return;
+      hush();
+      const t: { section: string; at: number } | null = to;
+      if (!t || (t.section === from.id && t.at === index)) { setMoving(null); return; }
+      void change([{ op: "moveFrame", frameId: id, section: t.section, at: t.at }]).then(() => setMoving(null));
+    });
+  };
+  const anyPlaced = design.sections.some((x) => x.x != null);
+  const tidy = () => void change(design.sections.filter((x) => x.x != null).map((x) => ({ op: "placeSection" as const, section: x.id, x: null, y: null })), "Put the sections back in a column");
+
+  // A section or frame just added is brought into view, at the zoom it is.
+  const revealing = useRef<string | null>(null);
+  useEffect(() => {
+    const id = revealing.current, v = view.current, d = drawn.current;
+    if (!id || !v || !d) return;
+    const r = lay.sections.find((x) => x.id === id) ?? boxOf.get(id);
+    if (!r) return;
+    revealing.current = null;
+    const vx = (v.scrollLeft - d.mx) / d.z + d.x, vy = (v.scrollTop - d.my) / d.z + d.y, vw = v.clientWidth / d.z, vh = v.clientHeight / d.z;
+    const w = Math.min(r.w, vw * 0.8), h = Math.min(r.h, vh * 0.7);
+    if (r.x >= vx && r.y - 60 / d.z >= vy && r.x + w <= vx + vw && r.y + h <= vy + vh) return;
+    glide(d.z, { bx: r.x + w / 2, by: r.y + h / 2, sx: v.clientWidth / 2, sy: v.clientHeight / 2 }, zoom === "fit");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lay, boxOf]);
 
   // The zoom keys, wherever the board has the keys: not while typing in the inspector or a dialog.
   const keysRef = useRef<(e: KeyboardEvent) => void>(() => {});
@@ -401,7 +697,7 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
     else if (k === "hand") setHand((h) => !h);
   };
   // The listeners hold refs, given the newest of the board's own handlers after each drawing.
-  useLayoutEffect(() => { zoomAtRef.current = zoomTo; keysRef.current = onKeys; });
+  useLayoutEffect(() => { pinchRef.current = pinch; keysRef.current = onKeys; });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => keysRef.current(e);
     window.addEventListener("keydown", onKey);
@@ -444,12 +740,13 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
   };
 
   // A frame's handlers, the same from one drawing to the next, so a frame that has not changed is not drawn again.
-  const act = useRef({ select: (_: string) => {}, zoom: (_: string) => {}, height: onHeight, comment: (_: string, __: number, ___: number) => {}, picFailed });
+  const act = useRef<Act>({ select: () => {}, zoom: () => {}, height: onHeight, comment: () => {}, picFailed, down: () => {} });
   useLayoutEffect(() => {
     act.current.select = (id) => { setSelected(id); if (commenting) comment(false); };
     act.current.zoom = zoomToFrame;
     act.current.height = onHeight;
     act.current.picFailed = picFailed;
+    act.current.down = frameDown;
     act.current.comment = (id, x, y) => { const f = metaOf.get(id); cs.setDraft({ x, y, frameId: id, frameName: f?.name ?? "" }); cs.setActive(null); };
   });
 
@@ -465,6 +762,11 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
     { label: "Delete the section", icon: <Trash2 size={14} />, danger: true, onSelect: () => (s.frames.length ? setAsking({ kind: "delete-section", section: s }) : void change([{ op: "removeSection", section: s.id }], `Deleted ${s.name}`)) },
   ];
   const catching = commenting && cs.picking && !cs.draft;
+  const barSection = moving?.kind === "frame" && moving.to ? lay.sections.find((x) => x.id === moving.to!.section) : undefined;
+  const bar = moving?.kind === "frame" && moving.to && barSection ? dropBar(barSection, moving.id, moving.to.at, moving.to.py) : null;
+  // The map shows while the board is bigger than the view.
+  const showMap = ready && lay.w > 0 && (lay.w * z > viewW + 1 || lay.h * z > viewH + 1);
+  useEffect(() => { if (showMap) mapSoon(); }, [showMap, lay]);
 
   return (
     <div className="design-page">
@@ -486,12 +788,13 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
         <div style={{ flex: 1 }} />
         <div className="editor-group roomy">
           <Button size="sm" tip="A labelled part of the board, like Foundations, Components or Pages." onClick={() => setAsking({ kind: "section" })}><Plus size={14} aria-hidden /> Add a section</Button>
+          {anyPlaced && <Button size="sm" tip="Puts every section back in one column, in their order. Undo puts them back." onClick={tidy}><LayoutGrid size={14} aria-hidden /> Tidy up</Button>}
         </div>
         <div className="editor-group">
           <IconButton label="Undo" hint="Takes back the last change to the sheet, yours or your model's." disabled={!design.canUndo} onClick={undo}><Undo2 size={16} /></IconButton>
         </div>
         <div className="editor-group">
-          <ZoomControls zoom={zoom} scale={z} onZoom={(v) => zoomTo(v)} onStep={step} hand={hand} onHand={setHand}
+          <ZoomControls zoom={zoom} scale={z} onZoom={(v) => zoomTo(v)} onStep={step} hand={hand} onHand={setHand} fitLabel="Fit the width" onWhole={zoomToAll}
             onSelection={selected ? () => zoomToFrame(selected) : undefined} selectionHint="Zoom to selection (select a frame first)" />
         </div>
         <div className="editor-group">
@@ -510,21 +813,22 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
       </header>
 
       <div className="design-body">
-        <div className="design-view" ref={view} data-hand={handy || undefined} data-dragging={dragging || undefined}
-          onScroll={lookSoon}
+        <div className="design-stage">
+        <div className="design-view" ref={view} data-hand={handy || undefined} data-dragging={dragging || undefined} data-moving={moving ? moving.kind : undefined}
+          onScroll={() => { lookSoon(); mapSoon(); }}
           onPointerDownCapture={panDownCapture} onPointerDown={panDown} onPointerMove={panMove} onPointerUp={panUp} onPointerCancel={panUp}
           onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
           onClickCapture={(e) => { if (quiet.current) { quiet.current = false; e.stopPropagation(); e.preventDefault(); } }}
           onClick={(e) => { if (!handy && !(e.target as HTMLElement).closest(".design-frame, button, a, [role=menu]")) setSelected(null); }}
           onDoubleClick={(e) => { if (!handy && !(e.target as HTMLElement).closest(NOT_EMPTY)) zoomTo("fit"); }}>
-          <div ref={wrap} className="design-wrap" style={{ visibility: ready ? undefined : "hidden" }}>
-            <div className="design-board" data-small={z < LABELS_MIN || undefined} style={{ left: mx, top: my, width: lay.w, height: lay.h, transform: `scale(${z})`, "--z": z, "--hz": Math.max(z, HEAD_Z), "--az": Math.max(z, ADD_Z) } as CSSProperties}>
+          <div ref={wrap} className="design-wrap" style={{ visibility: ready ? undefined : "hidden", ...dotsAt(z, lay.x, lay.y, mx, my) } as CSSProperties}>
+            <div ref={boardEl} className="design-board" data-small={z < LABELS_MIN || undefined} style={{ left: mx, top: my, width: lay.w, height: lay.h, transform: `scale(${z})`, "--z": z, "--hz": Math.max(z, HEAD_Z), "--az": Math.max(z, ADD_Z) } as CSSProperties}>
               {design.sections.map((s, i) => {
                 const b = lay.sections[i];
                 return (
-                  <section key={s.id} className="design-section" aria-labelledby={`sec-${s.id}`} style={{ left: b.x - lay.x, top: b.y - lay.y, width: b.w, height: b.h }}>
+                  <section key={s.id} className="design-section" aria-labelledby={`sec-${s.id}`} data-moving={(shape && shape.id === s.id) || undefined} style={{ left: b.x - lay.x, top: b.y - lay.y, width: b.w, height: b.h }}>
                     <header>
-                      <h2 id={`sec-${s.id}`}>{s.name}</h2>
+                      <h2 id={`sec-${s.id}`}><button type="button" className="design-section-name" aria-describedby="design-move-how" onPointerDown={(e) => sectionDown(e, s)} onKeyDown={(e) => sectionKeys(e, s)} onDoubleClick={() => zoomToSection(s.id)}>{s.name}</button></h2>
                       {s.note && <p title={s.note}>{s.note}</p>}
                       <IconButton label={`Add a frame to ${s.name}`} onClick={() => setAsking({ kind: "frame", section: s })}><Plus size={14} /></IconButton>
                       <Menu trigger={<IconButton label={`Actions for ${s.name}`}><MoreHorizontal size={14} /></IconButton>} items={sectionMenu(s, i)} />
@@ -542,14 +846,22 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
                         pic={mode === "pic" || (mode === "live" && !c && pics && !noPic.has(m.id)) ? framePicUrl(design.id, m, swatchKey) : null}
                         selected={selected === m.id} mark={marks.get(m.id)} lead={leadFrame === m.id} act={act}
                         pins={(pins.length > 0 || cs.draft?.frameId === m.id) ? <Pins threads={pins} draft={cs.draft?.frameId === m.id ? cs.draft : null} active={cs.active} onPick={(t) => pickComment(t.id)} /> : null}
-                        catching={catching} />;
+                        catching={catching} lifted={moving?.kind === "frame" && moving.id === m.id} />;
                     })}
+                    {s.frames.length > 1 && <button type="button" className="design-wrap-handle" aria-label={`Wrap ${s.name} into rows`} aria-describedby="design-wrap-how" data-on={s.width != null || undefined}
+                      onPointerDown={(e) => wrapDown(e, s)} onKeyDown={(e) => wrapKeys(e, s)} />}
                     {!s.frames.length && <button type="button" className="design-add" style={{ left: BOARD.pad, top: BOARD.pad }} onClick={() => setAsking({ kind: "frame", section: s })}><Plus aria-hidden /> Add a frame</button>}
                   </section>
                 );
               })}
+              {moving?.kind === "frame" && <>
+                <div className="design-ghost" aria-hidden style={{ left: moving.x - lay.x, top: moving.y - lay.y, width: moving.w, height: moving.h }} />
+                {bar && <i className="design-drop" aria-hidden style={{ left: bar.x - lay.x, top: bar.y - lay.y, height: bar.h }} />}
+              </>}
             </div>
           </div>
+        </div>
+        {showMap && <BoardMap lay={lay} box={mapView} onGo={(bx, by) => { const v = view.current; if (!v) return; stopGlide(); bring({ bx, by, sx: v.clientWidth / 2, sy: v.clientHeight / 2 }); lookSoon(); mapSoon(); }} />}
         </div>
 
         {commenting && (
@@ -577,13 +889,19 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
         ))}
       </div>
 
+      <p id="design-move-how" hidden>Drag it to place the section anywhere on the board, or move it with the arrow keys, further with Shift. A double-click zooms to it.</p>
+      <p id="design-wrap-how" hidden>Drag it in, or press the left arrow key, to wrap the section&apos;s frames into rows; out, or the right arrow key, to put them back in one.</p>
+      <p className="sr-only" role="status">{said}</p>
       <ModelAtWork right={where || commenting ? 436 : 16} />
       <SectionDialog asking={asking?.kind === "section" ? asking : null} onClose={() => setAsking(null)}
-        onDone={async (name, note, s) => { await change(s ? [{ op: "updateSection", section: s.id, name, note }] : [{ op: "addSection", name, note }]); }} />
+        onDone={async (name, note, s) => {
+          const r = await change(s ? [{ op: "updateSection", section: s.id, name, note }] : [{ op: "addSection", name, note }]);
+          if (!s && r?.made.sections[0]) revealing.current = r.made.sections[0];
+        }} />
       <FrameDialog asking={asking?.kind === "frame" ? asking : null} onClose={() => setAsking(null)}
         onDone={async (s, name, width) => {
           const r = await change([{ op: "setFrame", section: s.id, name, width, ...newFrameCode(name, width) }]);
-          if (r?.made.frames[0]) setSelected(r.made.frames[0]);
+          if (r?.made.frames[0]) { revealing.current = r.made.frames[0]; setSelected(r.made.frames[0]); }
         }} />
       <ConfirmDialog open={asking?.kind === "delete-section"} onOpenChange={(o) => !o && setAsking(null)} title={`Delete ${asking?.kind === "delete-section" ? asking.section.name : "the section"}?`}
         description={asking?.kind === "delete-section" ? `Its ${asking.section.frames.length} frame${asking.section.frames.length === 1 ? "" : "s"} go with it. Undo brings them back.` : undefined} confirmLabel="Delete the section"
@@ -592,19 +910,50 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
   );
 }
 
-type Act = { select: (id: string) => void; zoom: (id: string) => void; height: (id: string, rev: string, h: number, keep: boolean) => void; comment: (id: string, x: number, y: number) => void; picFailed: (id: string, url: string) => void };
+type Act = {
+  select: (id: string) => void; zoom: (id: string) => void; height: (id: string, rev: string, h: number, keep: boolean) => void;
+  comment: (id: string, x: number, y: number) => void; picFailed: (id: string, url: string) => void;
+  /** A press on the frame, which may become a drag. */
+  down: (e: React.PointerEvent, id: string) => void;
+};
+
+/**
+ * The board small, in a corner: its sections and frames, and the part of it in view (`box`, moved
+ * by the board as the view moves). A press or a drag on it goes there. For the pointer only: the
+ * keys, the scroll and the zoom reach everything it does.
+ */
+function BoardMap({ lay, box, onGo }: { lay: BoardLayout; box: React.RefObject<SVGRectElement | null>; onGo: (bx: number, by: number) => void }) {
+  const k = Math.min(MAP_W / lay.w, MAP_H / lay.h);
+  const go = (e: React.PointerEvent<SVGSVGElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    onGo(lay.x + ((e.clientX - r.left) / r.width) * lay.w, lay.y + ((e.clientY - r.top) / r.height) * lay.h);
+  };
+  return (
+    <div className="design-map" aria-hidden>
+      <svg width={Math.max(24, Math.round(lay.w * k))} height={Math.max(24, Math.round(lay.h * k))} viewBox={`${lay.x} ${lay.y} ${lay.w} ${lay.h}`} preserveAspectRatio="none"
+        onPointerDown={(e) => { e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); go(e); }}
+        onPointerMove={(e) => { if (e.currentTarget.hasPointerCapture(e.pointerId)) go(e); }}>
+        {lay.sections.map((s) => <rect key={s.id} className="design-map-section" x={s.x} y={s.y} width={s.w} height={s.h} />)}
+        {lay.sections.map((s) => s.frames.map((f) => <rect key={f.id} className="design-map-frame" x={f.x} y={f.y} width={f.w} height={f.h} />))}
+        <rect ref={box} className="design-map-view" />
+      </svg>
+    </div>
+  );
+}
 
 /**
  * One frame on the board: its label, the frame drawn live (`doc`), as a picture (`pic`) or as its
  * outline, and the button that selects it. Drawn again only when something it shows changes.
  */
-const FrameView = memo(function FrameView({ f, x, y, h, rev, doc, pic, selected, mark, lead, act, pins, catching }: {
+const FrameView = memo(function FrameView({ f, x, y, h, rev, doc, pic, selected, mark, lead, act, pins, catching, lifted }: {
   f: Pick<FrameMeta, "id" | "name" | "width" | "height" | "by">; x: number; y: number; h: number; rev: string; doc: string | null; pic: string | null;
   selected: boolean; mark?: Mark; lead: boolean; act: { current: Act };
   /** The comments pinned to it. */
   pins?: ReactNode;
   /** While a comment is placed, a click on the frame places it. */
   catching: boolean;
+  /** Being dragged somewhere else. */
+  lifted?: boolean;
 }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const measure = async () => { if (!f.height && ref.current) { const m = await frameHeight(ref.current); if (m) act.current.height(f.id, rev, m, true); } };
@@ -615,7 +964,7 @@ const FrameView = memo(function FrameView({ f, x, y, h, rev, doc, pic, selected,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc]);
   return (
-    <figure className="design-frame" style={{ left: x, top: y, width: f.width }}>
+    <figure className="design-frame" data-lifted={lifted || undefined} style={{ left: x, top: y, width: f.width }}>
       <figcaption title={`${f.name}, ${frameSize(f)}${f.by === "model" ? ", by your model" : ""}`}>{f.name}<span>{frameSize(f)}</span>{f.by === "model" && <span>by your model</span>}</figcaption>
       <div className="design-frame-box" data-frame-box={f.id} data-drawn={doc ? "live" : pic ? "picture" : "outline"} style={{ width: f.width, height: h }}>
         {/* Drawn and nothing more: no scripts run in it, and nothing in it can be focused or clicked. */}
@@ -624,7 +973,7 @@ const FrameView = memo(function FrameView({ f, x, y, h, rev, doc, pic, selected,
             onLoad={(e) => { const i = e.currentTarget; if (!f.height && i.naturalWidth) act.current.height(f.id, rev, Math.round(i.naturalHeight * f.width / i.naturalWidth), false); }}
             onError={() => act.current.picFailed(f.id, pic)} /> : null}
         {/* data-pan-ok: with a frame focused, Space still drags the board about. */}
-        <button type="button" className="design-frame-hit" data-pan-ok aria-label={`${f.name}, ${frameSize(f)}`} aria-pressed={selected} onClick={() => act.current.select(f.id)} onDoubleClick={() => act.current.zoom(f.id)} />
+        <button type="button" className="design-frame-hit" data-pan-ok aria-label={`${f.name}, ${frameSize(f)}`} aria-pressed={selected} onPointerDown={(e) => act.current.down(e, f.id)} onClick={() => act.current.select(f.id)} onDoubleClick={() => act.current.zoom(f.id)} />
         <ModelMark mark={mark} lead={lead} />
         {pins}
         {catching && <PinCatch label={`Place a comment on ${f.name}`} onSpot={(px, py) => act.current.comment(f.id, px, py)} />}

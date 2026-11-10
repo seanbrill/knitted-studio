@@ -61,6 +61,8 @@ Posts pictures, carousels of up to 10 and Reels. A picture taller than 4:5 goes 
 4. In **App roles, Roles**, add your Instagram account as an **Instagram Tester**, then accept the invitation in Instagram (**Settings, Apps and websites, Tester invites**). Your own account needs no review by Meta.
 5. Copy the **Instagram app ID** and **Instagram app secret** (on the Instagram API setup page, not the Facebook app's ID) into knitted, then press **Connect Instagram**.
 
+If Instagram says **Invalid Request: Request parameters are invalid: Invalid platform app**, knitted has the Meta app's own App ID, from **App settings, Basic**. Instagram's sign-in takes only the Instagram app ID. If the app has no Instagram app ID yet, add the Instagram use case with **API setup with Instagram login** (step 2), and it appears on that page.
+
 The sign-in lasts 60 days and knitted renews it while it is open, so it does not run out unless knitted stays closed that long.
 
 ## Threads

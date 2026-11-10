@@ -19,11 +19,13 @@ const { AlertTriangle, Check, ChevronRight, Copy, ExternalLink } = icons;
 export const GUIDE = "https://knitted.filefreak.page/docs/social/";
 
 /** What each platform calls its app's id and secret, and what knitted posts there. */
-const ABOUT: Record<Platform, { id: string; secret: string; does: string }> = {
-  instagram: { id: "Instagram app ID", secret: "Instagram app secret", does: "Pictures, carousels of up to 10, and Reels. A tall picture goes to your Story. Needs a media host." },
+const ABOUT: Record<Platform, { id: string; secret: string; does: string; where?: string }> = {
+  instagram: { id: "Instagram app ID", secret: "Instagram app secret", does: "Pictures, carousels of up to 10, and Reels. A tall picture goes to your Story. Needs a media host.",
+    where: "In your Meta app, on the Instagram use case's page, API setup with Instagram login. Not the App ID in App settings: Instagram turns that one away as an invalid platform app." },
   tiktok: { id: "Client key", secret: "Client secret", does: "Videos. Until TikTok reviews your app, a post is seen only by you, and the account has to be private." },
   linkedin: { id: "Client ID", secret: "Client secret", does: "Words, pictures (up to 20 at once) and video, as you. A sign-in lasts 60 days." },
-  threads: { id: "Threads app ID", secret: "Threads app secret", does: "Words, pictures, video and carousels. Needs a media host." },
+  threads: { id: "Threads app ID", secret: "Threads app secret", does: "Words, pictures, video and carousels. Needs a media host.",
+    where: "In your Meta app, App settings, Basic, under the app's own App ID: the one named Threads app ID." },
   x: { id: "Client ID", secret: "Client secret (a web app's only)", does: "Words, up to 4 pictures, or a video. Each post is paid for from your X developer credits." },
   youtube: { id: "Client ID", secret: "Client secret", does: "Videos, and Shorts when upright. A post scheduled ahead is published by YouTube at its time, even with knitted closed." },
 };
@@ -126,7 +128,7 @@ function Network({ platform, cfg, accounts, save, open, onToggle }: { platform: 
             <li>
               <p className="net-step">Give knitted your app</p>
               <div className="net-app">
-                <Field label={about.id} htmlFor={`so-${platform}-id`}>
+                <Field label={about.id} hint={about.where} htmlFor={`so-${platform}-id`}>
                   <Input id={`so-${platform}-id`} mono defaultValue={app.clientId} key={`id-${app.clientId}`} autoComplete="off" onBlur={(e) => e.target.value.trim() !== app.clientId && void save({ apps: { [platform]: { clientId: e.target.value } } })} />
                 </Field>
                 <Field label={about.secret} htmlFor={`so-${platform}-secret`}>

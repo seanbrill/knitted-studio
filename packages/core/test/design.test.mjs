@@ -152,6 +152,25 @@ test("a placed section is where it was put, and the column stands under the plac
   assert.equal(lay.w, 2000 + c.w + 800);
 });
 
+test("placed sections never overlap: one that would goes under it, and the one being moved stays where it is put", () => {
+  const sec = (id, x, y, h) => ({ id, x, y, frames: [fr(`${id}f`, 400, h - 2 * BOARD.pad)] });
+  // s1 grew (wrapped, or more frames) down over s2, which was put 100 under where s1 ended.
+  const lay = layoutDesign([sec("s1", 0, 0, 2000), sec("s2", 0, 1100, 500), sec("s3", 0, 1700, 500), sec("s4", 2000, 1100, 500)]);
+  const [a, b, c, d] = lay.sections;
+  assert.deepEqual([a.y, b.y], [0, 2000 + BOARD.stack], "pushed under the one that grew");
+  assert.equal(c.y, b.y + 500 + BOARD.stack, "and the next one with it");
+  assert.equal(d.y, 1100, "one beside it stays");
+  assert.equal(b.frames[0].y, b.y + BOARD.pad, "frames go with their section");
+  // Put down over s1, s3 stays where it was put, and s1 makes room.
+  const put = layoutDesign([sec("s1", 0, 0, 2000), sec("s3", 200, 400, 500)], undefined, { first: "s3" });
+  assert.deepEqual([put.sections[1].y, put.sections[0].y], [400, 400 + 500 + BOARD.stack]);
+  // Still being dragged, it floats over s1, which stays.
+  const dragged = layoutDesign([sec("s1", 0, 0, 2000), sec("s3", 200, 400, 500)], undefined, { float: "s3" });
+  assert.deepEqual([dragged.sections[1].y, dragged.sections[0].y], [400, 0]);
+  // Touching is not overlapping.
+  assert.equal(layoutDesign([sec("s1", 0, 0, 500), sec("s2", 0, 500, 500)]).sections[1].y, 500);
+});
+
 test("a section's width wraps its frames into rows, never narrower than its widest frame", () => {
   const frames = [fr("f1", 1440, 900), fr("f2", 390, 844), fr("f3", 1440, 600), fr("f4", 390, 844)];
   const lay = layoutDesign([{ id: "s1", width: 1440 + 390 + BOARD.gap + 2 * BOARD.pad, frames }]);
@@ -176,6 +195,12 @@ test("a frame dropped in a section goes in the gap nearest the point, in the row
   assert.equal(dropIndex(s, null, f3.x + 300, f3.y + 100), 3, "after the last of all");
   assert.equal(dropIndex(s, "f1", f3.x + 10, f3.y + 10), 1, "the moved frame does not count: before f3, among the others");
   assert.equal(dropIndex(layoutDesign([{ id: "s2", frames: [] }]).sections[0], "f1", 0, 0), 0);
+  // Wrapped to one frame a row, a frame let go where it was, straight above or below, stays there.
+  const col = layoutDesign([{ id: "s3", width: 500, frames: [fr("a", 400, 1000), fr("b", 400, 1000), fr("c", 400, 1000)] }]).sections[0];
+  const [, b, c] = col.frames;
+  for (const dx of [-1, 0, 1]) assert.equal(dropIndex(col, "b", b.x + b.w / 2 + dx, b.y + 100), 1, `dropped on its own place, ${dx} from the middle`);
+  assert.equal(dropIndex(col, "b", b.x + 100, c.y + c.h - 10), 2, "low on the next one: after it");
+  assert.equal(dropIndex(col, "c", c.x + 10, col.frames[0].y + 10), 0, "high on the first: before it");
   assert.equal(snapToGrid(57), 40);
   assert.equal(snapToGrid(-61), -80);
 });

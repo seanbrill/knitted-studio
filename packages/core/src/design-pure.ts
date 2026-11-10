@@ -355,13 +355,36 @@ function laySection(s: LayoutSection, heightOf: (f: Pick<DesignFrame, "id" | "wi
   return { w: Math.max(s.width ?? 0, right + 2 * pad), h: y + rowH + 2 * pad, frames };
 }
 
-/** The whole board: each section and frame where it is drawn, and the box round them all. */
-export function layoutDesign(sections: LayoutSection[], heightOf: (f: Pick<DesignFrame, "id" | "width" | "height">) => number = guessHeight): BoardLayout {
+/**
+ * The whole board: each section and frame where it is drawn, and the box round them all.
+ *
+ * Placed sections never overlap. Taken from the top (`first`, one just put down, before the
+ * rest), a section that would overlap one already laid goes under it instead, so one that grows,
+ * by wrapping or by more frames, pushes those below it down rather than covering them. One being
+ * dragged (`float`) is drawn where it is, over the others, and moves none of them until it is put down.
+ */
+export function layoutDesign(sections: LayoutSection[], heightOf: (f: Pick<DesignFrame, "id" | "width" | "height">) => number = guessHeight, { first, float }: { first?: string; float?: string } = {}): BoardLayout {
   const laid = sections.map((s) => ({ s, ...laySection(s, heightOf) }));
-  const placed = laid.filter((l) => l.s.x != null && l.s.y != null);
-  let y = placed.length ? Math.max(...placed.map((l) => l.s.y! + l.h)) + BOARD.stack : 0;
+  const isPlaced = (l: (typeof laid)[number]) => l.s.x != null && l.s.y != null;
+  const order = laid.filter((l) => isPlaced(l) && l.s.id !== float).sort((a, b) => (a.s.id === first ? -1 : b.s.id === first ? 1 : a.s.y! - b.s.y! || a.s.x! - b.s.x!));
+  const put = new Map<string, { x: number; y: number }>();
+  const boxes: { x: number; y: number; w: number; h: number }[] = [];
+  for (const l of order) {
+    const x = l.s.x!;
+    let y = l.s.y!;
+    for (let hit = true; hit;) {
+      hit = false;
+      for (const b of boxes) if (x < b.x + b.w && b.x < x + l.w && y < b.y + b.h && b.y < y + l.h) { y = b.y + b.h + BOARD.stack; hit = true; }
+    }
+    put.set(l.s.id, { x, y });
+    boxes.push({ x, y, w: l.w, h: l.h });
+  }
+  const floating = laid.find((l) => l.s.id === float && isPlaced(l));
+  if (floating) put.set(floating.s.id, { x: floating.s.x!, y: floating.s.y! });
+  let y = boxes.length ? Math.max(...boxes.map((b) => b.y + b.h)) + BOARD.stack : 0;
   const out: LaidSection[] = laid.map((l) => {
-    const at = l.s.x != null && l.s.y != null ? { x: l.s.x, y: l.s.y, placed: true } : { x: 0, y, placed: false };
+    const p = put.get(l.s.id);
+    const at = p ? { ...p, placed: true } : { x: 0, y, placed: false };
     if (!at.placed) y += l.h + BOARD.stack;
     return { id: l.s.id, x: at.x, y: at.y, w: l.w, h: l.h, placed: at.placed, frames: l.frames.map((f) => ({ ...f, x: f.x + at.x, y: f.y + at.y })) };
   });
@@ -376,7 +399,8 @@ export const snapToGrid = (v: number, grid: number = BOARD.grid) => Math.round(v
 
 /**
  * Where a frame dropped at a point of the board goes in a section: the index among its frames,
- * not counting the frame being moved. The row nearest the point, then the gap nearest it.
+ * not counting the frame being moved. The row nearest the point, then the gap nearest it; in a
+ * row of one frame, before or after it by which way the point is furthest off its middle.
  */
 export function dropIndex(section: LaidSection, frameId: string | null, bx: number, by: number): number {
   const others = section.frames.filter((f) => f.id !== frameId);
@@ -386,6 +410,12 @@ export function dropIndex(section: LaidSection, frameId: string | null, bx: numb
   for (const f of others) { const r = rows.find((row) => row[0].y === f.y); if (r) r.push(f); else rows.push([f]); }
   const dist = (r: LaidFrame[]) => { const top = r[0].y, bottom = Math.max(...r.map((f) => f.y + f.h)); return by < top ? top - by : by > bottom ? by - bottom : 0; };
   const row = rows.reduce((a, b) => (dist(b) < dist(a) ? b : a));
+  // A frame alone in its row, as in a section wrapped to one frame a row: before it or after it by
+  // the way the point is furthest from its middle, for its size, across or down.
+  if (row.length === 1) {
+    const f = row[0], dx = (bx - (f.x + f.w / 2)) / f.w, dy = (by - (f.y + f.h / 2)) / f.h;
+    return others.indexOf(f) + ((Math.abs(dy) > Math.abs(dx) ? dy : dx) > 0 ? 1 : 0);
+  }
   const before = row.findIndex((f) => bx < f.x + f.w / 2);
   const at = before === -1 ? row[row.length - 1] : row[before];
   return others.indexOf(at) + (before === -1 ? 1 : 0);

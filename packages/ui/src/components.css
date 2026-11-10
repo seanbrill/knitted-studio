@@ -701,17 +701,43 @@ body:has(.dialog, .viewer) .toasts { top: var(--space-4); bottom: auto; }
 .design-page { display: flex; flex-direction: column; height: 100vh; }
 .design-body { flex: 1; display: flex; min-height: 0; }
 .design-view { flex: 1; overflow: auto; background: var(--surface-sunken); position: relative; }
-.design-wrap { position: relative; }
+.design-stage { flex: 1; min-width: 0; position: relative; display: flex; }
+/* The grid's dots, 40 board pixels apart or a multiple, from the board's 0, 0 (set with the zoom). */
+.design-wrap { position: relative; background-image: radial-gradient(circle, color-mix(in srgb, var(--ink) 16%, transparent) 1px, transparent 1.4px); background-size: var(--dot, 40px) var(--dot, 40px); background-position: calc(var(--dx, 0px) - var(--dot, 40px) / 2) calc(var(--dy, 0px) - var(--dot, 40px) / 2); }
 /* The board, in the frames' own pixels, scaled: sections and frames are placed by layoutDesign. Names and controls keep their size on screen;
    a section's name (--hz) and an empty section's button (--az) only while they fit the room they have, then shrink with the board. */
 .design-board { position: absolute; transform-origin: 0 0; }
 .design-section { position: absolute; border-radius: calc(14px / var(--z)); background: var(--surface); box-shadow: 0 0 0 calc(1px / var(--z)) var(--line); }
 .design-section > header { position: absolute; left: 0; bottom: 100%; margin-bottom: calc(8px / var(--hz)); display: flex; align-items: center; gap: calc(6px / var(--hz)); font-size: calc(14px / var(--hz)); white-space: nowrap; }
-.design-section > header h2 { margin: 0; font-size: calc(15px / var(--hz)); font-weight: 600; background: var(--surface); box-shadow: 0 0 0 calc(1px / var(--hz)) var(--line); padding: calc(4px / var(--hz)) calc(12px / var(--hz)); border-radius: 999px; }
+.design-section > header h2 { margin: 0; font-size: calc(15px / var(--hz)); font-weight: 600; }
+/* The section's name, and what it is moved by: dragged, or the arrow keys. */
+.design-section-name { all: unset; display: inline-block; background: var(--surface); box-shadow: 0 0 0 calc(1px / var(--hz)) var(--line); padding: calc(4px / var(--hz)) calc(12px / var(--hz)); border-radius: 999px; cursor: grab; touch-action: none; }
+.design-section-name:hover { box-shadow: 0 0 0 calc(1px / var(--hz)) var(--line-strong); }
+.design-section-name:focus-visible { outline: calc(2px / var(--hz)) solid var(--ember); outline-offset: calc(2px / var(--hz)); }
+.design-section[data-moving] { z-index: 2; box-shadow: 0 0 0 calc(2px / var(--z)) var(--ember), 0 calc(18px / var(--z)) calc(40px / var(--z)) calc(-12px / var(--z)) rgba(0, 0, 0, 0.35); }
+.design-section[data-moving] .design-section-name { background: var(--ember); color: #fff; box-shadow: none; }
+.design-view[data-moving="section"], .design-view[data-moving="section"] * { cursor: grabbing !important; }
+.design-view[data-moving="wrap"], .design-view[data-moving="wrap"] * { cursor: ew-resize !important; }
+.design-view[data-moving="frame"], .design-view[data-moving="frame"] * { cursor: grabbing !important; user-select: none; }
+/* The right edge of a section: dragged in, its frames wrap into rows. */
+.design-wrap-handle { position: absolute; right: 0; top: 50%; translate: 50% -50%; width: calc(10px / var(--z)); height: calc(56px / var(--z)); max-height: 60%; padding: 0; border: 0; border-radius: calc(5px / var(--z)); background: var(--line-strong); cursor: ew-resize; touch-action: none; opacity: 0; transition: opacity 0.12s, background-color 0.12s; }
+.design-section:hover > .design-wrap-handle, .design-wrap-handle:focus-visible, .design-wrap-handle[data-on], .design-section[data-moving] > .design-wrap-handle { opacity: 1; }
+.design-wrap-handle:hover, .design-wrap-handle:focus-visible, .design-section[data-moving] > .design-wrap-handle { background: var(--ember); }
+.design-wrap-handle:focus-visible { outline: calc(2px / var(--z)) solid var(--ember); outline-offset: calc(2px / var(--z)); }
 .design-section > header p { margin: 0 calc(4px / var(--hz)); color: var(--ink-muted); max-width: calc(560px / var(--hz)); overflow: hidden; text-overflow: ellipsis; }
 .design-section > header .icon-btn { width: calc(28px / var(--hz)); height: calc(28px / var(--hz)); }
 .design-section > header .icon-btn svg { width: calc(14px / var(--hz)); height: calc(14px / var(--hz)); }
 .design-frame { position: absolute; margin: 0; }
+.design-frame[data-lifted] { opacity: 0.35; }
+/* A frame being dragged, and where it would go. */
+.design-ghost { position: absolute; z-index: 3; pointer-events: none; border: calc(2px / var(--z)) dashed var(--ember); border-radius: calc(4px / var(--z)); background: color-mix(in srgb, var(--ember) 8%, transparent); }
+.design-drop { position: absolute; z-index: 3; pointer-events: none; width: calc(4px / var(--z)); translate: -50% 0; border-radius: calc(2px / var(--z)); background: var(--ember); box-shadow: 0 0 0 calc(3px / var(--z)) color-mix(in srgb, var(--ember) 25%, transparent); }
+/* The map: the board small, and the view on it. */
+.design-map { position: absolute; left: 16px; bottom: 16px; z-index: 4; padding: 6px; line-height: 0; border-radius: 10px; background: color-mix(in srgb, var(--surface) 92%, transparent); box-shadow: 0 0 0 1px var(--line), 0 8px 24px -8px rgba(0, 0, 0, 0.35); }
+.design-map svg { display: block; cursor: pointer; touch-action: none; }
+.design-map-section { fill: var(--surface-sunken); stroke: var(--line-strong); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.design-map-frame { fill: var(--line-strong); }
+.design-map-view { fill: color-mix(in srgb, var(--ember) 14%, transparent); stroke: var(--ember); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .design-frame figcaption { position: absolute; left: 0; bottom: 100%; max-width: 100%; font-size: calc(12px / var(--z)); font-weight: 500; margin: 0 0 calc(6px / var(--z)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
 .design-frame figcaption span { color: var(--ink-muted); font-weight: 400; margin-left: 0.5em; }
 /* Too far out for a frame's name to fit above it. */
