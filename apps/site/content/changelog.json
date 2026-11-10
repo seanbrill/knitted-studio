@@ -1,15 +1,17 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
-  "next": {
-    "title": "Patterns, Yarn and parts on a design sheet",
-    "items": [
-      "The + beside a section's name adds a pattern, a picture or video from Yarn, or a part, beside the pages: a campaign's posts beside the page they go with. Pick one by its picture, or find it by name. It starts at its own size, in its own shape.",
-      "It is the thing itself, not a copy. A pattern or a part is drawn by the editor's own renderer, in your brand, so a change to it in the editor, by your model or anywhere else shows on the sheet. A deleted one leaves a note in its place.",
-      "Picked, it has a tab of its own: Open in the editor, Knit and Ask your model for a pattern; Open in Yarn for a picture; Open in the editor or in Parts for a part. Take it off the sheet leaves the thing where it is. A sheet's card counts them apart from its frames: 4 sections, 10 frames, 2 pieces.",
-      "Pin a comment on a pattern as on a frame: your model is told which stitch is under the pin, and changes the pattern itself. Your model can add pieces too, with arrange_design, and view_design draws them with the rest."
-    ]
-  },
   "entries": [
+    {
+      "version": "0.1.52",
+      "date": "2026-11-09",
+      "title": "Patterns, Yarn and parts on a design sheet",
+      "items": [
+        "The + beside a section's name adds a pattern, a picture or video from Yarn, or a part, beside the pages: a campaign's posts beside the page they go with. Pick one by its picture, or find it by name. It starts at its own size, in its own shape.",
+        "It is the thing itself, not a copy. A pattern or a part is drawn by the editor's own renderer, in your brand, so a change to it in the editor, by your model or anywhere else shows on the sheet. A deleted one leaves a note in its place.",
+        "Picked, it has a tab of its own: Open in the editor, Knit and Ask your model for a pattern; Open in Yarn for a picture; Open in the editor or in Parts for a part. Take it off the sheet leaves the thing where it is. A sheet's card counts them apart from its frames: 4 sections, 10 frames, 2 pieces.",
+        "Pin a comment on a pattern as on a frame: your model is told which stitch is under the pin, and changes the pattern itself. Your model can add pieces too, with arrange_design, and view_design draws them with the rest."
+      ]
+    },
     {
       "version": "0.1.51",
       "date": "2026-11-09",
