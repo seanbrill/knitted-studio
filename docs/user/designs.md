@@ -25,6 +25,7 @@ Or choose **Design with your model** and say what you want, like *our whole site
 - Double-click a frame to zoom to it, whole and in the middle, or a section's name to zoom to that section. Double-click the space between frames to fit again.
 - Scroll to move about the board, or drag the space between frames. Hold Space, or turn on the **Hand** (press H), to drag over the frames too. The keys are the editor's: Shift+1 fits, Shift+2 zooms to the selected frame, and Shift+0 is 100%.
 - When the sheet is bigger than the window, a map in the bottom left corner shows its sections and the part you are looking at. Press or drag on it to go there.
+- The moon at the right end of the bar switches the studio to Night, and the sun back to Day, as in Settings. Your frames stay in your brand's own colours either way.
 
 ## Arranging the board
 
@@ -88,6 +89,7 @@ The pane beside the board has two tabs, as a knit's does: **Frame**, for the fra
 - Under the frame you pick are **Zoom to it**, **Pin a comment** and **Ask your model**. Press **Pin a comment** (or **Add a comment** in the Comments tab), click the spot on a frame that should change, and say what. For a comment about the sheet as a whole, choose **the whole sheet** instead.
 - With a frame picked, its comments come first, and **all on the sheet** shows the rest.
 - The pins stay on the board when the pane is closed, the same size at any zoom. Press one to pick its frame and open its comment. Pressing a comment in the pane brings its frame into view.
+- To see the design without them, press the eye beside **Comments** on the board's bar, or Shift+C. The pins are hidden on every sheet until you show them again, but the comments stay in the pane, and the one you are writing or have open there still shows on the board.
 - **Ask your model** under a frame starts a chat about that frame, so your model changes that one.
 
 A comment can be replied to, resolved, opened again or deleted. **Comments** on the bar shows how many are open, and so does the sheet's card in the list of designs.

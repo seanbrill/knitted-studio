@@ -13,11 +13,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { api, ApiError, subscribeChanges, yarnFileUrl, yarnPictureUrl, yarnThumbUrl } from "@knitted/core/client";
 import { DESIGN_DEVICES, BOARD, PIECE_NAMES, SIZES, deviceOf, dropIndex, frameRev, frameSize, guessHeight, layoutDesign, lintDesignCode, snapToGrid, stillMs, type BoardLayout, type DesignDevice, type DesignFrame, type DesignMeta, type DesignOp, type FrameCode, type FrameMeta, type LaidFrame, type LaidSection, type Part, type Pattern, type PieceKind, type PieceNow, type SectionMeta, type Swatch, type Yarn } from "@knitted/core";
 import { pageFor } from "@knitted/render/pure";
-import { Button, ConfirmDialog, Dialog, Field, IconButton, Input, Menu, SegmentedControl, Select, TabPanel, Tabs, Textarea, Tip, icons, useToast } from "@knitted/ui";
+import { Button, ConfirmDialog, Dialog, Field, IconButton, Input, Menu, SegmentedControl, Select, TabPanel, Tabs, Textarea, Tip, icons, useTheme, useToast } from "@knitted/ui";
 import { useLive } from "@/lib/hooks";
 import { brandKey, frameDoc, frameHeight, framePicUrl, hashOf } from "@/lib/design";
 import { AskModelButton, AskModelDialog, aboutDesign, aboutPart, aboutPattern, aboutYarn, type About } from "./AskModel";
@@ -29,11 +29,12 @@ import { ModelAtWork } from "./ModelAtWork";
 import { ModelMark } from "./ModelMark";
 import { leadOf, useMarks, type Mark } from "@/lib/agent";
 import { ZoomControls } from "./ZoomControls";
+import { keyText } from "./Shortcuts";
 import { CommentThreads, PinCatch, Pins, shownThreads, useCommentState, useComments, type CommentsOn } from "./Comments";
 import type { CommentThread } from "@knitted/core";
 import { stepZoom, typingIn, useSpaceHeld, wheelZoom, zoomKey } from "@/lib/zoom";
 
-const { ArrowLeft, ArrowUp, ArrowDown, ChevronRight, Copy, Download, ExternalLink, FileCode, Image, Layers, LayoutGrid, Maximize2, MessageSquare, MoreHorizontal, Package, Pencil, Plus, Shapes, Sparkles, Trash2, Undo2, X, AlertTriangle } = icons;
+const { ArrowLeft, ArrowUp, ArrowDown, ChevronRight, Copy, Download, ExternalLink, Eye, EyeOff, FileCode, Image, Layers, LayoutGrid, Maximize2, MessageSquare, Moon, MoreHorizontal, Package, Pencil, Plus, Shapes, Sparkles, Sun, Trash2, Undo2, X, AlertTriangle } = icons;
 const ZOOM_MIN = 0.02;
 const ZOOM_MAX = 4;
 // Round a frame zoomed to: room to see it is the whole frame, and its label.
@@ -173,6 +174,29 @@ const PIECE_ADD: Record<PieceKind, { title: string; empty: string }> = {
   part: { title: "Add a part", empty: "There are no parts yet." },
 };
 
+// ── whether comments show on the board ──
+// The person's own choice, kept on this computer for every sheet, and followed by the studio's
+// other windows. Drawn shown on the server and until the page knows, so it hydrates the same.
+const PINS_KEY = "knitted.design.pins";
+let pinsHere: boolean | null = null;
+const pinsWatchers = new Set<() => void>();
+const pinsStored = () => { try { return localStorage.getItem(PINS_KEY) !== "hidden"; } catch { return true; } };
+const watchPins = (f: () => void) => {
+  const fromAnother = (e: StorageEvent) => { if (e.key === PINS_KEY) { pinsHere = null; f(); } };
+  pinsWatchers.add(f); window.addEventListener("storage", fromAnother);
+  return () => { pinsWatchers.delete(f); window.removeEventListener("storage", fromAnother); };
+};
+/** Whether the board shows its comments' pins, and a way to change it. */
+function usePinsShown() {
+  const shown = useSyncExternalStore(watchPins, () => pinsHere ?? pinsStored(), () => true);
+  const set = useCallback((v: boolean) => {
+    pinsHere = v;
+    try { localStorage.setItem(PINS_KEY, v ? "shown" : "hidden"); } catch { /* kept for this window only */ }
+    for (const f of pinsWatchers) f();
+  }, []);
+  return [shown, set] as const;
+}
+
 /** The sheet without its code, kept current: asked again when something changes, and only sent when it did. */
 function useSheet(initial: DesignMeta) {
   const [design, setDesign] = useState(initial);
@@ -288,7 +312,8 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
 
   // Comments: pinned to a spot on a frame, or on the sheet as a whole. The pane beside the board
   // has a knit's tabs: Frame, for the frame picked, and Comments. With a frame picked, its comments
-  // come first and the rest of the sheet's are a press away. The pins show on the board all the time.
+  // come first and the rest of the sheet's are a press away. The pins show on the board until the
+  // person hides them; hidden, only the one being placed and the one open in the pane show.
   const commentsOn: CommentsOn = { kind: "design", projectId, designId: design.id, name: design.name };
   const { threads, refresh: refreshComments } = useComments(commentsOn);
   const cs = useCommentState();
@@ -297,11 +322,12 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
   // The frame whose pane shows all of the sheet's comments, not only its own.
   const [wideFor, setWideFor] = useState<string | null>(null);
   const [askingFrame, setAskingFrame] = useState(false);
+  const [pinsShown, setPinsShown] = usePinsShown();
   const pinsOf = useMemo(() => {
     const m = new Map<string, typeof threads>();
-    for (const t of shownThreads(threads, cs)) if (t.frameId) m.set(t.frameId, [...(m.get(t.frameId) ?? []), t]);
+    for (const t of shownThreads(threads, cs)) if (t.frameId && (pinsShown || t.id === cs.active)) m.set(t.frameId, [...(m.get(t.frameId) ?? []), t]);
     return m;
-  }, [threads, cs]);
+  }, [threads, cs, pinsShown]);
   const openComments = threads.filter((t) => !t.resolvedAt).length;
   /** The comments, shown or not. With none yet, shown is ready to place the first. */
   const comment = (on: boolean) => {
@@ -770,10 +796,14 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lay, boxOf]);
 
-  // The zoom keys, wherever the board has the keys: not while typing in the inspector or a dialog.
+  /** The comments' pins shown on the board, or hidden. */
+  const togglePins = () => { setPinsShown(!pinsShown); setSaid(pinsShown ? "Comments hidden on the board" : "Comments shown on the board"); };
+
+  // The zoom keys, and Shift+C for the comments, wherever the board has the keys: not while typing in the inspector or a dialog.
   const keysRef = useRef<(e: KeyboardEvent) => void>(() => {});
   const onKeys = (e: KeyboardEvent) => {
     if (e.defaultPrevented || typingIn(e.target)) return;
+    if (e.shiftKey && e.code === "KeyC" && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); togglePins(); return; }
     const k = zoomKey(e); if (!k) return;
     if (k === "selection" && !selected) return;
     e.preventDefault();
@@ -838,6 +868,7 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
     act.current.comment = (id, x, y) => { const f = metaOf.get(id); cs.setDraft({ x, y, frameId: id, frameName: f?.name ?? "" }); cs.setActive(null); };
   });
 
+  const { theme, setTheme } = useTheme();
   const projectName = project?.name ?? "Project";
   const home = `/projects/${projectId}`;
   const sectionMenu = (s: SectionMeta, i: number) => [
@@ -899,6 +930,10 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
           <Button size="sm" aria-pressed={commenting} tip="Pin a comment to the spot on a frame that should change. Your model can read each one and do what it says." onClick={() => comment(!commenting)}>
             <MessageSquare size={14} aria-hidden /> Comments{openComments > 0 && <span className="tab-count" aria-label={`, ${openComments} open`}>{openComments}</span>}
           </Button>
+          <IconButton label={pinsShown ? "Hide comments on the board" : "Show comments on the board"} shortcut={keyText(["shift", "C"])}
+            hint="Only the pins. The comments stay in the Comments pane, and the one you open there still shows." onClick={togglePins}>
+            {pinsShown ? <Eye size={16} /> : <EyeOff size={16} />}
+          </IconButton>
         </div>
         <div className="editor-group roomy">
           <AskModelButton size="sm" about={aboutDesign(projectId, design)} />
@@ -907,6 +942,11 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
             { label: "The code: a page for each frame", onSelect: () => { window.location.href = api.designs.codeUrl(design.id); } },
             { label: "Everything: pictures, code, fonts, images and a style guide", onSelect: () => { toast("Putting it together. A big sheet takes a moment to draw."); window.location.href = api.designs.bundleUrl(design.id); } },
           ]} />
+        </div>
+        <div className="editor-group">
+          <IconButton label={theme === "day" ? "Switch to Night" : "Switch to Day"} hint="The studio's own colours. Your frames stay in your brand." onClick={() => setTheme(theme === "day" ? "night" : "day")}>
+            {theme === "day" ? <Moon size={16} /> : <Sun size={16} />}
+          </IconButton>
         </div>
       </header>
 
@@ -993,6 +1033,9 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
                 </TabPanel>
               )}
               <TabPanel value="comments" className="design-panel">
+                {!pinsShown && threads.length > 0 && (
+                  <p className="body-sm design-scope">Hidden on the board · <button type="button" className="link" onClick={togglePins}>show them</button></p>
+                )}
                 {where && threads.length > 0 && (
                   <p className="body-sm design-scope">
                     {wide

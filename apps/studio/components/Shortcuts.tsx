@@ -55,6 +55,9 @@ export const GROUPS: Group[] = [
     { what: "The hand, to move around", keys: [["H"]], or: "or hold Space" },
     { what: "Fit, from the space around it", keys: [["~double-click"]] },
   ] },
+  { name: "A design sheet", rows: [
+    { what: "Hide or show the comments on the board", keys: [["shift", "C"]] },
+  ] },
 ];
 
 export const isMac = () => typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);

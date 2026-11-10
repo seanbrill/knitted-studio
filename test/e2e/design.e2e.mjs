@@ -370,6 +370,54 @@ test("the pane has a knit's tabs: a frame picked shows its comments first, a pin
   assert.equal(await page.locator(".design-pane").count(), 0);
 });
 
+test("the comments hide and show on the board, by the eye on the bar or Shift+C, and stay so on the next visit; the bar switches Day and Night", async () => {
+  await page.goto(`${studio.url}/projects/${projectId}/designs/${designId}`);
+  const pins = page.locator(".design-board .pin");
+  await pins.first().waitFor();
+  assert.equal(await pins.count(), 3);
+  const bar = page.locator("header.editor-bar");
+  assert.ok(await bar.evaluate((h) => h.scrollWidth <= h.clientWidth), "the bar still fits");
+  await page.getByRole("button", { name: "Hide comments on the board" }).click();
+  await pins.first().waitFor({ state: "detached" });
+
+  // Hidden on the next visit too.
+  await page.reload();
+  await page.getByRole("button", { name: "Show comments on the board" }).waitFor();
+  await page.locator("[data-frame-box]").first().waitFor();
+  assert.equal(await pins.count(), 0);
+
+  // The pane says so, and the comment opened there shows on the board, alone.
+  await page.getByRole("button", { name: /^Comments/ }).click();
+  const panel = page.getByRole("complementary", { name: "Comments on the sheet" });
+  await panel.getByText("Hidden on the board").waitFor();
+  await panel.getByRole("button", { name: /The menu needs prices/ }).click();
+  await page.getByRole("button", { name: "Comment 2: The menu needs prices" }).waitFor();
+  assert.equal(await pins.count(), 1);
+
+  // Shift+C is a capital C while typing, and shows them all from the board.
+  const reply = panel.getByRole("textbox", { name: "Reply to comment 2" });
+  await reply.click();
+  await page.keyboard.press("Shift+C");
+  assert.equal(await reply.inputValue(), "C");
+  assert.equal(await pins.count(), 1, "typed, not shown");
+  await reply.fill("");
+  await page.locator(".design-view").click({ position: { x: 6, y: 6 } });
+  await page.keyboard.press("Shift+C");
+  await page.getByRole("button", { name: "Hide comments on the board" }).waitFor();
+  assert.equal(await pins.count(), 3);
+  await panel.getByText("Hidden on the board").waitFor({ state: "detached" });
+
+  // Night from the board's bar, kept as Settings keeps it, and Day again.
+  const html = page.locator("html");
+  await page.getByRole("button", { name: "Switch to Night" }).click();
+  assert.equal(await html.getAttribute("data-theme"), "night");
+  await page.reload();
+  await page.getByRole("button", { name: "Switch to Day" }).waitFor();
+  assert.equal(await html.getAttribute("data-theme"), "night");
+  await page.getByRole("button", { name: "Switch to Day" }).click();
+  assert.equal(await html.getAttribute("data-theme"), "day");
+});
+
 test("a pattern and a Yarn picture go on the sheet as themselves: drawn live, changed where they are, and picked into a pane of their own", async () => {
   // A pattern of the project's own, and a picture in its Yarn.
   const post = (await j("POST", `/api/projects/${projectId}/patterns`, { name: "Launch post", size: { name: "Instagram post", w: 1080, h: 1350 } })).body;
