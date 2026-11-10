@@ -1,13 +1,15 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
-  "next": {
-    "title": "Instagram sign-in, explained",
-    "items": [
-      "If your Meta app is set up as a desktop app, Meta turns knitted's Instagram sign-in away. knitted now says so in its own words, with the setting to change: App settings, Advanced, Security, \"Native or desktop app?\", set to No.",
-      "The Instagram steps in the guide now cover what Meta needs before the sign-in can list your account: the account has to be in the business portfolio you pick, and you sign in to Facebook as the person who manages it. knitted does not use an ad account, so there is no need to let Meta create one."
-    ]
-  },
   "entries": [
+    {
+      "version": "0.1.55",
+      "date": "2026-11-10",
+      "title": "Instagram sign-in, explained",
+      "items": [
+        "If your Meta app is set up as a desktop app, Meta turns knitted's Instagram sign-in away. knitted now says so in its own words, with the setting to change: App settings, Advanced, Security, \"Native or desktop app?\", set to No.",
+        "The Instagram steps in the guide now cover what Meta needs before the sign-in can list your account: the account has to be in the business portfolio you pick, and you sign in to Facebook as the person who manages it. knitted does not use an ad account, so there is no need to let Meta create one."
+      ]
+    },
     {
       "version": "0.1.54",
       "date": "2026-11-09",
