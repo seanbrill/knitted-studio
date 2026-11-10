@@ -1,17 +1,19 @@
 {
-  "next": {
-    "title": "Big design sheets, for your model",
-    "items": [
-      "When several model agents designed on one sheet at once, a frame could come back drawn as another agent's frame, though the right one was saved. Each drawing now has a page of its own, and knitted checks it drew the frame it was asked for. The picture says which frame it is, and at which version of the sheet.",
-      "Your model's whole view of a big sheet no longer times out. It is drawn from the pictures the board already keeps of each frame, in one piece, so no seam can show where pieces meet.",
-      "Results are much smaller on a big sheet. Reading one frame gives just that frame. Reading a sheet of hundreds of frames comes a page at a time, or one section at a time. Arranging a sheet says what it made, what it removed and which sections changed, not the whole sheet again. Each frame comes with a hash of its code, so a copy can be checked without reading it.",
-      "Your model can add or change up to 50 frames in one go, with nothing drawn until it looks at the section. It can ask for a frame's picture small, or not at all, and a new name or note alone comes back in words.",
-      "Your model can copy a section, with all its frames, from one of a project's sheets to another, to merge sheets or move a section between them.",
-      "A model's tools are listed when it connects. If knitted is updated while a model stays connected, knitted now tells the model to ask you to reconnect it (in Claude Code, /mcp, then Reconnect)."
-    ]
-  },
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
   "entries": [
+    {
+      "version": "0.1.56",
+      "date": "2026-11-10",
+      "title": "Big design sheets, for your model",
+      "items": [
+        "When several model agents designed on one sheet at once, a frame could come back drawn as another agent's frame, though the right one was saved. Each drawing now has a page of its own, and knitted checks it drew the frame it was asked for. The picture says which frame it is, and at which version of the sheet.",
+        "Your model's whole view of a big sheet no longer times out. It is drawn from the pictures the board already keeps of each frame, in one piece, so no seam can show where pieces meet.",
+        "Results are much smaller on a big sheet. Reading one frame gives just that frame. Reading a sheet of hundreds of frames comes a page at a time, or one section at a time. Arranging a sheet says what it made, what it removed and which sections changed, not the whole sheet again. Each frame comes with a hash of its code, so a copy can be checked without reading it.",
+        "Your model can add or change up to 50 frames in one go, with nothing drawn until it looks at the section. It can ask for a frame's picture small, or not at all, and a new name or note alone comes back in words.",
+        "Your model can copy a section, with all its frames, from one of a project's sheets to another, to merge sheets or move a section between them.",
+        "A model's tools are listed when it connects. If knitted is updated while a model stays connected, knitted now tells the model to ask you to reconnect it (in Claude Code, /mcp, then Reconnect)."
+      ]
+    },
     {
       "version": "0.1.55",
       "date": "2026-11-10",
