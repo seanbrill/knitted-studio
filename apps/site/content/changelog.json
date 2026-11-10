@@ -1,15 +1,17 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
-  "next": {
-    "title": "Comments on a design sheet, as on a knit",
-    "items": [
-      "The pane beside a design sheet has a knit's tabs: Frame, for the frame you picked, with its name, size and code, and Comments, with how many are open.",
-      "With a frame picked, its comments come first, and all of the sheet's are a press away. Ask your model to do all of them does the ones shown.",
-      "A pin pressed picks its frame and opens its comment.",
-      "Under the frame you pick: Zoom to it, Pin a comment, and Ask your model, which starts a chat about that frame alone."
-    ]
-  },
   "entries": [
+    {
+      "version": "0.1.51",
+      "date": "2026-11-09",
+      "title": "Comments on a design sheet, as on a knit",
+      "items": [
+        "The pane beside a design sheet has a knit's tabs: Frame, for the frame you picked, with its name, size and code, and Comments, with how many are open.",
+        "With a frame picked, its comments come first, and all of the sheet's are a press away. Ask your model to do all of them does the ones shown.",
+        "A pin pressed picks its frame and opens its comment.",
+        "Under the frame you pick: Zoom to it, Pin a comment, and Ask your model, which starts a chat about that frame alone."
+      ]
+    },
     {
       "version": "0.1.50",
       "date": "2026-11-09",
