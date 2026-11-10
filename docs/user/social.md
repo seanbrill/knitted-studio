@@ -56,20 +56,26 @@ What each platform gives:
 Posts pictures, carousels of up to 10 and Reels. A picture taller than 4:5 goes to your Story. Instagram needs a [media host](#media-host).
 
 1. Your Instagram account has to be a professional one, Business or Creator. In Instagram: **Settings, Account type and tools, Switch to professional account**.
-2. At [developers.facebook.com/apps](https://developers.facebook.com/apps/), create an app with the use case **Manage messaging & content on Instagram**. The app has to belong to a business portfolio: Meta asks for one as you make it, or set it in **App settings, Basic**.
-3. In **Use cases**, choose **Customize** beside the Instagram one, then **API setup with Unified login**. Under **Configure your app**, choose **Create new configuration**:
+2. Your Instagram account has to be in a business portfolio you manage. In the business's settings ([business.facebook.com/settings](https://business.facebook.com/settings)), under **Accounts, Instagram accounts**, add it, and give yourself full control of it.
+3. At [developers.facebook.com/apps](https://developers.facebook.com/apps/), create an app with the use case **Manage messaging & content on Instagram**. The app has to belong to that business portfolio: Meta asks for one as you make it, or set it in **App settings, Basic**.
+4. In **App settings, Advanced**, under **Security**, set **Native or desktop app?** to **No**, and save. knitted signs in as a web app does, and Meta turns a desktop app's sign-in away.
+5. In **Use cases**, choose **Customize** beside the Instagram one, then **API setup with Unified login**. Under **Configure your app**, choose **Create new configuration**:
    - the access token: a **system-user access token**, set to never expire
    - the asset: your Instagram account
    - under **Edit permissions**, add `instagram_manage_insights` (for a post's numbers) and `business_management`, beside the ones it starts with
    - under **Redirect URL**: `https://knitted.filefreak.page/oauth/`
-4. Save it. Meta shows its **Configuration ID**.
-5. In knitted, give Instagram the app's **App ID** and **App secret**, from **App settings, Basic**, and the **Configuration ID**. Press **Connect Instagram**, sign in with Facebook or Instagram, and pick your business and your Instagram account. Pick more than one, and each is connected.
+6. Save it. Meta shows its **Configuration ID**.
+7. In knitted, give Instagram the app's **App ID** and **App secret**, from **App settings, Basic**, and the **Configuration ID**. Press **Connect Instagram** and sign in to Facebook as the person who manages the business. If your browser is signed in to Facebook as someone else, log out of Facebook first. Pick your business and your Instagram account. Pick more than one, and each is connected. knitted does not use an ad account, so there is no need to let Meta create one.
 
 Until Meta reviews your app, only people with a role on it can connect, and you have one as its maker.
 
 The sign-in is your business's, not yours: it does not run out, and it keeps working if you leave the business. It stops when the app is taken off the business's connected apps (**Business settings, Integrations, Connected apps**), or the Instagram account moves to another business. Then connect it again.
 
-If Instagram says **Invalid Request: Request parameters are invalid: Invalid platform app**, knitted is using Instagram's own sign-in with your Meta app's App ID, which it never takes. Meta has made new apps without an Instagram app ID since late October 2026: add the Configuration ID (steps 3 and 4), and knitted signs in through Unified login instead.
+If Instagram says **Invalid Request: Request parameters are invalid: Invalid platform app**, knitted is using Instagram's own sign-in with your Meta app's App ID, which it never takes. Meta has made new apps without an Instagram app ID since late October 2026: add the Configuration ID (steps 5 and 6), and knitted signs in through Unified login instead.
+
+If Meta's list of Instagram accounts is empty when you sign in, the account is not in the business portfolio you picked (step 2), or Facebook signed you in as someone who does not manage it (step 7).
+
+If knitted says Meta turned the sign-in away because your app is set up as a desktop app, turn off **Native or desktop app?** (step 4), then connect again.
 
 ### An app with an Instagram app ID
 

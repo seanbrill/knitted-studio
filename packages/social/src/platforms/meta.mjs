@@ -19,6 +19,8 @@ function explainer(name) {
     const e = body?.error ?? {};
     const said = e.error_user_msg || e.message || body?.error_message || body?.error_description;
     const code = Number(e.code), sub = Number(e.error_subcode);
+    // Facebook's sign-in turns a Meta app set as a native or desktop app away when knitted swaps the code, which only a web app's secret may do.
+    if (/configured as a desktop app/i.test(said ?? "")) return { message: `Meta turned the sign-in away because your Meta app is set up as a desktop app. In the Meta app, open App settings, Advanced, and under Security set "Native or desktop app?" to No. Save the change, then connect ${name} again.`, code: "desktop", retry: false };
     if (code === 190 || status === 401) return { message: `${name} stopped taking knitted's sign-in. Connect ${name} again in Settings, Social.`, reconnect: true, code: "auth" };
     if (code === 9004 || sub === 2207052) return { message: `${name} could not fetch the file from your media host. Check its public address works (Settings, Social, Test).`, code: "fetch", retry: false };
     if (code === 9 || sub === 2207042) return { message: `${name} says this account has posted as much as it may today. Post it tomorrow.`, code: "limit", retry: false };

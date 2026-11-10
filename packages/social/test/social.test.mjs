@@ -360,6 +360,20 @@ test("Instagram, Meta's Unified login: a configuration that gave knitted no acco
   }), /no Instagram account.*business_management/s);
 });
 
+test("Instagram, Meta's Unified login: a Meta app set up as a desktop app is explained, with the switch to turn off", async () => {
+  const { store, secrets } = setup();
+  await setSocialConfig(store, { apps: { instagram: { clientId: "1157590070094212", clientSecret: "msec", configId: "998877" } } }, { secrets });
+  await assert.rejects(connect(store, secrets, "instagram", {
+    "GET graph.facebook.com/v27.0/oauth/access_token": () => Response.json({ error: { message: "The request is invalid because the app is configured as a desktop app", type: "OAuthException", code: 1 } }, { status: 400 }),
+  }), (e) => {
+    assert.match(e.message, /App settings, Advanced/);
+    assert.match(e.message, /"Native or desktop app\?" to No/);
+    assert.match(e.message, /connect Instagram again/);
+    assert.equal(e.retry, false);
+    return true;
+  });
+});
+
 test("Instagram, Meta's Unified login: a person's token, not the business's, is made long-lived and found through its Page", async () => {
   const { store, secrets } = setup();
   await setSocialConfig(store, { apps: { instagram: { clientId: "1157590070094212", clientSecret: "msec", configId: "998877" } } }, { secrets });
