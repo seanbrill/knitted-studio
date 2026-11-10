@@ -244,9 +244,10 @@ export const api = {
     accounts: () => call<SocialAccount[]>("GET", "/api/social/accounts"),
     disconnect: (id: string) => call<{ ok: true }>("DELETE", `/api/social/accounts/${id}`),
     /** Where to send the person to sign in: opened in their browser. */
-    connect: (platform: Platform) => call<{ url: string }>("POST", `/api/social/connect/${platform}`, {}),
+    /** `as: "pages"`: through LinkedIn's app for company pages. */
+    connect: (platform: Platform, as?: "pages") => call<{ url: string }>("POST", `/api/social/connect/${platform}`, as ? { as } : {}),
     /** What the site's page showed to paste, when the browser could not come back by itself. */
-    paste: (text: string) => call<SocialAccount>("POST", "/api/social/callback", { text }),
+    paste: (text: string) => call<SocialAccount & { connected: string[] }>("POST", "/api/social/callback", { text }),
     /** TikTok's choices for this account now: who may see a post, and what it may allow. */
     creator: (accountId: string) => call<TikTokCreator>("GET", `/api/social/accounts/${accountId}/creator`),
     testHost: () => call<{ url: string }>("POST", "/api/social/host/test", {}),
@@ -393,7 +394,7 @@ export type { SpendLimits, UsageSummary };
 export type { SocialAccount, SocialPost, PostChange, Platform, Insights };
 export interface SocialConfigView {
   /** Instagram's has `configId`: a configuration of the Meta app, for Meta's Unified login ("" for Instagram's own sign-in). */
-  apps: Record<Platform, { clientId: string; secret: boolean; configId?: string }>;
+  apps: Record<Platform, { clientId: string; secret: boolean; configId?: string; /** LinkedIn's second app, for company pages. */ pages?: { clientId: string; secret: boolean } }>;
   host: {
     kind: "none" | "s3" | "filefreak";
     s3: { endpoint: string; region: string; bucket: string; keyId: string; publicBase: string; prefix: string; secret: boolean };
@@ -408,7 +409,7 @@ export interface SocialConfigView {
   port: number;
 }
 export interface SocialConfigChange {
-  apps?: Partial<Record<Platform, { clientId?: string; clientSecret?: string; clearSecret?: boolean; configId?: string }>>;
+  apps?: Partial<Record<Platform, { clientId?: string; clientSecret?: string; clearSecret?: boolean; configId?: string; pages?: { clientId?: string; clientSecret?: string; clearSecret?: boolean } }>>;
   host?: { kind?: "none" | "s3" | "filefreak"; s3?: Partial<{ endpoint: string; region: string; bucket: string; keyId: string; publicBase: string; prefix: string; secret: string }>; filefreak?: Partial<{ folder: string; apiKey: string }> };
   modelMaySchedule?: boolean;
   metricsX?: boolean;

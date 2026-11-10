@@ -16,6 +16,13 @@ import { youtube } from "./platforms/youtube.mjs";
 import { fileFreakHost, s3Host } from "./host.mjs";
 
 export const ADAPTERS = { instagram, tiktok, linkedin, threads, x, youtube };
+/**
+ * A platform's second app, for what its first cannot do: LinkedIn's for company pages (the
+ * Community Management API, which LinkedIn approves on its own app). Kept under the
+ * platform's app in the settings, as `pages`, with a secret of its own.
+ */
+export const SLOTS = { linkedin: ["pages"] };
+const isSlot = (platform, slot) => !!slot && !!SLOTS[platform]?.includes(slot);
 
 export const DEFAULT_CONFIG = {
   apps: Object.fromEntries(PLATFORM_IDS.map((p) => [p, { clientId: "" }])),
@@ -29,7 +36,7 @@ export const DEFAULT_CONFIG = {
 };
 
 const KEY = {
-  app: (p) => `social_app_${p}`,
+  app: (p, slot) => `social_app_${p}${slot ? `_${slot}` : ""}`,
   token: (id) => `social_token_${id}`,
   s3: "social_host_s3",
   filefreak: "social_host_filefreak",
@@ -57,6 +64,13 @@ export async function setSocialConfig(store, change, deps = {}) {
     if (a.configId !== undefined && p === "instagram") next.apps[p] = { ...next.apps[p], configId: String(a.configId).trim() };
     if (a.clientSecret) await setSecret(KEY.app(p), a.clientSecret, dir, deps.secrets);
     if (a.clearSecret) await deleteSecret(KEY.app(p), dir, deps.secrets);
+    for (const slot of SLOTS[p] ?? []) {
+      const b = a[slot];
+      if (!b) continue;
+      if (b.clientId !== undefined) next.apps[p] = { ...next.apps[p], [slot]: { ...(next.apps[p][slot] ?? {}), clientId: String(b.clientId).trim() } };
+      if (b.clientSecret) await setSecret(KEY.app(p, slot), b.clientSecret, dir, deps.secrets);
+      if (b.clearSecret) await deleteSecret(KEY.app(p, slot), dir, deps.secrets);
+    }
   }
   if (change.host) {
     const h = change.host;
@@ -74,20 +88,25 @@ export async function socialView(store, deps = {}) {
   const c = socialConfig(store);
   const dir = store.paths.root;
   const apps = {};
-  for (const p of PLATFORM_IDS) apps[p] = { clientId: c.apps[p].clientId, secret: (await secretStatus(KEY.app(p), dir, deps.secrets)).present, ...(p === "instagram" ? { configId: c.apps[p].configId ?? "" } : {}) };
+  for (const p of PLATFORM_IDS) {
+    apps[p] = { clientId: c.apps[p].clientId, secret: (await secretStatus(KEY.app(p), dir, deps.secrets)).present, ...(p === "instagram" ? { configId: c.apps[p].configId ?? "" } : {}) };
+    for (const slot of SLOTS[p] ?? []) apps[p][slot] = { clientId: c.apps[p][slot]?.clientId ?? "", secret: (await secretStatus(KEY.app(p, slot), dir, deps.secrets)).present };
+  }
   return {
     apps, modelMaySchedule: c.modelMaySchedule, metricsX: c.metricsX, stayOpen: c.stayOpen,
     host: { ...c.host, s3: { ...c.host.s3, secret: (await secretStatus(KEY.s3, dir, deps.secrets)).present }, filefreak: { ...c.host.filefreak, apiKey: (await secretStatus(KEY.filefreak, dir, deps.secrets)).present } },
   };
 }
 
-/** A platform's app: its id and secret, or a refusal saying what to set up. */
-export async function appCredentials(store, platform, deps = {}) {
-  const c = socialConfig(store).apps[platform];
-  const secret = await getSecret(KEY.app(platform), store.paths.root, deps.secrets);
+/** A platform's app, or its second app (`slot`): its id and secret, or a refusal saying what to set up. */
+export async function appCredentials(store, platform, deps = {}, slot = null) {
+  if (slot && !isSlot(platform, slot)) throw new SocialError(`knitted has no second ${platformName(platform) ?? platform} app for ${slot}.`);
+  const all = socialConfig(store).apps[platform];
+  const c = slot ? all[slot] ?? {} : all;
+  const secret = await getSecret(KEY.app(platform, slot), store.paths.root, deps.secrets);
   const optional = platform === "x";
-  if (!c.clientId || (!secret && !optional)) throw new SocialError(`Set up your ${ADAPTERS[platform] ? platformName(platform) : platform} app first: its client id${optional ? "" : " and secret"}, in Settings, Social.`);
-  return { clientId: c.clientId, clientSecret: secret ?? null, configId: c.configId || null };
+  if (!c.clientId || (!secret && !optional)) throw new SocialError(`Set up your ${ADAPTERS[platform] ? platformName(platform) : platform} app${slot === "pages" ? " for company pages" : ""} first: its client id${optional ? "" : " and secret"}, in Settings, Social.`);
+  return { clientId: c.clientId, clientSecret: secret ?? null, configId: slot ? null : c.configId || null, slot: slot ?? null };
 }
 const platformName = (p) => ({ instagram: "Instagram", tiktok: "TikTok", linkedin: "LinkedIn", threads: "Threads", x: "X", youtube: "YouTube" })[p];
 
@@ -121,7 +140,9 @@ export async function freshTokens(store, accountId, http, deps = {}) {
       throw fail(`${platformName(a.platform)}'s sign-in ran out. Connect it again in Settings, Social.`);
     }
     try {
-      const next = await adapter.refresh(http, { ...(await appCredentials(store, a.platform, deps)), tokens: t });
+      // Renewed by the app it was signed in through.
+      const got = await adapter.refresh(http, { ...(await appCredentials(store, a.platform, deps, t.app ?? null)), tokens: t });
+      const next = t.app && got !== t ? { ...got, app: t.app } : got;
       if (next !== t) await saveTokens(store, accountId, next, deps);
       if (a.status !== "ok") setAccountState(store, accountId, { status: "ok", note: null });
       return next;

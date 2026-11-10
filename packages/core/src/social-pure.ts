@@ -39,6 +39,12 @@ export const PLATFORMS: Record<Platform, PlatformInfo> = {
   youtube: { id: "youtube", name: "YouTube", caption: 5000, title: 100, images: 0, videoMs: [1000, 12 * 3600_000], redirect: "app", needsHost: false, console: "https://console.cloud.google.com/apis/credentials" },
 };
 
+/**
+ * A LinkedIn account that is a company page, not a person: it posts as the page, through the
+ * person's LinkedIn app for pages (the Community Management API), and only to anyone.
+ */
+export const isLinkedInPage = (a: { platform: Platform; externalId: string }) => a.platform === "linkedin" && a.externalId.startsWith("urn:li:organization:");
+
 /** Where the site's page that hands a sign-in back to the app lives. Registered as the redirect for "site" platforms. */
 export const SITE_CALLBACK = "https://knitted.filefreak.page/oauth/";
 /** The app's own address for a sign-in to come back to. TikTok's examples end in a slash, and it matches exactly. */

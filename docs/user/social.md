@@ -93,14 +93,30 @@ Posts words, pictures, video and carousels. Threads needs a [media host](#media-
 
 ## LinkedIn
 
-Posts words, pictures (up to 20 at once) and video, as you, not as a Company Page.
+Posts words, pictures (up to 20 at once) and video, as you, as a company page you look after, or both. In Settings, Social, LinkedIn asks first who posts: **You** or **Your company page**. Each has an app of its own, so you can set up both.
 
-1. At [linkedin.com/developers/apps](https://www.linkedin.com/developers/apps), create an app. LinkedIn asks for a Company Page to link it to: any page you look after works.
+### Posting as you
+
+Any LinkedIn app can post as the person who signs in, with no review.
+
+1. At [linkedin.com/developers/apps](https://www.linkedin.com/developers/apps), create an app. LinkedIn asks for a company page to link it to: any page you look after works, and it does not change who posts.
 2. In **Products**, add **Share on LinkedIn** and **Sign In with LinkedIn using OpenID Connect**. Both are there for any app, with no review.
 3. In **Auth**, add this to the authorized redirect URLs: `https://knitted.filefreak.page/oauth/`
-4. Copy the **Client ID** and **Primary Client Secret** into knitted, then press **Connect LinkedIn**.
+4. In knitted, choose **You**, copy the **Client ID** and **Primary Client Secret** in, then press **Connect LinkedIn**.
 
-LinkedIn's sign-in for an app like this lasts 60 days and cannot be renewed without you. Settings, Social shows the date; press **Connect again** before then. A post due after it runs out fails, saying so.
+### Posting as a company page
+
+LinkedIn lets an app post as a page only with its **Community Management API**, which it adds to an app once it has approved the business behind it. Linking an app to your page is not enough: every app is linked to a page, and that only says who owns the app.
+
+1. At [linkedin.com/developers/apps](https://www.linkedin.com/developers/apps), use an app linked to your company page. If LinkedIn will not add the Community Management API beside the products an app has, make a new app just for it, linked to the same page.
+2. In the app's **Settings**, give it a business email (LinkedIn turns down a personal one), and have a super admin of the page verify the app.
+3. In **Products**, request the **Community Management API**, with your company's legal name, registered address, website and privacy policy. LinkedIn reviews it and emails you; it can take a few days.
+4. Once the Products tab shows it added, in **Auth**, add this to the authorized redirect URLs: `https://knitted.filefreak.page/oauth/`
+5. In knitted, choose **Your company page**, copy that app's **Client ID** and **Primary Client Secret** in, then press **Connect your pages**. Sign in as yourself: knitted adds each page you are an admin or a content admin of.
+
+A page posts to anyone: there is no "your connections" for a page. If LinkedIn says a scope is not authorized when you sign in, it has not approved the app yet. If knitted says LinkedIn lists no page you can post as, a super admin of the page can make you an admin on LinkedIn, under the page's **Settings, Manage admins**.
+
+LinkedIn's sign-in lasts 60 days, and an app like these cannot renew it without you. Settings, Social shows the date; press **Connect again** before then. A post due after it runs out fails, saying so.
 
 ## X
 

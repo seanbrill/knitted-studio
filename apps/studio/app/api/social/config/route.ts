@@ -9,8 +9,10 @@ export const dynamic = "force-dynamic";
 export const GET = route(async (req: Request) => ok({ ...(await socialView(store())), port: portOf(req) }));
 
 const app = z.object({ clientId: z.string().max(300).optional(), clientSecret: z.string().max(500).optional(), clearSecret: z.boolean().optional(), configId: z.string().max(64).optional() }).strict();
+// LinkedIn's second app, for company pages.
+const second = z.object({ clientId: z.string().max(300).optional(), clientSecret: z.string().max(500).optional(), clearSecret: z.boolean().optional() }).strict();
 const Put = z.object({
-  apps: z.object({ instagram: app, tiktok: app, linkedin: app, threads: app, x: app, youtube: app }).partial().optional(),
+  apps: z.object({ instagram: app, tiktok: app, linkedin: app.extend({ pages: second.optional() }), threads: app, x: app, youtube: app }).partial().optional(),
   host: z.object({
     kind: z.enum(["none", "s3", "filefreak"]).optional(),
     s3: z.object({ endpoint: z.string().max(300), region: z.string().max(60), bucket: z.string().max(200), keyId: z.string().max(200), publicBase: z.string().max(300), prefix: z.string().max(200), secret: z.string().max(500) }).partial().optional(),

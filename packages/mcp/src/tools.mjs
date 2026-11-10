@@ -19,7 +19,7 @@
 
 import { applyCommand, claimTexts, findSection, frameSize, DESIGN_DEVICES, TOKEN_NAMES, instanceOf, joinFolder, motionLint, sceneChange, parentOf, partFromStitches, preflight, uniqueSlotName, checkPost, metricsLine, COLOR_ROLES, FOLDER_SECTIONS, PLATFORMS, PRESETS, SIZES, KNIT_SIZES, sizeNamed, CommandSchema } from "@knitted/core";
 import { GUIDE, GUIDE_TOPICS } from "./guide.mjs";
-import { LIBRARY_ID } from "@knitted/core";
+import { LIBRARY_ID, isLinkedInPage } from "@knitted/core";
 import { setYarnScope, activeSwatch, cancelPost, createPost, getAccount, getPost, listAccounts, listPosts, postInsights, validatePost, cleanFolder, cropToYarn, getBrief, pdfText, readWebsite, setProfile, viewVideo, viewYarn, createFolder, createPart, editPart, partUsage, createSwatch, createSwatchFromProposal, folderCounts, getKnit, getPart, getYarn, setKnitFavorite, setKnitPost, setKnitTags, importYarn, importYarnFromPath, importYarnFromUrl, searchStock, addStock, saveDrawing, drawSheet, planGeneration, startGeneration, createCopy, createDesign, changeDesign, codeHash, getDesign, listDesigns, withPieces, listComments, replyComment, knitPath, listFolders, listKnits, countKnits, changedSince, withVersions, listParts, listYarn, moveAllToFolder, proposeFromWebsite, renameFolder, setCopyText, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
 
 const obj = (properties, required = []) => ({ type: "object", properties, required, additionalProperties: false });
@@ -717,7 +717,7 @@ export const TOOLS = [
       return {
         mayYouSchedule: may,
         ...(may ? {} : { note: "You make drafts: the person schedules them from the project's Posts. They can let you schedule in Settings, Social." }),
-        accounts: listAccounts(store).map((a) => ({ id: a.id, platform: a.platform, handle: a.handle || null, name: a.name, status: a.status, ...(a.note ? { note: a.note } : {}), ...(a.expiresAt ? { signInEnds: a.expiresAt } : {}), takes: takes(a.platform) })),
+        accounts: listAccounts(store).map((a) => ({ id: a.id, platform: a.platform, handle: a.handle || null, name: a.name, ...(isLinkedInPage(a) ? { companyPage: true, posts: "as the page, to anyone" } : {}), status: a.status, ...(a.note ? { note: a.note } : {}), ...(a.expiresAt ? { signInEnds: a.expiresAt } : {}), takes: takes(a.platform) })),
         ...(listAccounts(store).length ? {} : { none: "No accounts are connected. The person connects them in Settings, Social." }),
       };
     } },

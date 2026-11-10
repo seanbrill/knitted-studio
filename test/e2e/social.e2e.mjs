@@ -39,6 +39,10 @@ function fakeX() {
       return send(200, { data: ids.map((id) => ({ id, text: "", public_metrics: { impression_count: 1240, like_count: 87, reply_count: 12, retweet_count: 3, quote_count: 0, bookmark_count: 4 } })) });
     }
     if (path === "/api.x.com/2/tweets") { tweets.push(JSON.parse(raw)); return send(201, { data: { id: `t${tweets.length}` } }); }
+    // LinkedIn's app for company pages: the sign-in, and the pages the person may post as.
+    if (path === "/www.linkedin.com/oauth/v2/accessToken") return send(200, { access_token: "li-pages", expires_in: 5184000, scope: "rw_organization_admin,w_organization_social" });
+    if (path === "/api.linkedin.com/rest/organizationAcls") return send(200, { elements: [{ organization: "urn:li:organization:11", role: "ADMINISTRATOR", state: "APPROVED" }] });
+    if (path === "/api.linkedin.com/rest/organizations/11") return send(200, { id: 11, localizedName: "FileFreak.io" });
     send(404, { title: "Not here", detail: path });
   });
 }
@@ -268,4 +272,54 @@ test("Settings, Social: Instagram with a Configuration ID signs in through Meta'
   assert.equal(url.searchParams.get("redirect_uri"), "https://knitted.filefreak.page/oauth/");
   assert.equal(url.searchParams.get("scope"), null);
   assert.deepEqual(await axeProblems(page), []);
+});
+
+test("Settings, Social: LinkedIn asks who posts; a company page's own app connects each page the person looks after, and a post to a page has no connections to pick", async () => {
+  await page.goto(`${studio.url}/settings?tab=social&network=linkedin`);
+  const card = page.getByRole("region", { name: "LinkedIn" });
+  await card.getByText("Make a LinkedIn app").waitFor();
+  assert.equal(await card.getByRole("radio", { name: "You", exact: true }).getAttribute("aria-checked"), "true", "as the person, to begin with");
+  await card.getByRole("radio", { name: "Your company page" }).click();
+  await card.getByText("Have LinkedIn approve an app for your page").waitFor();
+  await card.getByText(/request the Community Management API/).waitFor();
+  await card.getByLabel("Client ID").fill("pages-client");
+  await card.getByLabel("Client ID").blur();
+  await card.getByLabel(/Client secret/).fill("pages-secret");
+  await card.getByRole("button", { name: "Save", exact: true }).click();
+  const cfg = (await serverHas(studio, "/api/social/config", (c) => c.apps.linkedin.pages?.secret === true)).apps.linkedin;
+  assert.equal(cfg.pages.clientId, "pages-client");
+  assert.equal(cfg.clientId, "", "the app for the person is its own");
+  assert.equal(JSON.stringify(cfg).includes("pages-secret"), false, "the secret never comes back");
+
+  const popup = page.waitForEvent("popup");
+  await card.getByRole("button", { name: "Connect your pages" }).click();
+  const p = await popup;
+  const url = new URL(p.url());
+  await p.close();
+  assert.equal(url.host, "www.linkedin.com");
+  assert.equal(url.searchParams.get("client_id"), "pages-client");
+  assert.equal(url.searchParams.get("scope"), "rw_organization_admin w_organization_social");
+  const back = await context.newPage();
+  await back.goto(`${studio.url}/api/social/callback?code=from-linkedin&state=${encodeURIComponent(url.searchParams.get("state"))}`);
+  await back.getByRole("heading", { name: "LinkedIn is connected" }).waitFor();
+  await back.getByText(/knitted can post to FileFreak\.io now/).waitFor();
+  await back.close();
+  const row = card.locator(".net-account").filter({ hasText: "FileFreak.io" });
+  await row.getByText("Company page").waitFor();
+  assert.deepEqual(await axeProblems(page), []);
+  // The person's own app shows its own accounts, and the page is not one of them.
+  await card.getByRole("radio", { name: "You", exact: true }).click();
+  await card.getByText("Make a LinkedIn app").waitFor();
+  assert.equal(await card.locator(".net-account").filter({ hasText: "FileFreak.io" }).count(), 0);
+
+  // Posting: the page says it is one, and has no "your connections" to choose.
+  await page.goto(`${studio.url}/projects/${projectId}/knits`);
+  await page.getByRole("button", { name: /^Open / }).first().click();
+  await page.getByRole("button", { name: "Post", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  const pick = dialog.getByRole("checkbox", { name: "LinkedIn, FileFreak.io, company page" });
+  await pick.check();
+  await dialog.getByText("FileFreak.io · company page").waitFor();
+  assert.equal(await dialog.getByRole("combobox", { name: "Who can see it on LinkedIn" }).count(), 0);
+  await page.keyboard.press("Escape");
 });

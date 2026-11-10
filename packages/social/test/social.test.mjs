@@ -9,8 +9,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
 import { createPost, getAccount, getPost, insertKnit, listAccounts, openStore, getSecret } from "@knitted/core/node";
-import { SITE_CALLBACK } from "@knitted/core";
-import { cancelScheduled, chunks, finishConnect, littleText, objectUrl, prepareMedia, readPasted, runDue, setSocialConfig, signV4, startConnect, testHost } from "../src/index.mjs";
+import { SITE_CALLBACK, isLinkedInPage } from "@knitted/core";
+import { cancelScheduled, chunks, finishConnect, littleText, objectUrl, prepareMedia, readPasted, runDue, setSocialConfig, signV4, socialView, startConnect, testHost } from "../src/index.mjs";
 
 const memory = () => {
   const m = new Map();
@@ -237,6 +237,85 @@ test("LinkedIn: connect with the secret in the body, post a picture as the perso
   const done = getPost(store, p.id);
   assert.equal(done.status, "posted", done.error);
   assert.equal(done.url, "https://www.linkedin.com/feed/update/urn:li:share:9/");
+});
+
+test("LinkedIn company pages: an app of their own, a sign-in that adds each page the person may post as, and posts and renewals as the page", async () => {
+  const { store, project, secrets } = setup();
+  await assert.rejects(startConnect(store, "linkedin", { port: 1, slot: "pages" }, { secrets }), /Set up your LinkedIn app for company pages first/);
+  await setSocialConfig(store, { apps: { linkedin: { clientId: "lid", clientSecret: "lsecret", pages: { clientId: "pid", clientSecret: "psecret" } } } }, { secrets });
+  const view = (await socialView(store, { secrets })).apps.linkedin;
+  assert.deepEqual(view.pages, { clientId: "pid", secret: true });
+  assert.equal(view.clientId, "lid", "the app for the person stays as it was");
+  assert.doesNotMatch(JSON.stringify(await socialView(store, { secrets })), /psecret/);
+
+  const n = net({
+    "POST www.linkedin.com/oauth/v2/accessToken": ({ body }) => {
+      assert.equal(body.client_id, "pid"); assert.equal(body.client_secret, "psecret");
+      return { access_token: "pa", expires_in: 60, refresh_token: "pr", refresh_token_expires_in: 31536000, scope: "rw_organization_admin,w_organization_social" };
+    },
+    "GET api.linkedin.com/rest/organizationAcls": ({ url: u, headers }) => {
+      assert.equal(u.searchParams.get("q"), "roleAssignee"); assert.equal(u.searchParams.get("state"), "APPROVED");
+      assert.equal(headers["linkedin-version"], "202610");
+      return { elements: [
+        { organization: "urn:li:organization:11", role: "ADMINISTRATOR", state: "APPROVED" },
+        { organizationTarget: "urn:li:organization:22", role: "CONTENT_ADMINISTRATOR", state: "APPROVED" },
+        { organization: "urn:li:organization:33", role: "ANALYST", state: "APPROVED" },
+        { organization: "urn:li:organization:11", role: "DIRECT_SPONSORED_CONTENT_POSTER", state: "APPROVED" },
+      ] };
+    },
+    "GET api.linkedin.com/rest/organizations/11": () => ({ id: 11, localizedName: "FileFreak.io", vanityName: "filefreak" }),
+    "GET api.linkedin.com/rest/organizations/22": () => Response.json({ message: "Not enough permissions" }, { status: 403 }),
+    "GET api.linkedin.com/rest/organizationsLookup": ({ url: u }) => { assert.equal(u.search, "?ids=List(22)"); return { results: { 22: { localizedName: "Notch.fm" } } }; },
+  });
+  const { url, state } = await startConnect(store, "linkedin", { port: 4321, slot: "pages" }, { secrets });
+  const u = new URL(url);
+  assert.equal(u.searchParams.get("client_id"), "pid");
+  assert.equal(u.searchParams.get("scope"), "rw_organization_admin w_organization_social");
+  const first = await finishConnect(store, { code: "c", state }, deps(n, secrets));
+  assert.deepEqual(first.connected, ["FileFreak.io", "Notch.fm"], "each page the person may post as, by name; not one they only see the numbers of");
+  const all = listAccounts(store);
+  assert.deepEqual(all.map((a) => [a.externalId, a.name]), [["urn:li:organization:11", "FileFreak.io"], ["urn:li:organization:22", "Notch.fm"]], "the pages only: the person posts through their own app");
+  assert.ok(all.every((a) => isLinkedInPage(a) && a.scopes.includes("w_organization_social")));
+
+  // A post as the page: the page owns the picture and the post, and it goes to anyone.
+  // The sign-in runs out within the minute, so it is renewed first, by the app for pages.
+  const k = await png(store, project, "p", 1200, 627);
+  const p = createPost(store, { projectId: project.id, accountId: first.id, knitIds: [k.id], caption: "Hello from the page", options: { visibility: "CONNECTIONS" } });
+  const posting = net({
+    "POST www.linkedin.com/oauth/v2/accessToken": ({ body }) => {
+      assert.equal(body.grant_type, "refresh_token"); assert.equal(body.client_id, "pid"); assert.equal(body.client_secret, "psecret"); assert.equal(body.refresh_token, "pr");
+      return { access_token: "pa2", expires_in: 5184000, refresh_token: "pr2", scope: "rw_organization_admin,w_organization_social" };
+    },
+    "POST api.linkedin.com/rest/images": ({ body, headers }) => { assert.equal(headers.authorization, "Bearer pa2"); assert.equal(body.initializeUploadRequest.owner, "urn:li:organization:11"); return { value: { uploadUrl: "https://www.linkedin.com/dms-uploads/u2", image: "urn:li:image:2" } }; },
+    "PUT www.linkedin.com/dms-uploads/u2": () => new Response(null, { status: 201 }),
+    "POST api.linkedin.com/rest/posts": ({ body }) => {
+      assert.equal(body.author, "urn:li:organization:11");
+      assert.equal(body.visibility, "PUBLIC", "a page has no connections");
+      return new Response(null, { status: 201, headers: { "x-restli-id": "urn:li:share:10" } });
+    },
+  });
+  await runDue(store, deps(posting, secrets));
+  const done = getPost(store, p.id);
+  assert.equal(done.status, "posted", done.error);
+  const kept = JSON.parse(await getSecret(`social_token_${first.id}`, store.paths.root, secrets));
+  assert.equal(kept.access, "pa2");
+  assert.equal(kept.app, "pages", "still renewed by the app for pages next time");
+});
+
+test("LinkedIn company pages: an app LinkedIn has not approved yet, and a person who looks after no page, are each told what to do", async () => {
+  const { store, secrets } = setup();
+  await setSocialConfig(store, { apps: { linkedin: { pages: { clientId: "pid", clientSecret: "psecret" } } } }, { secrets });
+  let { state } = await startConnect(store, "linkedin", { port: 4321, slot: "pages" }, { secrets });
+  await assert.rejects(finishConnect(store, { error: "unauthorized_scope_error", errorDescription: "Scope \"w_organization_social\" is not authorized for your application", state }, { secrets }),
+    /does not have the Community Management API yet/);
+  ({ state } = await startConnect(store, "linkedin", { port: 4321, slot: "pages" }, { secrets }));
+  const n = net({
+    "POST www.linkedin.com/oauth/v2/accessToken": () => ({ access_token: "pa", expires_in: 5184000 }),
+    "GET api.linkedin.com/rest/organizationAcls": () => ({ elements: [{ organization: "urn:li:organization:33", role: "ANALYST", state: "APPROVED" }] }),
+  });
+  await assert.rejects(finishConnect(store, { code: "c", state }, deps(n, secrets)), /lists no page you can post as\. You have to be an admin or a content admin/);
+  assert.equal(listAccounts(store).length, 0);
+  await assert.rejects(startConnect(store, "x", { port: 1, slot: "pages" }, { secrets }), /no second X app/);
 });
 
 // ── Instagram and Threads, through a media host ─────────────────────────────

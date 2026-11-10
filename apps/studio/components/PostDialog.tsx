@@ -8,7 +8,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { PLATFORMS, PLATFORM_IDS, captionLength, checkPost, fullCaption, type Platform } from "@knitted/core";
+import { PLATFORMS, PLATFORM_IDS, captionLength, checkPost, fullCaption, isLinkedInPage, type Platform } from "@knitted/core";
 import { api, knitFileUrl, knitPosterUrl, type KnitRecord, type SocialAccount, type TikTokCreator } from "@knitted/core/client";
 import { Button, Dialog, Field, Input, SegmentedControl, Select, Skeleton, Switch, Textarea, icons, useToast } from "@knitted/ui";
 import { formatBytes, useLive } from "@/lib/hooks";
@@ -168,7 +168,8 @@ export function PostDialog({ projectId, knits, open, onOpenChange }: { projectId
               <div style={{ minWidth: 240 }}><Select aria-label="Made for kids" value={opt("youtube").madeForKids ? "yes" : "no"} onValueChange={(v) => setOpt("youtube", "madeForKids", v === "yes")} options={[{ value: "no", label: "Not made for kids" }, { value: "yes", label: "Made for kids" }]} /></div>
             </section>
           )}
-          {platforms.includes("linkedin") && (
+          {/* A page posts to anyone: who sees it is a person's choice. */}
+          {(accounts ?? []).some((a) => picked.includes(a.id) && a.platform === "linkedin" && !isLinkedInPage(a)) && (
             <div style={{ minWidth: 220, maxWidth: 280 }}><Select aria-label="Who can see it on LinkedIn" value={String(opt("linkedin").visibility ?? "PUBLIC")} onValueChange={(v) => setOpt("linkedin", "visibility", v)} options={[{ value: "PUBLIC", label: "Anyone on LinkedIn" }, { value: "CONNECTIONS", label: "Your connections" }]} /></div>
           )}
           {(platforms.includes("tiktok") || platforms.includes("youtube")) && (
@@ -188,7 +189,8 @@ export function PostDialog({ projectId, knits, open, onOpenChange }: { projectId
 }
 
 function AccountRow({ a, on, why, toggle }: { a: SocialAccount; on: boolean; why?: string; toggle: (on: boolean) => void }) {
-  const label = `${PLATFORMS[a.platform].name}${a.handle ? `, @${a.handle}` : a.name ? `, ${a.name}` : ""}`;
+  const page = isLinkedInPage(a);
+  const label = `${PLATFORMS[a.platform].name}${a.handle ? `, @${a.handle}` : a.name ? `, ${a.name}` : ""}${page ? ", company page" : ""}`;
   const off = !!why || a.status === "reconnect";
   return (
     <label className="acc-row" data-on={(on && !off) || undefined} data-off={off || undefined}>
@@ -196,7 +198,7 @@ function AccountRow({ a, on, why, toggle }: { a: SocialAccount; on: boolean; why
       <PlatformMark p={a.platform} />
       <span className="acc-text">
         <b>{PLATFORMS[a.platform].name}</b>
-        <small>{a.handle ? `@${a.handle}` : a.name}{a.status === "reconnect" ? " · connect it again in Settings first" : why ? ` · ${why}` : ""}</small>
+        <small>{a.handle ? `@${a.handle}` : a.name}{page ? " · company page" : ""}{a.status === "reconnect" ? " · connect it again in Settings first" : why ? ` · ${why}` : ""}</small>
       </span>
     </label>
   );

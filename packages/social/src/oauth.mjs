@@ -23,19 +23,25 @@ const FOR = 15 * 60_000;
 
 export const redirectFor = (platform, port) => (PLATFORMS[platform].redirect === "site" ? SITE_CALLBACK : appCallback(port, platform));
 
-/** The address to send the person to, to sign in. */
-export async function startConnect(store, platform, { port }, deps = {}) {
+/**
+ * The address to send the person to, to sign in: through the platform's app, or its second app (`slot`, LinkedIn's for pages).
+ * @param {any} store
+ * @param {string} platform
+ * @param {{ port: number | string, slot?: string | null }} where
+ * @param {any} [deps]
+ */
+export async function startConnect(store, platform, { port, slot = null }, deps = {}) {
   const adapter = ADAPTERS[platform];
   if (!adapter) throw new SocialError("knitted does not post there.");
-  const { clientId, configId } = await appCredentials(store, platform, deps);
+  const { clientId, configId } = await appCredentials(store, platform, deps, slot);
   for (const [k, v] of pending) if (Date.now() - v.at > FOR) pending.delete(k);
   const nonce = randomBytes(16).toString("hex");
   const verifier = adapter.pkce ? newVerifier() : null;
   const redirectUri = redirectFor(platform, port);
-  pending.set(nonce, { platform, verifier, redirectUri, at: Date.now() });
+  pending.set(nonce, { platform, slot, verifier, redirectUri, at: Date.now() });
   const state = `${nonce}.${port}`;
   const challenge = adapter.pkce === "hex" ? challengeHex(verifier) : adapter.pkce ? challengeS256(verifier) : undefined;
-  return { url: adapter.authorizeUrl({ clientId, redirectUri, state, challenge, configId }), state };
+  return { url: adapter.authorizeUrl({ clientId, redirectUri, state, challenge, configId, slot }), state };
 }
 
 /** Whether a sign-in with this state is one knitted is waiting for. */
@@ -55,7 +61,8 @@ export function readPasted(text) {
 /**
  * The code is back: swap it for tokens, ask who it is, and keep the account. One sign-in can
  * be for several accounts (Meta's Unified login gives a business's token for each Instagram
- * account picked): each is kept, with the same tokens, and the first is returned.
+ * account picked, and LinkedIn's app for pages one for each page): each is kept, with the
+ * same tokens, and the first is returned, with the names of all of them in `connected`.
  */
 export async function finishConnect(store, { code, state, error, errorDescription }, deps = {}) {
   const nonce = String(state ?? "").split(".")[0];
@@ -63,13 +70,16 @@ export async function finishConnect(store, { code, state, error, errorDescriptio
   if (!p) throw new SocialError("knitted was not waiting for this sign-in, or it took longer than 15 minutes. Press Connect in Settings, Social, and sign in again.");
   pending.delete(nonce);
   const name = PLATFORMS[p.platform].name;
-  if (error) throw new SocialError(error === "access_denied" || error === "user_cancelled" ? `You did not allow knitted on ${name}, so nothing was connected.` : `${name} did not connect: ${errorDescription || error}.`);
+  const adapter = ADAPTERS[p.platform];
+  if (error) throw new SocialError(error === "access_denied" || error === "user_cancelled" || error === "user_cancelled_login" || error === "user_cancelled_authorize" ? `You did not allow knitted on ${name}, so nothing was connected.` : adapter.signInError?.(error, errorDescription, p.slot) ?? `${name} did not connect: ${errorDescription || error}.`);
   if (!code) throw new SocialError(`${name} sent no code back. Press Connect and try again.`);
   const http = deps.http ?? makeHttp({ fetch: deps.fetch });
-  const adapter = ADAPTERS[p.platform];
-  const tokens = await adapter.exchange(http, { ...(await appCredentials(store, p.platform, deps)), code, redirectUri: p.redirectUri, verifier: p.verifier });
-  const found = await adapter.me(http, tokens);
+  const exchanged = await adapter.exchange(http, { ...(await appCredentials(store, p.platform, deps, p.slot)), code, redirectUri: p.redirectUri, verifier: p.verifier, slot: p.slot });
+  // Which app it came through, to be renewed by the same one.
+  const tokens = p.slot ? { ...exchanged, app: p.slot } : exchanged;
+  const found = await adapter.me(http, tokens, { slot: p.slot });
   let first = null;
+  const connected = [];
   for (const me of Array.isArray(found) ? found : [found]) {
     const account = saveAccount(store, {
       platform: p.platform, externalId: String(me.externalId), name: me.name, handle: me.handle, avatar: me.avatar,
@@ -79,7 +89,8 @@ export async function finishConnect(store, { code, state, error, errorDescriptio
     });
     await saveTokens(store, account.id, tokens, deps);
     first ??= account;
+    connected.push(account.handle ? `@${account.handle}` : account.name);
   }
   if (!first) throw new SocialError(`${name} gave knitted no account. Press Connect and try again.`);
-  return first;
+  return { ...first, connected };
 }

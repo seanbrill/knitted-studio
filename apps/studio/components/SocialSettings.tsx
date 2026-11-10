@@ -4,11 +4,13 @@
 // through it, the media host Instagram and Threads fetch from, and what their model may do.
 // knitted has no server between the person and a platform, so each platform needs an app of
 // their own, made once: the guide on the site walks through each. Six networks are six rows;
-// one opens at a time, as three steps. `?network=x` opens one.
+// one opens at a time, as three steps. `?network=x` opens one. LinkedIn asks first who posts:
+// the person, through any app, or their company page, through an app LinkedIn has approved
+// for its Community Management API. Each has its own app and steps.
 
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { PLATFORMS, PLATFORM_IDS, appCallback, redirectToRegister, type Platform } from "@knitted/core";
+import { PLATFORMS, PLATFORM_IDS, appCallback, isLinkedInPage, redirectToRegister, type Platform } from "@knitted/core";
 import { api, type SocialAccount, type SocialConfigView } from "@knitted/core/client";
 import { Button, ConfirmDialog, Field, Input, SegmentedControl, Switch, icons, useToast } from "@knitted/ui";
 import { useLive } from "@/lib/hooks";
@@ -23,13 +25,15 @@ const ABOUT: Record<Platform, { id: string; secret: string; does: string; where?
   instagram: { id: "App ID", secret: "App secret", does: "Pictures, carousels of up to 10, and Reels. A tall picture goes to your Story. Needs a media host.",
     where: "Your Meta app's App ID, in App settings, Basic, with its App secret, and a Configuration ID below. An older app with an Instagram app ID (on API setup with Instagram login) can use that ID and its secret instead, and no Configuration ID." },
   tiktok: { id: "Client key", secret: "Client secret", does: "Videos. Until TikTok reviews your app, a post is seen only by you, and the account has to be private." },
-  linkedin: { id: "Client ID", secret: "Client secret", does: "Words, pictures (up to 20 at once) and video, as you. A sign-in lasts 60 days." },
+  linkedin: { id: "Client ID", secret: "Client secret", does: "Words, pictures (up to 20 at once) and video, as you or as your company page. A sign-in lasts 60 days." },
   threads: { id: "Threads app ID", secret: "Threads app secret", does: "Words, pictures, video and carousels. Needs a media host.",
     where: "In your Meta app, App settings, Basic, under the app's own App ID: the one named Threads app ID." },
   x: { id: "Client ID", secret: "Client secret (a web app's only)", does: "Words, up to 4 pictures, or a video. Each post is paid for from your X developer credits." },
   youtube: { id: "Client ID", secret: "Client secret", does: "Videos, and Shorts when upright. A post scheduled ahead is published by YouTube at its time, even with knitted closed." },
 };
 type Save = (b: Parameters<typeof api.social.save>[0]) => Promise<boolean>;
+/** Who a LinkedIn app posts as: the person, or their company pages. */
+type LinkedInAs = "you" | "pages";
 const SECRET_STORE = "your computer's secret store";
 const secretStatus = (present: boolean): KeyStatus => ({ present, source: present ? "keychain" : "none", backend: SECRET_STORE, canStore: true });
 
@@ -81,30 +85,40 @@ function CopyLine({ text, label }: { text: string; label: string }) {
 function Network({ platform, cfg, accounts, save, open, onToggle }: { platform: Platform; cfg: SocialConfigView; accounts: SocialAccount[]; save: Save; open: boolean; onToggle: () => void }) {
   const toast = useToast();
   const info = PLATFORMS[platform], about = ABOUT[platform];
-  const app = cfg.apps[platform];
+  const linked = platform === "linkedin";
+  // LinkedIn: who posts, each through an app of its own. Open at the company page when that is all there is.
+  const [as, setAs] = useState<LinkedInAs>(() => (linked && (accounts.some(isLinkedInPage) || cfg.apps.linkedin.pages?.clientId) && !accounts.some((a) => !isLinkedInPage(a)) && !cfg.apps.linkedin.clientId ? "pages" : "you"));
+  const pages = linked && as === "pages";
+  const app = pages ? cfg.apps.linkedin.pages ?? { clientId: "", secret: false } : cfg.apps[platform];
   const [waiting, setWaiting] = useState(false);
   const [pasted, setPasted] = useState("");
   const [busy, setBusy] = useState(false);
   const [gone, setGone] = useState<SocialAccount | null>(null);
-  const ready = !!app.clientId && (app.secret || !!info.secretOptional);
+  const isReady = (a: { clientId: string; secret: boolean }) => !!a.clientId && (a.secret || !!info.secretOptional);
+  const ready = isReady(app);
+  // The accounts of the app shown: on LinkedIn, the person's or the pages.
+  const mine = linked ? accounts.filter((a) => isLinkedInPage(a) === pages) : accounts;
   const redirect = redirectToRegister(platform, cfg.port);
   const connect = async () => {
     setBusy(true);
-    try { const { url } = await api.social.connect(platform); window.open(url, "_blank", "noopener"); setWaiting(true); }
+    try { const { url } = await api.social.connect(platform, pages ? "pages" : undefined); window.open(url, "_blank", "noopener"); setWaiting(true); }
     catch (e) { toast.problem((e as Error).message); } finally { setBusy(false); }
   };
   const finish = async () => {
     setBusy(true);
-    try { const a = await api.social.paste(pasted); setPasted(""); setWaiting(false); settingsChanged(); toast(`${info.name} is connected${a.handle ? ` as @${a.handle}` : ""}.`); }
+    try { const a = await api.social.paste(pasted); setPasted(""); setWaiting(false); settingsChanged(); toast(`${info.name} is connected${a.connected?.length ? ` as ${a.connected.join(", ")}` : ""}.`); }
     catch (e) { toast.problem((e as Error).message); } finally { setBusy(false); }
   };
+  /** Change the app shown: LinkedIn's for pages is kept under its own. */
+  const appChange = (b: { clientId?: string; clientSecret?: string; clearSecret?: boolean }) => ({ apps: { [platform]: pages ? { pages: b } : b } });
   const who = (a: SocialAccount) => (a.handle ? `@${a.handle}` : a.name);
   const again = accounts.some((a) => a.status === "reconnect");
+  const anyReady = ready || (linked && (isReady(cfg.apps.linkedin) || isReady(cfg.apps.linkedin.pages ?? { clientId: "", secret: false })));
   // Closed, it says who is connected; open, the accounts are listed under it, so it says how many.
   const status = accounts.length
     ? (open || accounts.length > 1 ? `${accounts.length} connected` : `${who(accounts[0])}${again ? ", connect it again" : ""}`)
-    : ready ? "Ready to connect" : "Not set up";
-  const tone = again ? "warn" : accounts.length ? "ok" : ready ? "ready" : undefined;
+    : anyReady ? "Ready to connect" : "Not set up";
+  const tone = again ? "warn" : accounts.length ? "ok" : anyReady ? "ready" : undefined;
   const throwing = (b: Parameters<Save>[0]) => async () => { if (!(await save(b))) throw new Error("It was not saved."); };
   return (
     <section aria-label={info.name} className="net" data-open={open || undefined}>
@@ -116,7 +130,32 @@ function Network({ platform, cfg, accounts, save, open, onToggle }: { platform: 
       </button>
       {open && (
         <div className="net-body" id={`net-${platform}`}>
+          {linked && (
+            <div className="net-as">
+              <SegmentedControl<LinkedInAs> label="Post on LinkedIn as" value={as} onChange={(v) => { setAs(v); setWaiting(false); setPasted(""); }}
+                options={[{ value: "you", label: "You" }, { value: "pages", label: "Your company page" }]} />
+              <p className="body-sm net-say">{pages
+                ? "As a company page you are an admin of. LinkedIn has to approve an app for this first, which can take a few days. You can set up both."
+                : "As yourself, on your own profile. Any LinkedIn app can, with no review."}</p>
+            </div>
+          )}
           <ol className="net-steps">
+            {linked && (
+              <li>
+                <p className="net-step">{pages ? "Have LinkedIn approve an app for your page" : "Make a LinkedIn app"}</p>
+                {pages ? (
+                  <ul className="body-sm net-say net-list">
+                    <li>At LinkedIn&apos;s developer site, use an app linked to your company page. If LinkedIn will not add the Community Management API beside the products an app has, make a new app just for it, linked to the same page.</li>
+                    <li>In the app&apos;s Settings, give it a business email (LinkedIn turns down a personal one), and have a super admin of the page verify the app.</li>
+                    <li>On its Products tab, request the Community Management API, with your company&apos;s legal name, address and website. LinkedIn reviews it and emails you. Once the Products tab shows it added, go on.</li>
+                    <li>Your own LinkedIn profile has to be an admin or a content admin of the page.</li>
+                  </ul>
+                ) : (
+                  <p className="body-sm net-say">At LinkedIn&apos;s developer site, create an app. LinkedIn asks for a company page to link it to: any page you look after works, and it does not change who posts. On its Products tab, add Share on LinkedIn and Sign In with LinkedIn using OpenID Connect. Both are there for any app, with no review.</p>
+                )}
+                <a className="link body-sm" href={info.console} target="_blank" rel="noreferrer">LinkedIn&apos;s developer apps <ExternalLink size={12} aria-hidden /></a>
+              </li>
+            )}
             <li>
               <p className="net-step">{redirect ? `Register this redirect in your ${info.name} app` : "Make your client a Desktop app"}</p>
               {redirect ? <CopyLine text={redirect} label={`the ${info.name} redirect`} /> : <p className="body-sm net-say">Google needs no redirect registered for one.</p>}
@@ -129,29 +168,30 @@ function Network({ platform, cfg, accounts, save, open, onToggle }: { platform: 
             <li>
               <p className="net-step">Give knitted your app</p>
               <div className="net-app">
-                <Field label={about.id} hint={about.where} htmlFor={`so-${platform}-id`}>
-                  <Input id={`so-${platform}-id`} mono defaultValue={app.clientId} key={`id-${app.clientId}`} autoComplete="off" onBlur={(e) => e.target.value.trim() !== app.clientId && void save({ apps: { [platform]: { clientId: e.target.value } } })} />
+                <Field label={about.id} hint={pages ? "The Client ID of the app LinkedIn approved for the Community Management API." : about.where} htmlFor={`so-${platform}${pages ? "-pages" : ""}-id`}>
+                  <Input id={`so-${platform}${pages ? "-pages" : ""}-id`} mono defaultValue={app.clientId} key={`id-${as}-${app.clientId}`} autoComplete="off" onBlur={(e) => e.target.value.trim() !== app.clientId && void save(appChange({ clientId: e.target.value }))} />
                 </Field>
-                <Field label={about.secret} htmlFor={`so-${platform}-secret`}>
-                  <KeyField id={`so-${platform}-secret`} label={`${info.name} app secret`} noun="secret" status={secretStatus(app.secret)}
-                    onSave={(clientSecret) => throwing({ apps: { [platform]: { clientSecret } } })()}
-                    onRemove={throwing({ apps: { [platform]: { clearSecret: true } } })} />
+                <Field label={about.secret} htmlFor={`so-${platform}${pages ? "-pages" : ""}-secret`}>
+                  <KeyField key={as} id={`so-${platform}${pages ? "-pages" : ""}-secret`} label={`${info.name} ${pages ? "pages app" : "app"} secret`} noun="secret" status={secretStatus(app.secret)}
+                    onSave={(clientSecret) => throwing(appChange({ clientSecret }))()}
+                    onRemove={throwing(appChange({ clearSecret: true }))} />
                 </Field>
                 {platform === "instagram" && (
                   <Field label="Configuration ID" htmlFor="so-instagram-config"
                     hint="For a Meta app with no Instagram app ID, as Meta makes them now. In its Instagram use case, API setup with Unified login: create a configuration with a system-user token that never expires and your Instagram account, add the permissions instagram_manage_insights and business_management, and save it. Meta then shows its ID.">
-                    <Input id="so-instagram-config" mono inputMode="numeric" defaultValue={app.configId ?? ""} key={`cfg-${app.configId ?? ""}`} autoComplete="off"
-                      onBlur={(e) => e.target.value.trim() !== (app.configId ?? "") && void save({ apps: { instagram: { configId: e.target.value } } })} />
+                    <Input id="so-instagram-config" mono inputMode="numeric" defaultValue={cfg.apps.instagram.configId ?? ""} key={`cfg-${cfg.apps.instagram.configId ?? ""}`} autoComplete="off"
+                      onBlur={(e) => e.target.value.trim() !== (cfg.apps.instagram.configId ?? "") && void save({ apps: { instagram: { configId: e.target.value } } })} />
                   </Field>
                 )}
               </div>
             </li>
             <li>
-              <p className="net-step">Connect an account</p>
-              {accounts.map((a) => (
+              <p className="net-step">{pages ? "Connect your pages" : "Connect an account"}</p>
+              {pages && <p className="body-sm net-say">Sign in as yourself. knitted adds each page you are an admin or a content admin of, and posts as the page, to anyone.</p>}
+              {mine.map((a) => (
                 <div key={a.id} className="net-account">
                   {a.avatar ? <img src={a.avatar} alt="" width={28} height={28} referrerPolicy="no-referrer" /> : <span aria-hidden className="net-avatar" />}
-                  <span className="body-sm"><strong>{a.name || a.handle}</strong>{a.handle && a.name ? ` @${a.handle}` : ""}</span>
+                  <span className="body-sm"><strong>{a.name || a.handle}</strong>{a.handle && a.name ? ` @${a.handle}` : ""}{isLinkedInPage(a) ? <span className="net-kind">Company page</span> : null}</span>
                   {a.status === "reconnect"
                     ? <span className="body-sm net-warn"><AlertTriangle size={13} aria-hidden /> {a.note ?? "Connect it again."}</span>
                     : <span className="body-sm key-said"><Check size={13} aria-hidden /> Connected{a.expiresAt ? `, until ${new Date(a.expiresAt).toLocaleDateString()}` : ""}</span>}
@@ -162,13 +202,13 @@ function Network({ platform, cfg, accounts, save, open, onToggle }: { platform: 
                 </div>
               ))}
               <div className="net-connect">
-                <Button variant={accounts.length ? "secondary" : "primary"} disabled={!ready || busy} onClick={connect}>{accounts.length ? `Connect another ${info.name} account` : `Connect ${info.name}`}</Button>
+                <Button variant={mine.length ? "secondary" : "primary"} disabled={!ready || busy} onClick={connect}>{pages ? (mine.length ? "Connect your pages again" : "Connect your pages") : mine.length ? `Connect another ${info.name} account` : `Connect ${info.name}`}</Button>
                 {!ready && <span className="body-sm net-say">Add the {/^Client/.test(about.id) ? about.id.toLowerCase() : about.id}{info.secretOptional ? "" : " and secret"} first.</span>}
-                <a className="link body-sm" href={`${GUIDE}#${platform}`} target="_blank" rel="noreferrer">How to set it up <ExternalLink size={12} aria-hidden /></a>
+                <a className="link body-sm" href={`${GUIDE}#${pages ? "posting-as-a-company-page" : platform}`} target="_blank" rel="noreferrer">How to set it up <ExternalLink size={12} aria-hidden /></a>
               </div>
               {waiting && (
                 <div className="net-wait">
-                  <p className="body-sm" style={{ margin: 0 }}>Sign in in your browser. It comes back to knitted by itself; if it shows a code instead, paste it here.</p>
+                  <p className="body-sm" style={{ margin: 0 }}>Sign in in your browser. It comes back to knitted by itself; if it shows a code instead, paste it here.{pages ? " If LinkedIn says a scope is not authorized, it has not approved the app for the Community Management API yet." : ""}</p>
                   <div className="key-row">
                     <Input aria-label={`Code from ${info.name}'s sign-in`} value={pasted} onChange={(e) => setPasted(e.target.value)} placeholder="Paste what the page shows" />
                     <Button disabled={!pasted.trim() || busy} onClick={finish}>Finish</Button>

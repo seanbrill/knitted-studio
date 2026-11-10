@@ -17,12 +17,15 @@ function page(title: string, line: string, good: boolean) {
   return new Response(html, { status: good ? 200 : 400, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "referrer-policy": "no-referrer" } });
 }
 
+/** Names as a person says them: "A", "A and B", "A, B and C". */
+const listed = (names: string[]) => (names.length < 2 ? names[0] ?? "" : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`);
+
 export async function GET(req: Request) {
   const q = new URL(req.url).searchParams;
   try {
     const a = await finishConnect(store(), { code: q.get("code"), state: q.get("state"), error: q.get("error"), errorDescription: q.get("error_description") });
     const name = PLATFORMS[a.platform].name;
-    return page(`${name} is connected`, `knitted can post to ${a.handle ? `@${a.handle}` : a.name || "this account"} now. You can close this tab and go back to knitted.`, true);
+    return page(`${name} is connected`, `knitted can post to ${listed(a.connected) || "this account"} now. You can close this tab and go back to knitted.`, true);
   } catch (e) {
     return page("That did not connect", (e as Error).message || "Something went wrong. Press Connect in knitted and try again.", false);
   }
