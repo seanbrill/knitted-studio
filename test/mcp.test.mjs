@@ -826,6 +826,24 @@ test("design sheets: the model starts one from the brand, designs a frame and se
   assert.equal(pathFor(lastCall()), `/projects/${project.id}/designs/${d.id}`);
 });
 
+test("a model puts a pattern on a sheet beside the pages, reads it as a piece without code, and is told to change the pattern itself", async () => {
+  const engine = { renderDesign: async () => Buffer.from("png"), forModel: async (b) => b };
+  const t = toolByName();
+  const post = store.createPattern(project.id, { name: "Launch post", size: { name: "Instagram post", w: 1080, h: 1350 } });
+  const d = await tools.create_design({ projectId: project.id, name: "Launch", start: "blank" });
+  const a = await tools.arrange_design({ designId: d.id, changes: [{ op: "addPiece", section: "Pages", kind: "pattern", id: post.id }] });
+  const f = a.sections[0].frames.at(-1);
+  assert.deepEqual([f.name, f.size, f.width, f.height, f.piece.kind, f.piece.id], ["Launch post", "Pattern 1080 x 1350", 1080, 1350, "pattern", post.id]);
+  assert.match(f.piece.change, /change the pattern itself \(describe_pattern/i);
+  assert.ok(f.html === undefined && f.codeChars === undefined, "a piece has no code");
+  const all = await tools.get_design({ designId: d.id, code: true });
+  assert.equal(all.sections[0].frames.at(-1).html, undefined, "not even when all of it is asked for");
+  await assert.rejects(t.set_design_frame.handler({ designId: d.id, section: "Pages", frameId: f.id, html: "<p>x</p>" }, { store, engine }), /placed on the sheet, not code: change the pattern itself/);
+  await assert.rejects(tools.arrange_design({ designId: d.id, changes: [{ op: "addPiece", section: "Pages", kind: "pattern", id: "pt_nonesuch" }] }), /no pattern "pt_nonesuch" in this project\. list_patterns/);
+  store.apply(post.id, { type: "setMeta", name: "Spring launch" }, "human");
+  assert.equal((await tools.get_design({ designId: d.id })).sections[0].frames.at(-1).name, "Spring launch", "read as it is now");
+});
+
 test("a model reads the person's comments, looks at the spot each is pinned to, and answers them", async () => {
   const { addComment, insertKnit, knitPath, getComment } = await import("@knitted/core/node");
   const { mkdirSync } = await import("node:fs");

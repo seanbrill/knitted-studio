@@ -139,7 +139,8 @@ export const api = {
     /** The whole sheet, every frame's code with it. The board asks for `board` and `code` instead. */
     get: (id: string) => call<Design>("GET", `/api/designs/${id}`),
     /** The sheet without its code; with `since`, { same: true } when it is still at that version. */
-    board: (id: string, since?: number) => call<DesignMeta | { same: true }>("GET", `/api/designs/${id}/board${since != null ? `?since=${since}` : ""}`),
+    /** `since` and `pieces`: what the board has, so the answer is only { same: true } when nothing it shows has changed. */
+    board: (id: string, since?: number, pieces?: string) => call<DesignMeta | { same: true }>("GET", `/api/designs/${id}/board${since != null ? `?since=${since}${pieces ? `&pieces=${encodeURIComponent(pieces)}` : ""}` : ""}`),
     code: (id: string, frameIds: string[]) => call<Record<string, FrameCode>>("GET", `/api/designs/${id}/frames?ids=${frameIds.map(encodeURIComponent).join(",")}`),
     sizes: (id: string, sizes: Record<string, { rev: string; height: number }>) => call<{ kept: number }>("POST", `/api/designs/${id}/sizes`, { sizes }),
     measure: (id: string) => call<Record<string, { rev: string; height: number }>>("POST", `/api/designs/${id}/measure`),

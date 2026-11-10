@@ -6,7 +6,8 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
-import { getComment, getDesign, getKnit, knitPath } from "@knitted/core/node";
+import { stillMs } from "@knitted/core";
+import { getComment, getDesign, getKnit, knitPath, withPieces } from "@knitted/core/node";
 import { elementAt, renderDesign } from "./design.mjs";
 import { run } from "./knit.mjs";
 import { openRenderer } from "./renderer.mjs";
@@ -60,7 +61,9 @@ async function frameOf(file, timeMs) {
 /**
  * Look at a comment: its picture with the pin, and what is under the pin.
  * A comment on a frame deleted since is shown on the whole sheet, without its pin, and says so.
- * @returns {Promise<{ thread: import("@knitted/core").CommentThread, png: Buffer | null, under: unknown, patternId: string | null, frameGone?: boolean }>}
+ * A comment on a piece (a pattern, a part or a picture on the sheet) says which, as `piece`; on a
+ * pattern, what is under the pin is its stitches, as on a knit.
+ * @returns {Promise<{ thread: import("@knitted/core").CommentThread, png: Buffer | null, under: unknown, patternId: string | null, frameGone?: boolean, piece?: { kind: string, id: string, name: string } | null }>}
  */
 export async function lookAtComment(store, commentId, { renderer: injected } = {}) {
   const thread = getComment(store, commentId);
@@ -82,10 +85,21 @@ export async function lookAtComment(store, commentId, { renderer: injected } = {
       return { thread, png: await withPin(base, thread), under, patternId };
     }
     const renderer = await browser();
-    const here = !!thread.frameId && getDesign(store, thread.designId).sections.some((s) => s.frames.some((f) => f.id === thread.frameId));
+    const frame = thread.frameId ? withPieces(store, getDesign(store, thread.designId)).sections.flatMap((s) => s.frames).find((f) => f.id === thread.frameId) : undefined;
+    const here = !!frame;
     const png = await renderDesign(store, thread.designId, { frameId: here ? thread.frameId : undefined, renderer });
     if (thread.frameId && !here) return { thread, png: await withPin(png, {}), under: null, patternId: null, frameGone: true };
-    const under = here && thread.x != null && thread.y != null ? await elementAt(store, thread.designId, thread.frameId, { x: thread.x, y: thread.y, renderer }).catch(() => null) : null;
+    const pinned = thread.x != null && thread.y != null;
+    // A pattern on the sheet: the comment is about the pattern, and what is under the pin is its stitches, drawn as the sheet shows it.
+    const piece = frame?.piece && !frame.piece.gone ? { kind: frame.piece.kind, id: frame.piece.id, name: frame.name } : null;
+    if (piece) {
+      let under = null;
+      if (piece.kind === "pattern" && pinned) {
+        try { under = await stitchesAt(store, piece.id, { x: thread.x, y: thread.y, timeMs: stillMs(store.getPattern(piece.id)), renderer }); } catch { /* the picture says enough */ }
+      }
+      return { thread, png: await withPin(png, thread), under, patternId: piece.kind === "pattern" ? piece.id : null, piece };
+    }
+    const under = here && pinned ? await elementAt(store, thread.designId, thread.frameId, { x: thread.x, y: thread.y, renderer }).catch(() => null) : null;
     return { thread, png: await withPin(png, thread), under, patternId: null };
   } finally { if (opened) await opened.close(); }
 }

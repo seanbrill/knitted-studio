@@ -18,6 +18,15 @@ export const DESIGN_DEVICES: Record<DesignDevice, { name: string; width: number;
   mobile: { name: "Mobile", width: 390, height: 844 },
 };
 
+/** The project's own things a sheet can hold beside its frames, drawn as they are now. */
+export type PieceKind = "pattern" | "yarn" | "part";
+export const PIECE_KINDS: PieceKind[] = ["pattern", "yarn", "part"];
+export const PIECE_NAMES: Record<PieceKind, string> = { pattern: "Pattern", yarn: "Yarn", part: "Part" };
+/** Which of the project's things a piece is. */
+export interface DesignPiece { kind: PieceKind; id: string }
+/** A piece as it is now: its own size, and whether it is still in the project. */
+export interface PieceNow extends DesignPiece { w: number; h: number; gone?: boolean }
+
 /** One screen, or one piece of a screen: a header, a card, the buttons. */
 export interface DesignFrame {
   id: string;
@@ -28,6 +37,12 @@ export interface DesignFrame {
   height?: number;
   html: string;
   css: string;
+  /**
+   * One of the project's patterns, Yarn pictures or parts in place of code: the thing itself,
+   * drawn as it is now, so a change to it shows here. Its html and css are empty, it is drawn
+   * `width` wide, and its height keeps the thing's shape. Its name is the thing's.
+   */
+  piece?: DesignPiece;
   /** What it is for, or what to do next with it. */
   note?: string;
   /** Who changed it last. Absent for a frame the sheet started with. */
@@ -64,10 +79,14 @@ export interface Design {
  * hash of it), `chars` is how long it is, and `measured` is how tall it was last drawn, when it
  * is as tall as what is in it and nothing has changed since.
  */
-export type FrameMeta = Omit<DesignFrame, "html" | "css"> & { code: string; chars: number; measured?: number };
+export type FrameMeta = Omit<DesignFrame, "html" | "css" | "piece"> & { code: string; chars: number; measured?: number; piece?: PieceNow };
 export type SectionMeta = Omit<DesignSection, "frames"> & { frames: FrameMeta[] };
 /** A sheet without its frames' code: what the board needs to lay it out, a small part of the whole. */
-export interface DesignMeta extends Omit<Design, "sections"> { sections: SectionMeta[] }
+export interface DesignMeta extends Omit<Design, "sections"> {
+  sections: SectionMeta[];
+  /** What names how the sheet's pieces look now: it changes when one of their things does, though the sheet has not. Empty without pieces. */
+  pieces?: string;
+}
 export interface FrameCode { code: string; html: string; css: string }
 /** A frame as drawn: its code at its size. A height measured for it is kept under this. */
 export const frameRev = (f: Pick<FrameMeta, "code" | "width" | "height">) => `${f.code}-${f.width}${f.height ? `x${f.height}` : ""}`;
@@ -78,8 +97,9 @@ export const DESIGN_LIMITS = { html: 200_000, css: 100_000, minWidth: 240, maxWi
 export function deviceOf(width: number): DesignDevice | null {
   return (Object.keys(DESIGN_DEVICES) as DesignDevice[]).find((d) => DESIGN_DEVICES[d].width === width) ?? null;
 }
-/** "Desktop 1440", "Mobile 390", or "1200 wide". */
-export function frameSize(f: Pick<DesignFrame, "width" | "height">): string {
+/** "Desktop 1440", "Mobile 390", or "1200 wide"; a piece by what it is and its own size, "Pattern 1080 x 1350". */
+export function frameSize(f: Pick<DesignFrame, "width" | "height"> & { piece?: DesignPiece & { w?: number; h?: number } }): string {
+  if (f.piece) return `${PIECE_NAMES[f.piece.kind] ?? "Piece"}${f.piece.w && f.piece.h ? ` ${f.piece.w} x ${f.piece.h}` : ""}`;
   const d = deviceOf(f.width);
   return `${d ? `${DESIGN_DEVICES[d].name} ${f.width}` : `${f.width} wide`}${f.height ? ` x ${f.height}` : ""}`;
 }
@@ -178,6 +198,11 @@ export type DesignOp =
   | { op: "placeSection"; section: string; x: number | null; y: number | null }
   | { op: "removeSection"; section: string }
   | { op: "setFrame"; section: string; frameId?: string; name?: string; width?: number; height?: number | null; html?: string; css?: string; note?: string; at?: number }
+  /**
+   * One of the project's patterns, Yarn pictures or videos, or parts, onto the sheet as it is. The
+   * store fills in its name and its size from the thing itself; `width` draws it that wide instead.
+   */
+  | { op: "addPiece"; section: string; kind: PieceKind; id: string; name?: string; width?: number; height?: number; note?: string; at?: number }
   | { op: "moveFrame"; frameId: string; section: string; at?: number }
   | { op: "duplicateFrame"; frameId: string; name?: string }
   | { op: "removeFrame"; frameId: string };
@@ -239,6 +264,22 @@ function cleanSectionWidth(v: unknown): number {
   if (!(n >= 400 && n <= 100_000)) throw new DesignProblem("A section is 400 to 100,000 pixels wide. Leave the width out for its frames in one row.");
   return n;
 }
+/** A piece's size on the sheet: as wide as a frame can be, and as tall as its shape makes it. */
+function cleanPieceSize(width: unknown, height: unknown): { width: number; height: number } {
+  const w = Math.round(Number(width)), h = Math.round(Number(height));
+  if (!(w >= 40 && w <= DESIGN_LIMITS.maxWidth)) throw new DesignProblem(`A piece is drawn 40 to ${DESIGN_LIMITS.maxWidth} pixels wide.`);
+  if (!(h >= 1 && h <= DESIGN_LIMITS.maxHeight)) throw new DesignProblem(`At that width the piece would be ${h} pixels tall. Draw it narrower.`);
+  return { width: w, height: h };
+}
+function cleanPiece(kind: unknown, id: unknown): DesignPiece {
+  if (!PIECE_KINDS.includes(kind as PieceKind)) throw new DesignProblem(`A piece is a pattern, yarn or a part, not "${String(kind)}".`);
+  const i = String(id ?? "").trim();
+  if (!i || i.length > 64) throw new DesignProblem(`Say which ${kind === "yarn" ? "Yarn file" : kind} to add, by its id.`);
+  return { kind: kind as PieceKind, id: i };
+}
+/** What a piece is, in words for the one who asked to change its code. */
+const pieceWords = (f: DesignFrame) => `${f.name} (${f.id}) is ${f.piece!.kind === "yarn" ? "a file from Yarn" : `a ${f.piece!.kind}`} placed on the sheet, not code`;
+
 function place2(s: DesignSection, x: unknown, y: unknown) {
   if (x === null && y === null) { delete s.x; delete s.y; return; }
   s.x = cleanAt(x, "x"); s.y = cleanAt(y, "y");
@@ -276,8 +317,20 @@ export function applyDesignOps(design: { name: string; sections: DesignSection[]
       case "removeSection": { const s = findSection(sections, o.section); sections.splice(sections.indexOf(s), 1); break; }
       case "setFrame": {
         const s = findSection(sections, o.section);
-        const size = cleanSize(o.width, o.height);
         const found = o.frameId ? findFrame(sections, o.frameId) : null;
+        // A piece is the thing itself: it has no code to change, and keeps the thing's shape.
+        if (found?.frame.piece) {
+          const f = found.frame;
+          if (o.html !== undefined || o.css !== undefined) {
+            throw new DesignProblem(`${pieceWords(f)}: change the ${f.piece!.kind === "pattern" ? "pattern itself (describe_pattern, then update_stitch or apply_batch)" : f.piece!.kind === "part" ? "part itself (edit_part)" : "file in Yarn"}, and the sheet shows it as it is.`);
+          }
+          if (o.width !== undefined) { const size = cleanPieceSize(o.width, ((f.height ?? f.width) * Number(o.width)) / f.width); f.width = size.width; f.height = size.height; }
+          if (o.note !== undefined) f.note = cleanNote(o.note);
+          f.by = by; f.updatedAt = now;
+          if (found.section !== s) { found.section.frames.splice(found.index, 1); place(s.frames, f, o.at); }
+          break;
+        }
+        const size = cleanSize(o.width, o.height);
         const html = o.html ?? found?.frame.html ?? "";
         const css = o.css ?? found?.frame.css ?? "";
         const problems = lintDesignCode(html, css);
@@ -301,6 +354,15 @@ export function applyDesignOps(design: { name: string; sections: DesignSection[]
           place(s.frames, f, o.at); made.frames.push(f.id);
           if (problems.length) lint[f.id] = problems;
         }
+        break;
+      }
+      case "addPiece": {
+        const s = findSection(sections, o.section);
+        const piece = cleanPiece(o.kind, o.id);
+        const size = cleanPieceSize(o.width, o.height);
+        const f: DesignFrame = { id: nextId(sections, "f"), name: cleanName(o.name, "piece"), width: size.width, height: size.height, html: "", css: "", piece, by, updatedAt: now };
+        const note = cleanNote(o.note); if (note) f.note = note;
+        place(s.frames, f, o.at); made.frames.push(f.id);
         break;
       }
       case "moveFrame": {

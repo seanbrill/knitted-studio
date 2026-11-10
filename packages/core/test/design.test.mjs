@@ -275,3 +275,60 @@ test("the board's sheet has no code: each frame's names it, and how tall it was 
   setFrameHeights(store, d.id, { f7: { rev: frameRev(getDesignMeta(store, d.id).sections[2].frames[0]), height: 1200 } });
   assert.equal(getDesignMeta(store, d.id).sections[2].frames[0].measured, undefined, "a fixed height needs no measuring");
 });
+
+test("a pattern, a Yarn picture or a part goes on a sheet as itself: named and sized from it as it is now, and drawn again when it changes", async () => {
+  const { importYarn, listParts } = await import("../src/node.ts");
+  const post = store.createPattern(p.id, { name: "Launch post", size: { name: "Instagram post", w: 1080, h: 1350 } });
+  const d = createDesign(store, p.id, { name: "Campaign", start: "blank" });
+  const r = changeDesign(store, d.id, [{ op: "addSection", name: "Social" }, { op: "addPiece", section: "Social", kind: "pattern", id: post.id }]);
+  const f = r.sections[1].frames[0];
+  assert.deepEqual([f.name, f.width, f.height, f.html, f.css, f.piece], ["Launch post", 1080, 1350, "", "", { kind: "pattern", id: post.id }], "as big as it is, with no code");
+  assert.deepEqual(r.made.frames, [f.id]);
+  const meta = () => getDesignMeta(store, d.id).sections[1].frames[0];
+  const before = meta();
+  assert.deepEqual(before.piece, { kind: "pattern", id: post.id, w: 1080, h: 1350 });
+  assert.equal(frameSize(before), "Pattern 1080 x 1350");
+
+  // Changed anywhere, the sheet has its new name and shape, and a new name for its picture; and
+  // a board that has the sheet at this version is told its pieces look different now.
+  const { piecesKey } = await import("../src/node.ts");
+  const key = piecesKey(store, d.id);
+  assert.equal(getDesignMeta(store, d.id).pieces, key);
+  assert.equal(piecesKey(store, createDesign(store, p.id, { name: "No pieces", start: "blank" }).id), "", "nothing to ask about without pieces");
+  store.apply(post.id, { type: "setMeta", name: "Spring launch" }, "human");
+  assert.notEqual(piecesKey(store, d.id), key);
+  assert.equal(meta().name, "Spring launch");
+  assert.notEqual(meta().code, before.code, "drawn again");
+  store.apply(post.id, { type: "setSize", size: { name: "Story", w: 1080, h: 1920 } }, "human");
+  assert.deepEqual([meta().height, meta().piece.h], [1920, 1920]);
+
+  // Drawn narrower, it keeps its shape. It has no code to change: the pattern is changed instead.
+  changeDesign(store, d.id, [{ op: "setFrame", section: "Social", frameId: f.id, width: 540 }]);
+  assert.deepEqual([meta().width, meta().height], [540, 960]);
+  assert.throws(() => changeDesign(store, d.id, [{ op: "setFrame", section: "Social", frameId: f.id, html: "<h1>x</h1>" }]), /placed on the sheet, not code: change the pattern itself/);
+  changeDesign(store, d.id, [{ op: "setFrame", section: "Social", frameId: f.id, note: "For the launch week" }]);
+  assert.equal(meta().note, "For the launch week");
+
+  // Only the project's own things, and only pictures and videos from Yarn.
+  const other = store.createProject({ name: "Elsewhere", starter: "blank" });
+  const theirs = store.createPattern(other.id, { name: "Not ours" });
+  assert.throws(() => changeDesign(store, d.id, [{ op: "addPiece", section: "Social", kind: "pattern", id: theirs.id }]), /no pattern .* in this project/);
+  assert.throws(() => changeDesign(store, d.id, [{ op: "addPiece", section: "Social", kind: "yarn", id: "yn_nope" }]), /no picture or video/);
+  assert.throws(() => changeDesign(store, d.id, [{ op: "addPiece", section: "Social", kind: "knit", id: "x" }]), /pattern, yarn or a part/);
+
+  const dir = mkdtempSync(join(tmpdir(), "knitted-piece-"));
+  const { default: sharp } = await import("sharp");
+  await sharp({ create: { width: 3000, height: 2000, channels: 3, background: "#3366cc" } }).png().toFile(join(dir, "hero.png"));
+  const hero = (await importYarn(store, p.id, join(dir, "hero.png"), "hero.png")).yarn;
+  const part = listParts(store, p.id)[0];
+  const r2 = changeDesign(store, d.id, [{ op: "addPiece", section: "Social", kind: "yarn", id: hero.id }, { op: "addPiece", section: "Social", kind: "part", id: part.id, width: 500 }]);
+  const [, pic, bit] = r2.sections[1].frames;
+  assert.deepEqual([pic.name, pic.width, pic.height], ["hero", 1440, 960], "a big picture no wider than a desktop screen");
+  assert.deepEqual([bit.name, bit.width, bit.height], [part.name, 500, Math.round(500 / part.aspect)]);
+
+  // Gone from the project, it keeps its place, its last name and its size, and says it has gone.
+  store.deletePattern(post.id);
+  const gone = meta();
+  assert.deepEqual([gone.name, gone.width, gone.height, gone.piece.gone], ["Spring launch", 540, 960, true], "as it was at the sheet's last change");
+  assert.equal(getDesign(store, d.id).sections[1].frames.length, 3, "still on the sheet");
+});

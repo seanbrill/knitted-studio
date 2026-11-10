@@ -7,11 +7,15 @@ import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { extname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import sharp from "sharp";
-import { BOARD, findSection, fontFor, framePage, frameRev, frameSize, layoutDesign, tokensCss, yarnIn } from "@knitted/core";
-import { activeSwatch, codeHash, getDesign, getDesignMeta, listYarn, setFrameHeights } from "@knitted/core/node";
+import { BOARD, findSection, fontFor, framePage, frameRev, frameSize, layoutDesign, stillMs, tokensCss, yarnIn } from "@knitted/core";
+import { activeSwatch, codeHash, getDesign as getDesignRaw, getDesignMeta, getPart, listYarn, setFrameHeights, withPieces } from "@knitted/core/node";
 import { bundledFont, fontFaceCss, fontPath } from "@knitted/fonts";
+import { pageFor } from "@knitted/render";
 import { openRenderer } from "./renderer.mjs";
+import { renderContext } from "./runner.mjs";
 
+/** A sheet with its pieces as they are now: their names, and heights for their shapes. */
+const getDesign = (store, id) => withPieces(store, getDesignRaw(store, id));
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const slug = (s) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "frame";
 /** Chromium draws a page up to about this many pixels a side; a bigger sheet is drawn smaller. */
@@ -46,6 +50,42 @@ function filesFor(store, projectId, swatch) {
   return { yarn, byId, families, fontFaces, yarnUrl };
 }
 
+/**
+ * The pages of a sheet's pieces, by frame id: each pattern and part drawn by the renderer the
+ * editor and the knits use, a Yarn picture as it is (a video by its poster), and a piece whose
+ * thing has gone as a note saying so. Each is a page at the thing's own size, `w` by `h`; a
+ * pattern that moves is shown at `still`, when everything is in.
+ * @returns {Map<string, { doc: string, w: number, h: number, still: number }>}
+ */
+export function piecePages(store, projectId, frames, swatch, files) {
+  const out = new Map();
+  const bg = swatch.colors.find((c) => c.role === "background")?.hex;
+  const yarnMap = Object.fromEntries(files.byId);
+  for (const f of frames) {
+    if (!f.piece) continue;
+    const { kind, id, w, h, gone } = f.piece;
+    const page = (body, css = "") => `<!doctype html><html><head><meta charset="utf-8"><style>${files.fontFaces}
+html,body{margin:0;width:${w}px;height:${h}px;overflow:hidden}${css}</style></head><body>${body}</body></html>`;
+    if (gone) {
+      out.set(f.id, { w, h, still: 0, doc: page(`<p>${esc(`This ${kind === "yarn" ? "file is not in Yarn" : `${kind} is not in the project`} any more.`)}</p>`,
+        `body{display:grid;place-items:center;background:#f3efe9;font:500 ${Math.max(16, Math.round(w / 30))}px "Geist",system-ui,sans-serif;color:#7a6e61}`) });
+      continue;
+    }
+    if (kind === "yarn") {
+      const y = files.byId.get(id);
+      const url = y?.kind === "video" ? (y.meta.thumb ? pathToFileURL(join(store.paths.yarnDir(y.projectId), ".thumbs", y.meta.thumb)).href : undefined) : files.yarnUrl(id);
+      out.set(f.id, { w, h, still: 0, doc: page(url ? `<img src="${esc(url)}" alt="">` : "", "body{background:transparent}img{display:block;width:100%;height:100%;object-fit:contain}") });
+      continue;
+    }
+    const pattern = kind === "pattern" ? store.getPattern(id) : partPattern(getPart(store, id), w, h);
+    out.set(f.id, { w, h, still: stillMs(pattern), doc: pageFor({ ...pattern, background: bg }, renderContext(store, projectId, pattern, swatch, files.yarn, yarnMap)) });
+  }
+  return out;
+}
+/** A part as a pattern of its own, filling it: how the editor shows a part. */
+const partPattern = (part, w, h) => ({ id: "piece", projectId: "", name: part.name, version: 1, updatedAt: "", durationMs: 0, size: { name: "piece", w, h },
+  stitches: [{ id: "i", kind: "part", x: 0, y: 0, w: 1, h: 1, locked: false, partId: part.id, overrides: {}, partSlots: part.slots }] });
+
 /** Room round the board in a picture of it, for the section names above the sections. */
 const MARGIN = 96;
 
@@ -55,9 +95,16 @@ const MARGIN = 96;
  * Frames are placed at a guess of their height, then again once measured (placeBoard). Without
  * labels, frames one after another, to measure or to draw one.
  */
-export function boardPage(design, sections, { ctx, labels = true }) {
+export function boardPage(design, sections, { ctx, labels = true, pieces = new Map() }) {
   const frames = sections.flatMap((s) => s.frames);
-  const frameHtml = (f, at) => `<figure class="frame" data-f="${esc(f.id)}"${at ? ` style="left:${at.x}px;top:${at.y}px"` : ""}>${labels ? `<figcaption>${esc(f.name)} <span>${esc(frameSize(f))}</span></figcaption>` : ""}<iframe title="${esc(f.name)}" data-id="${esc(f.id)}" scrolling="no" onload="window.__loaded=(window.__loaded||0)+1" style="width:${f.width}px;height:${f.height ?? 200}px" ${f.height ? `data-fixed="1"` : ""} srcdoc="${esc(framePage(f, ctx))}"></iframe></figure>`;
+  const caption = (f) => (labels ? `<figcaption>${esc(f.name)} <span>${esc(frameSize(f))}</span></figcaption>` : "");
+  const frameHtml = (f, at) => {
+    const pos = at ? ` style="left:${at.x}px;top:${at.y}px"` : "";
+    const p = pieces.get(f.id);
+    // A piece is its thing's own page, at its own size, drawn as wide as the piece.
+    if (p) return `<figure class="frame" data-f="${esc(f.id)}"${pos}>${caption(f)}<div class="piece" style="width:${f.width}px;height:${f.height}px"><iframe title="${esc(f.name)}" data-id="${esc(f.id)}" data-fixed="1" data-piece="1"${p.still ? ` data-still="${p.still}"` : ""} scrolling="no" onload="window.__loaded=(window.__loaded||0)+1" style="width:${p.w}px;height:${p.h}px;transform:scale(${f.width / p.w});transform-origin:0 0" srcdoc="${esc(p.doc)}"></iframe></div></figure>`;
+    return `<figure class="frame" data-f="${esc(f.id)}"${pos}>${caption(f)}<iframe title="${esc(f.name)}" data-id="${esc(f.id)}" scrolling="no" onload="window.__loaded=(window.__loaded||0)+1" style="width:${f.width}px;height:${f.height ?? 200}px" ${f.height ? `data-fixed="1"` : ""} srcdoc="${esc(framePage(f, ctx))}"></iframe></figure>`;
+  };
   let body;
   if (labels) {
     const lay = layoutDesign(sections);
@@ -78,6 +125,7 @@ export function boardPage(design, sections, { ctx, labels = true }) {
 .section>.frame{position:absolute}
 .frame{margin:0}.frame figcaption{position:absolute;left:0;bottom:100%;margin:0 0 12px;font-size:16px;font-weight:500;color:#3d342b;white-space:nowrap}.frame figcaption span{color:#7a6e61;font-weight:400;margin-left:6px}
 .frame iframe{display:block;border:0;background:#fff;${labels ? "box-shadow:0 2px 6px rgba(0,0,0,.08),0 24px 48px -24px rgba(0,0,0,.25)" : ""}}
+.frame .piece{overflow:hidden;${labels ? "box-shadow:0 2px 6px rgba(0,0,0,.08),0 24px 48px -24px rgba(0,0,0,.25)" : ""}}.frame .piece iframe{box-shadow:none;background:transparent}
 .empty{position:absolute;left:${BOARD.pad}px;top:${BOARD.pad}px;font-size:16px;color:#7a6e61;margin:0}
 </style></head><body>${body}</body></html>` };
 }
@@ -111,6 +159,9 @@ async function settle(page, n) {
       const doc = f.contentDocument;
       await doc.fonts.ready;
       await Promise.all([...doc.images].map((i) => (i.complete ? null : new Promise((r) => { i.onload = i.onerror = r; }))));
+      // A pattern or a part is drawn by its own stage: ready, then at the moment everything is in.
+      const stage = f.dataset.piece ? f.contentWindow.__stage : null;
+      if (stage) { await stage.ready(); if (f.dataset.still) await stage.seek(Number(f.dataset.still)); }
       // Measured at one pixel tall: a page is never shorter than its window, so measured at its
       // first height, a header would keep the 200 pixels it started with.
       if (!f.dataset.fixed) { f.style.height = "1px"; const h = Math.max(40, doc.documentElement.scrollHeight); f.style.height = `${h}px`; heights[f.dataset.id] = h; }
@@ -178,7 +229,8 @@ export async function renderDesign(store, designId, { sectionId, frameId, scale 
   const swatch = activeSwatch(store, design.projectId);
   const files = filesFor(store, design.projectId, swatch);
   const ctx = { swatch, fontFaces: files.fontFaces, yarnUrl: files.yarnUrl };
-  const { html, frames } = boardPage(design, sections, { ctx, labels: !one });
+  const pieces = piecePages(store, design.projectId, sections.flatMap((s) => s.frames), swatch, files);
+  const { html, frames } = boardPage(design, sections, { ctx, labels: !one, pieces });
   const dir = join(store.paths.projectDir(design.projectId), ".pages");
   await mkdir(dir, { recursive: true });
   const file = join(dir, `design-${designId}-${Date.now()}.html`);
@@ -263,7 +315,7 @@ export async function designThumb(store, designId, frameId) {
   const swatch = activeSwatch(store, design.projectId);
   const files = filesFor(store, design.projectId, swatch);
   const ctx = { swatch, fontFaces: files.fontFaces, yarnUrl: files.yarnUrl };
-  const { html } = boardPage(design, [{ id: "one", name: "", frames: [f] }], { ctx, labels: false });
+  const { html } = boardPage(design, [{ id: "one", name: "", frames: [f] }], { ctx, labels: false, pieces: piecePages(store, design.projectId, [f], swatch, files) });
   const key = createHash("sha1").update(html).digest("hex").slice(0, 20);
   const dir = join(store.paths.cacheDir, "sheets", designId);
   const name = `${frameId}-${key}`;
@@ -334,7 +386,8 @@ export async function measureDesign(store, designId) {
 export async function elementAt(store, designId, frameId, { x, y, renderer: injected } = {}) {
   const design = getDesign(store, designId);
   const f = design.sections.flatMap((s) => s.frames).find((v) => v.id === frameId);
-  if (!f) return null;
+  // A piece has no HTML of its own: what is under a pin on one is its stitches (stitchesAt).
+  if (!f || f.piece) return null;
   const swatch = activeSwatch(store, design.projectId);
   const files = filesFor(store, design.projectId, swatch);
   const dir = join(store.paths.projectDir(design.projectId), ".pages");
@@ -441,6 +494,8 @@ export async function designCode(store, designId, { sectionId } = {}) {
     const folder = `${String(i + 1).padStart(2, "0")}-${slug(s.name)}`;
     const links = [];
     for (const [j, f] of s.frames.entries()) {
+      // A piece is a pattern, a part or a picture from knitted, not code: it is in the sheet's picture.
+      if (f.piece) { links.push(`<li>${esc(f.name)} <small>${esc(frameSize(f))}, from knitted: not code, so it is only in the picture of the sheet</small></li>`); continue; }
       const name = `${folder}/${String(j + 1).padStart(2, "0")}-${slug(f.name)}.html`;
       await put(name, framePage(f, ctx).replace("overflow:hidden}", "}"));
       links.push(`<li><a href="${name}">${esc(f.name)}</a> <small>${esc(frameSize(f))}</small>${f.note ? `<br><span>${esc(f.note)}</span>` : ""}</li>`);

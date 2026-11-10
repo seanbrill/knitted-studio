@@ -48,6 +48,18 @@ Select a frame to open it beside the board. You can change its name, width, heig
 - A design is a picture of a site: scripts do not run, and nothing loads from the web. Show each state as its own frame, such as *Menu, open*.
 - **Make a copy**, **Picture**, **Delete** and the **Section** list work on the frame you have open.
 
+## Patterns, Yarn and parts on the sheet
+
+A sheet can hold the project's own things beside its pages, such as a campaign's posts beside the landing page they go with, or the photos a page uses.
+
+- The **+** beside a section's name adds **A frame**, **A pattern**, **Yarn** (a photo, a logo or a video) or **A part**. Pick one by its picture, or find it by name.
+- What goes on the sheet is the thing itself, not a copy. A pattern or a part is drawn by the editor's own renderer, in your brand, so a change to it in the editor, by your model or anywhere else shows on the sheet. Big on screen it is drawn live; small, it is a picture of it.
+- It starts at its own size, in its own shape, and moves, zooms and sits in rows like any frame. Its label says what it is and how big, such as *Pattern 1080 x 1350*.
+- Select one, and the pane's first tab is named for it. A pattern has **Open in the editor**, **Knit** and **Ask your model**. Yarn has **Open in Yarn**. A part has **Open in the editor**, or **Open in Parts** for a starter part or one written in code. **Take it off the sheet** leaves the thing itself where it is.
+- Pin a comment to a pattern as to a frame. Your model is told which stitch is under the pin, and **Ask your model to do this** changes the pattern itself.
+- If the thing is deleted, the sheet shows a note in its place until you take it off.
+- **The code** download lists each one, but it has no page of code: it is in the picture of the sheet.
+
 ## Taking it away
 
 **Download** has three choices:
@@ -81,6 +93,6 @@ A comment can be replied to, resolved, opened again or deleted. **Comments** on 
 
 ## Your model
 
-Your model uses `create_design`, `set_design_frame`, `arrange_design`, `get_design` and `view_design`. Each frame it designs is drawn back to it, so it checks its own work. Its frames are marked **by your model** on the board.
+Your model uses `create_design`, `set_design_frame`, `arrange_design`, `get_design` and `view_design`. Each frame it designs is drawn back to it, so it checks its own work. Its frames are marked **by your model** on the board. It puts patterns, Yarn and parts on a sheet with `arrange_design` too, and changes a pattern on the sheet with its pattern tools.
 
 While it works, the frame it is designing or looking at is outlined in red on the board, with what it is doing, and a panel in the corner says the same. Press **Follow** there, and each frame it works on is brought into view.

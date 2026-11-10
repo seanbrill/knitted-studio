@@ -12,7 +12,9 @@ import { tx } from "./db.ts";
 import { newId } from "./ids.ts";
 import { NotFoundError, ValidationError, type Store } from "./store.ts";
 import { activeSwatch } from "./swatch.ts";
-import { applyDesignOps, designStarter, DesignProblem, frameRev, type Design, type DesignFrame, type DesignLint, type DesignMeta, type DesignOp, type DesignSection, type FrameCode, type FrameMeta } from "./design-pure.ts";
+import { applyDesignOps, designStarter, DESIGN_LIMITS, DesignProblem, frameRev, PIECE_KINDS, type Design, type DesignFrame, type DesignLint, type DesignMeta, type DesignOp, type DesignPiece, type DesignSection, type FrameCode, type FrameMeta, type PieceNow } from "./design-pure.ts";
+import { getPart } from "./parts.ts";
+import { getYarn } from "./yarn.ts";
 import { LIBRARY_ID, type Actor } from "./types.ts";
 
 type Row = Record<string, unknown>;
@@ -45,17 +47,104 @@ export function listDesigns(store: Store, projectId: string): Design[] {
 /** What names a frame's code: the same code is the same name, in any sheet and any version. */
 export const codeHash = (html: string, css: string) => createHash("sha1").update(html).update("\0").update(css).digest("hex").slice(0, 16);
 
+// ── pieces: the project's own things on a sheet ──
+/** A piece's thing as it is now: its name, its own size, and what names how it looks. */
+interface Thing { name: string; w: number; h: number; rev: string }
+/** The part drawn on a sheet is this wide: its shape is all it has of a size. */
+const PART_W = 1000;
+
+/** The thing a piece is, as it is now; null when it is not in the project any more. */
+export function pieceThing(store: Store, projectId: string, p: DesignPiece): Thing | null {
+  try {
+    if (p.kind === "pattern") {
+      const x = store.getPattern(p.id);
+      // A part open in the editor is a pattern too, but not one of the project's patterns.
+      return x.projectId === projectId && !x.partId ? { name: x.name, w: x.size.w, h: x.size.h, rev: `${x.version}` } : null;
+    }
+    if (p.kind === "part") {
+      const x = getPart(store, p.id);
+      return !x.projectId || x.projectId === projectId ? { name: x.name, w: PART_W, h: Math.max(1, Math.round(PART_W / (x.aspect || 1))), rev: `${x.version}.${x.updatedAt}` } : null;
+    }
+    const y = getYarn(store, p.id);
+    const mine = y.projectId === projectId || y.projectId === LIBRARY_ID;
+    return mine && !y.deletedAt && y.shelf !== "reference" && (y.kind === "image" || y.kind === "video")
+      ? { name: y.name, w: y.width || 1000, h: y.height || 1000, rev: y.updatedAt } : null;
+  } catch (e) {
+    // By its kind, not its class: the studio's routes can each have their own copy of the class.
+    if ((e as { kind?: string } | null)?.kind === "not_found") return null;
+    throw e;
+  }
+}
+
+/** The pieces of a sheet as they are now, by frame id. */
+function thingsOf(store: Store, d: Pick<Design, "projectId" | "sections">): Map<string, Thing | null> {
+  const out = new Map<string, Thing | null>();
+  for (const s of d.sections) for (const f of s.frames) if (f.piece) out.set(f.id, pieceThing(store, d.projectId, f.piece));
+  return out;
+}
+/** A piece as it is now: the thing's name, its height for its shape at the piece's width, and its own size. Gone, it keeps what it last had. */
+function pieceFrame<F extends DesignFrame>(f: F, t: Thing | null | undefined): F & { piece: PieceNow } {
+  if (!t) return { ...f, piece: { ...f.piece!, w: f.width, h: f.height ?? f.width, gone: true } };
+  return { ...f, name: t.name, height: Math.max(1, Math.round((f.width * t.h) / t.w)), piece: { ...f.piece!, w: t.w, h: t.h } };
+}
+/**
+ * A sheet with its pieces as they are now: each piece's name and height from its thing, and the
+ * thing's own size beside it (`piece.w`, `piece.h`), or `piece.gone` when it is not there any
+ * more. What the engine draws and what a model reads.
+ */
+export function withPieces<D extends Pick<Design, "projectId" | "sections">>(store: Store, d: D): D {
+  if (!d.sections.some((s) => s.frames.some((f) => f.piece))) return d;
+  const things = thingsOf(store, d);
+  return { ...d, sections: d.sections.map((s) => ({ ...s, frames: s.frames.map((f) => (f.piece ? pieceFrame(f, things.get(f.id)) : f)) })) };
+}
+
+/**
+ * The sheet's pieces with their things' names and heights as they are now, to be kept with the
+ * next change: a piece whose thing goes later keeps the name and shape it last had.
+ */
+function freshPieces(store: Store, d: Design): Design {
+  if (!d.sections.some((s) => s.frames.some((f) => f.piece))) return d;
+  const things = thingsOf(store, d);
+  return { ...d, sections: d.sections.map((s) => ({ ...s, frames: s.frames.map((f) => { const t = f.piece && things.get(f.id); return t ? { ...f, name: t.name, height: Math.max(1, Math.round((f.width * t.h) / t.w)) } : f; }) })) };
+}
+
+/** Pieces to add, with what the store knows of their things: their names and sizes. */
+function fillPieces(store: Store, projectId: string, ops: DesignOp[]): DesignOp[] {
+  return ops.map((o) => {
+    if (o.op !== "addPiece") return o;
+    if (!PIECE_KINDS.includes(o.kind)) throw new ValidationError(`A piece is a pattern, yarn or a part, not "${String(o.kind)}".`);
+    const t = pieceThing(store, projectId, { kind: o.kind, id: String(o.id ?? "") });
+    if (!t) throw new ValidationError(o.kind === "yarn"
+      ? `There is no picture or video "${o.id}" in this project's Yarn. list_yarn shows what is.`
+      : `There is no ${o.kind} "${o.id}" in this project. ${o.kind === "pattern" ? "list_patterns" : "list_parts"} shows what is.`);
+    // As big as it is, up to a desktop screen across; a part at the width it is drawn in the editor.
+    const width = o.width != null ? Math.round(Number(o.width)) : Math.max(240, Math.min(o.kind === "yarn" ? 1440 : DESIGN_LIMITS.maxWidth, t.w));
+    return { ...o, name: o.name ?? t.name, width, height: Math.round((width * t.h) / t.w) };
+  });
+}
+
 function metaOf(f: DesignFrame, measured?: { rev: string; height: number }): FrameMeta {
-  const { html, css, ...rest } = f;
+  const { html, css, piece: _, ...rest } = f;
   const meta: FrameMeta = { ...rest, code: codeHash(html, css), chars: html.length + css.length };
   if (!f.height && measured && measured.rev === frameRev(meta)) meta.measured = measured.height;
   return meta;
 }
+/** A piece without code: named for its thing as it is now, so a change to the thing is a new picture of it. */
+function pieceMeta(f: DesignFrame, t: Thing | null | undefined): FrameMeta {
+  const { html: _h, css: _c, ...rest } = pieceFrame(f, t);
+  return { ...rest, code: codeHash(`piece:${f.piece!.kind}:${f.piece!.id}:${t ? `${t.rev}:${t.w}x${t.h}` : "gone"}`, ""), chars: 0 };
+}
+
+/** What names how a sheet's pieces look now, from their things: "" without pieces. */
+const keyOf = (things: Map<string, Thing | null>) => (things.size ? codeHash([...things].map(([id, t]) => `${id}:${t ? `${t.rev}:${t.w}x${t.h}:${t.name}` : "gone"}`).join("|"), "") : "");
+/** How a sheet's pieces look now: a board with this key and the sheet's version has all it needs. */
+export const piecesKey = (store: Store, id: string): string => keyOf(thingsOf(store, getDesign(store, id)));
 
 /** A sheet without its code, with how tall each frame was drawn: what the board lays out. */
 export function designMeta(store: Store, d: Design): DesignMeta {
   const sizes = new Map((store.db.prepare("select frame_id, rev, height from design_sizes where design_id = ?").all(d.id) as { frame_id: string; rev: string; height: number }[]).map((r) => [r.frame_id, r]));
-  return { ...d, sections: d.sections.map((s) => ({ ...s, frames: s.frames.map((f) => metaOf(f, sizes.get(f.id))) })) };
+  const things = thingsOf(store, d);
+  return { ...d, pieces: keyOf(things), sections: d.sections.map((s) => ({ ...s, frames: s.frames.map((f) => (f.piece ? pieceMeta(f, things.get(f.id)) : metaOf(f, sizes.get(f.id)))) })) };
 }
 export const getDesignMeta = (store: Store, id: string): DesignMeta => designMeta(store, getDesign(store, id));
 
@@ -149,7 +238,7 @@ export function createDesign(store: Store, projectId: string, input: { name: str
   const t = now();
   const swatch = activeSwatch(store, projectId);
   const base = designStarter(input.start ?? "brand", { brand: project.name, hasLogo: swatch.logos.length > 0, now: t });
-  const out = run(() => applyDesignOps({ name: input.name, sections: base }, [{ op: "rename", name: input.name }, ...(input.ops ?? [])], byOf(actor), t));
+  const out = run(() => applyDesignOps({ name: input.name, sections: base }, [{ op: "rename", name: input.name }, ...fillPieces(store, projectId, input.ops ?? [])], byOf(actor), t));
   const id = newId("ds");
   store.write(() => {
     store.db.prepare("insert into designs (id, project_id, name, data, version, created_at, updated_at) values (?, ?, ?, ?, 1, ?, ?)")
@@ -165,7 +254,7 @@ export function changeDesign(store: Store, id: string, ops: DesignOp[], actor: A
   const d = getDesign(store, id);
   if (d.deletedAt) throw new ValidationError("That design is deleted. Bring it back first.");
   const t = now();
-  const out = run(() => applyDesignOps(d, ops, byOf(actor), t));
+  const out = run(() => applyDesignOps(freshPieces(store, d), fillPieces(store, d.projectId, ops), byOf(actor), t));
   store.write(() => {
     keepVersion(store, d, actor, t);
     const trimmed = store.db.prepare("delete from design_versions where design_id = ? and version <= ?").run(id, d.version - KEEP).changes;

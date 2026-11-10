@@ -21,9 +21,11 @@ const START = [
   { value: "blank", label: "Blank", what: "One empty section, for you or your model to fill." },
 ] as const;
 
+/** "4 sections, 10 frames", and the patterns, Yarn and parts placed beside them: ", 2 pieces". */
 export const counts = (d: Pick<DesignMeta, "sections">) => {
-  const frames = d.sections.reduce((n, s) => n + s.frames.length, 0);
-  return `${d.sections.length} section${d.sections.length === 1 ? "" : "s"}, ${frames} frame${frames === 1 ? "" : "s"}`;
+  const all = d.sections.flatMap((s) => s.frames);
+  const pieces = all.filter((f) => f.piece).length, frames = all.length - pieces;
+  return `${d.sections.length} section${d.sections.length === 1 ? "" : "s"}, ${frames} frame${frames === 1 ? "" : "s"}${pieces ? `, ${pieces} piece${pieces === 1 ? "" : "s"}` : ""}`;
 };
 
 export function DesignsView({ projectId }: { projectId: string }) {
@@ -85,7 +87,8 @@ export function DesignsView({ projectId }: { projectId: string }) {
  * studio cannot draw pictures, the page itself, drawn here.
  */
 function Preview({ design, swatch, projectId }: { design: DesignMeta; swatch: Swatch; projectId: string }) {
-  const all = design.sections.flatMap((s) => s.frames);
+  // A page of the site's own, not a pattern or a picture placed beside it.
+  const all = design.sections.flatMap((s) => s.frames).filter((x) => !x.piece);
   const f = all.find((x) => /home|landing|page/i.test(x.name) && x.width >= 1000) ?? all.find((x) => x.width >= 1000) ?? all[0];
   const [w, setW] = useState(0);
   const [live, setLive] = useState<{ html: string; css: string } | null>(null);

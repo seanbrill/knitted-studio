@@ -67,3 +67,40 @@ test("a frame shows a picture from the Brief's reference as well as from Yarn: t
   assert.ok(left[1] > 130 && left[0] < 60 && left[2] < 90, `the reference picture, green, not the grey stand-in: ${left}`);
   assert.ok(right[2] > 170 && right[0] < 70, `the Yarn picture, blue: ${right}`);
 });
+
+test("a pattern and a Yarn picture on a sheet are drawn as they are, by the renderer the editor uses, and a pin on the pattern names its stitch", async () => {
+  const { changeDesign, importYarn, addComment } = await import("@knitted/core/node");
+  const { lookAtComment } = await import("@knitted/engine");
+  const post = store.createPattern(project.id, { name: "Launch post", size: { name: "Instagram post", w: 1080, h: 1350 }, stitches: [
+    { id: "bg", kind: "shape", x: 0, y: 0, w: 1, h: 1, locked: false, style: { background: "#204060" } },
+    { id: "head", kind: "text", slot: "headline", x: 0.1, y: 0.1, w: 0.8, h: 0.2, locked: false, content: "Spring sale" },
+  ] });
+  const dir = mkdtempSync(join(tmpdir(), "knitted-pieces-"));
+  await sharp({ create: { width: 600, height: 400, channels: 3, background: "#c03020" } }).png().toFile(join(dir, "red.png"));
+  const red = (await importYarn(store, project.id, join(dir, "red.png"), "red.png")).yarn;
+  const d = createDesign(store, project.id, { name: "Campaign", start: "blank" });
+  const made = changeDesign(store, d.id, [{ op: "addPiece", section: "Pages", kind: "pattern", id: post.id, width: 540 }, { op: "addPiece", section: "Pages", kind: "yarn", id: red.id }]).made.frames;
+
+  // Each on its own: the pattern at the width it is drawn, in its own shape; the picture as it is.
+  const share = async (png, [r, g, b]) => {
+    const { data, info } = await sharp(png).raw().toBuffer({ resolveWithObject: true });
+    let n = 0; for (let i = 0; i < data.length; i += info.channels) if (Math.abs(data[i] - r) <= 6 && Math.abs(data[i + 1] - g) <= 6 && Math.abs(data[i + 2] - b) <= 6) n++;
+    return { share: n / (info.width * info.height), w: info.width, h: info.height };
+  };
+  const pat = await share(await renderDesign(store, d.id, { frameId: made[0], renderer }), [0x20, 0x40, 0x60]);
+  assert.deepEqual([pat.w, pat.h], [540, 675]);
+  assert.ok(pat.share > 0.6, `the pattern's own colour fills it: ${Math.round(pat.share * 100)}%`);
+  const pic = await share(await renderDesign(store, d.id, { frameId: made[1], renderer }), [0xc0, 0x30, 0x20]);
+  assert.deepEqual([pic.w, pic.h], [600, 400]);
+  assert.ok(pic.share > 0.95, `the picture: ${Math.round(pic.share * 100)}%`);
+  // On the whole sheet, both, beside each other.
+  const sheet = await sharp(await renderDesign(store, d.id, { renderer })).metadata();
+  assert.ok(sheet.width > 540 + 600 && sheet.height > 675, `${sheet.width}x${sheet.height}`);
+
+  // A pin on the pattern is about the pattern: the stitches under it, top first.
+  const c = addComment(store, { designId: d.id, frameId: made[0], x: 0.5, y: 0.2, text: "Bigger" });
+  const seen = await lookAtComment(store, c.id, { renderer });
+  assert.equal(seen.patternId, post.id);
+  assert.deepEqual(seen.piece, { kind: "pattern", id: post.id, name: "Launch post" });
+  assert.deepEqual(seen.under.map((u) => u.stitchId), ["head", "bg"]);
+});

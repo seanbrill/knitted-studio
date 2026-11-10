@@ -9,7 +9,7 @@ type Ctx = { params: Promise<{ did: string }> };
 export const GET = route(async (_: Request, { params }: Ctx) => ok(getDesign(store(), (await params).did)));
 
 // Each change is checked again in core (applyDesignOps); this keeps out what is not a change at all.
-const Op = z.object({ op: z.enum(["rename", "addSection", "updateSection", "moveSection", "removeSection", "placeSection", "setFrame", "moveFrame", "duplicateFrame", "removeFrame"]) }).passthrough();
+const Op = z.object({ op: z.enum(["rename", "addSection", "updateSection", "moveSection", "removeSection", "placeSection", "setFrame", "addPiece", "moveFrame", "duplicateFrame", "removeFrame"]) }).passthrough();
 const Change = z.union([
   z.object({ ops: z.array(Op).min(1).max(100) }),
   z.object({ undo: z.literal(true) }),

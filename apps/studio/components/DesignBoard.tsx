@@ -12,13 +12,18 @@
 // live or picked, and a change brings back only the frames that changed.
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { api, ApiError, subscribeChanges } from "@knitted/core/client";
-import { DESIGN_DEVICES, BOARD, deviceOf, dropIndex, frameRev, frameSize, guessHeight, layoutDesign, lintDesignCode, snapToGrid, type BoardLayout, type DesignDevice, type DesignFrame, type DesignMeta, type DesignOp, type FrameCode, type FrameMeta, type LaidFrame, type LaidSection, type SectionMeta, type Swatch } from "@knitted/core";
+import { api, ApiError, subscribeChanges, yarnFileUrl, yarnPictureUrl, yarnThumbUrl } from "@knitted/core/client";
+import { DESIGN_DEVICES, BOARD, PIECE_NAMES, deviceOf, dropIndex, frameRev, frameSize, guessHeight, layoutDesign, lintDesignCode, snapToGrid, stillMs, type BoardLayout, type DesignDevice, type DesignFrame, type DesignMeta, type DesignOp, type FrameCode, type FrameMeta, type LaidFrame, type LaidSection, type Part, type Pattern, type PieceKind, type PieceNow, type SectionMeta, type Swatch, type Yarn } from "@knitted/core";
+import { pageFor } from "@knitted/render/pure";
 import { Button, ConfirmDialog, Dialog, Field, IconButton, Input, Menu, SegmentedControl, Select, TabPanel, Tabs, Textarea, Tip, icons, useToast } from "@knitted/ui";
 import { useLive } from "@/lib/hooks";
 import { brandKey, frameDoc, frameHeight, framePicUrl, hashOf } from "@/lib/design";
-import { AskModelButton, AskModelDialog, aboutDesign } from "./AskModel";
+import { AskModelButton, AskModelDialog, aboutDesign, aboutPart, aboutPattern, aboutYarn, type About } from "./AskModel";
+import { PatternThumb, thumbContext, type ThumbContext } from "./PatternThumb";
+import { PartThumb } from "./editor/PartThumb";
+import { KnitDialog } from "./editor/KnitDialog";
 import { ModelPresence } from "./ModelPresence";
 import { ModelAtWork } from "./ModelAtWork";
 import { ModelMark } from "./ModelMark";
@@ -28,7 +33,7 @@ import { CommentThreads, PinCatch, Pins, shownThreads, useCommentState, useComme
 import type { CommentThread } from "@knitted/core";
 import { stepZoom, typingIn, useSpaceHeld, wheelZoom, zoomKey } from "@/lib/zoom";
 
-const { ArrowLeft, ArrowUp, ArrowDown, ChevronRight, Copy, Download, FileCode, LayoutGrid, Maximize2, MessageSquare, MoreHorizontal, Package, Pencil, Plus, Sparkles, Trash2, Undo2, X, AlertTriangle } = icons;
+const { ArrowLeft, ArrowUp, ArrowDown, ChevronRight, Copy, Download, ExternalLink, FileCode, Image, Layers, LayoutGrid, Maximize2, MessageSquare, MoreHorizontal, Package, Pencil, Plus, Shapes, Sparkles, Trash2, Undo2, X, AlertTriangle } = icons;
 const ZOOM_MIN = 0.02;
 const ZOOM_MAX = 4;
 // Round a frame zoomed to: room to see it is the whole frame, and its label.
@@ -136,14 +141,48 @@ function shaped(sections: SectionMeta[], shape: Moving | null): SectionMeta[] {
   return sections;
 }
 
+// ── pieces: the project's own patterns, Yarn and parts on the sheet ──
+/** The project's own things: what pieces are drawn from, and what a new one is picked from. */
+interface Things { patterns: Pattern[]; yarn: Yarn[]; parts: Part[] }
+async function loadThings(projectId: string): Promise<Things> {
+  const [patterns, yarn, parts] = await Promise.all([api.patterns.list(projectId), api.yarn.list(projectId), api.parts.list(projectId)]);
+  return { patterns, yarn, parts };
+}
+/** What can be placed on a sheet from Yarn: pictures and videos. */
+const placeable = (y: Yarn) => !y.deletedAt && (y.kind === "image" || y.kind === "video");
+/** A part as a pattern of its own, filling it: how the editor and the engine draw one. Named for the part as it is, so it is drawn again only when the part changes. */
+const partPattern = (part: Part, w: number, h: number) => ({
+  id: `part-${part.id}`, projectId: "", name: part.name, version: part.version, updatedAt: part.updatedAt, durationMs: 0, folder: "", size: { name: "part", w, h },
+  stitches: [{ id: "i", kind: "part", x: 0, y: 0, w: 1, h: 1, locked: false, partId: part.id, overrides: {}, partSlots: part.slots }],
+}) as unknown as Pattern;
+/** How a piece is drawn on the board: by the editor's renderer, as a picture of it, or as a note that its thing has gone. */
+type PieceShow =
+  | { draw: "page"; pattern: Pattern; ctx: ThumbContext; w: number; h: number }
+  | { draw: "img"; src: string }
+  | { draw: "gone"; kind: PieceKind };
+/** What the person's model is told about a piece, from the thing itself. */
+function aboutPiece(p: PieceNow, things: Things | null, projectId: string): About | null {
+  if (p.gone || !things) return null;
+  if (p.kind === "pattern") { const x = things.patterns.find((v) => v.id === p.id); return x ? aboutPattern(x) : null; }
+  if (p.kind === "yarn") { const x = things.yarn.find((v) => v.id === p.id); return x ? aboutYarn(x) : null; }
+  const x = things.parts.find((v) => v.id === p.id); return x ? aboutPart(x, projectId) : null;
+}
+const PIECE_ADD: Record<PieceKind, { title: string; empty: string }> = {
+  pattern: { title: "Add a pattern", empty: "This project has no patterns yet." },
+  yarn: { title: "Add from Yarn", empty: "There are no pictures or videos in Yarn yet." },
+  part: { title: "Add a part", empty: "There are no parts yet." },
+};
+
 /** The sheet without its code, kept current: asked again when something changes, and only sent when it did. */
 function useSheet(initial: DesignMeta) {
   const [design, setDesign] = useState(initial);
+  // The version the board has, and how its pieces looked: a pattern on the sheet changes without the sheet.
   const version = useRef(initial.version);
-  const put = useCallback((d: DesignMeta) => { version.current = d.version; setDesign(d); }, []);
+  const pieces = useRef(initial.pieces ?? "");
+  const put = useCallback((d: DesignMeta) => { version.current = d.version; pieces.current = d.pieces ?? ""; setDesign(d); }, []);
   const refresh = useCallback(async () => {
     try {
-      const r = await api.designs.board(initial.id, version.current);
+      const r = await api.designs.board(initial.id, version.current, pieces.current);
       if (!("same" in r)) put(r);
     } catch { /* the next change asks again */ }
   }, [initial.id, put]);
@@ -195,6 +234,12 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
   // Pictures of frames, while the studio can draw them; and frames whose picture would not come.
   const [pics, setPics] = useState(true);
   const [noPic, setNoPic] = useState<Set<string>>(() => new Set());
+  // The project's own things, once the sheet has a piece of one or one is being added: what pieces are drawn from.
+  const [adding, setAdding] = useState<{ kind: PieceKind; section: SectionMeta } | null>(null);
+  const hasPieces = useMemo(() => design.sections.some((s) => s.frames.some((f) => f.piece)), [design]);
+  const wantThings = hasPieces || !!adding;
+  const { data: things } = useLive(() => (wantThings ? loadThings(projectId) : Promise.resolve(null)), [projectId, wantThings]);
+  const thumbs = useMemo(() => (things ? thumbContext(projectId, { swatch, yarn: things.yarn, parts: things.parts }) : null), [things, swatch, projectId]);
   const view = useRef<HTMLDivElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const boardEl = useRef<HTMLDivElement>(null);
@@ -212,7 +257,8 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
   const need = useCallback((ids: string[]) => {
     for (const id of ids) {
       const m = metaOf.get(id);
-      if (!m || code.current.get(id)?.code === m.code || asked.current.has(`${id}:${m.code}`)) continue;
+      // A piece has no code: it is drawn from its thing.
+      if (!m || m.piece || code.current.get(id)?.code === m.code || asked.current.has(`${id}:${m.code}`)) continue;
       wanted.current.add(id);
     }
     if (!wanted.current.size || askTimer.current) return;
@@ -479,6 +525,32 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
   // At the zoom the board was seen at: ahead of React's while a pinch runs.
   const modes = useMemo(() => (seen ? pickModes(lay, seen, seen.z, selected, pics, noPic) : new Map<string, Mode>()), [seen, lay, selected, pics, noPic]);
   useEffect(() => { need([...modes].filter(([, m]) => m === "live").map(([id]) => id)); }, [modes, need]);
+  // How each piece in view is drawn: live by the editor's renderer when it is big on screen, or a
+  // picture of it; a Yarn file is its own picture. A piece whose thing has gone says so.
+  const shows = useMemo(() => {
+    const out = new Map<string, PieceShow>();
+    if (!hasPieces) return out;
+    const patterns = new Map((things?.patterns ?? []).map((x) => [x.id, x] as const));
+    const yarn = new Map((things?.yarn ?? []).map((x) => [x.id, x] as const));
+    const parts = new Map((things?.parts ?? []).map((x) => [x.id, x] as const));
+    for (const s of design.sections) for (const f of s.frames) {
+      const p = f.piece, mode = modes.get(f.id);
+      if (!p || !mode) continue;
+      if (p.gone) { out.set(f.id, { draw: "gone", kind: p.kind }); continue; }
+      if (p.kind === "yarn") {
+        const y = yarn.get(p.id);
+        const small = y?.meta.thumb ? (y.kind === "image" ? yarnPictureUrl(y) : yarnThumbUrl(y)) : y?.kind === "image" ? yarnFileUrl(y) : null;
+        const src = y && (mode === "live" && y.kind === "image" ? yarnFileUrl(y) : small);
+        if (src) out.set(f.id, { draw: "img", src });
+        continue;
+      }
+      if (mode !== "live" || !thumbs) continue;
+      const part = p.kind === "part" ? parts.get(p.id) : undefined;
+      const pattern = p.kind === "pattern" ? patterns.get(p.id) : part ? partPattern(part, p.w, p.h) : undefined;
+      if (pattern) out.set(f.id, { draw: "page", pattern, ctx: thumbs, w: p.w, h: p.h });
+    }
+    return out;
+  }, [hasPieces, things, thumbs, design, modes]);
 
   // ── heights: measured here, and kept for the next time ──
   const toKeep = useRef<Record<string, { rev: string; height: number }>>({});
@@ -776,6 +848,8 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
     { label: "Delete the section", icon: <Trash2 size={14} />, danger: true, onSelect: () => (s.frames.length ? setAsking({ kind: "delete-section", section: s }) : void change([{ op: "removeSection", section: s.id }], `Deleted ${s.name}`)) },
   ];
   const catching = cs.picking && !cs.draft;
+  // The pane's first tab is named for what is picked: a frame, or a pattern, Yarn or a part.
+  const pickedKind = where?.frame.piece ? PIECE_NAMES[where.frame.piece.kind] : "Frame";
   // With a frame picked, the comments on it, or all of the sheet's when asked.
   const wide = !where || wideFor === where.frame.id;
   const scoped = wide ? threads : threads.filter((t) => t.frameId === where.frame.id);
@@ -852,7 +926,12 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
                     <header>
                       <h2 id={`sec-${s.id}`}><button type="button" className="design-section-name" aria-describedby="design-move-how" onPointerDown={(e) => sectionDown(e, s)} onKeyDown={(e) => sectionKeys(e, s)} onDoubleClick={() => zoomToSection(s.id)}>{s.name}</button></h2>
                       {s.note && <p title={s.note}>{s.note}</p>}
-                      <IconButton label={`Add a frame to ${s.name}`} onClick={() => setAsking({ kind: "frame", section: s })}><Plus size={14} /></IconButton>
+                      <Menu trigger={<IconButton label={`Add to ${s.name}`}><Plus size={14} /></IconButton>} items={[
+                        { label: "A frame", hint: "A page or a screen, in code", icon: <FileCode size={14} />, onSelect: () => setAsking({ kind: "frame", section: s }) },
+                        { label: "A pattern", hint: "One of the project's patterns, as it is", icon: <Layers size={14} />, onSelect: () => setAdding({ kind: "pattern", section: s }) },
+                        { label: "Yarn", hint: "A photo, a logo or a video", icon: <Image size={14} />, onSelect: () => setAdding({ kind: "yarn", section: s }) },
+                        { label: "A part", hint: "A saved piece of a pattern", icon: <Shapes size={14} />, onSelect: () => setAdding({ kind: "part", section: s }) },
+                      ]} />
                       <Menu trigger={<IconButton label={`Actions for ${s.name}`}><MoreHorizontal size={14} /></IconButton>} items={sectionMenu(s, i)} />
                     </header>
                     {s.frames.map((m) => {
@@ -868,7 +947,7 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
                         pic={mode === "pic" || (mode === "live" && !c && pics && !noPic.has(m.id)) ? framePicUrl(design.id, m, swatchKey) : null}
                         selected={selected === m.id} mark={marks.get(m.id)} lead={leadFrame === m.id} act={act}
                         pins={(pins.length > 0 || cs.draft?.frameId === m.id) ? <Pins threads={pins} draft={cs.draft?.frameId === m.id ? cs.draft : null} active={cs.active} onPick={pickComment} /> : null}
-                        catching={catching} lifted={moving?.kind === "frame" && moving.id === m.id} />;
+                        catching={catching} lifted={moving?.kind === "frame" && moving.id === m.id} piece={shows.get(m.id)} />;
                     })}
                     {picked && picked.section === s.id && (
                       <div className="design-acts" role="toolbar" aria-label={`${picked.name}, picked`} style={{ left: picked.x - b.x, top: picked.y - b.y }}>
@@ -894,13 +973,15 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
         </div>
 
         {(commenting || where) && (
-          <aside className="design-inspector design-pane" aria-label={commenting ? "Comments on the sheet" : `Frame: ${where!.frame.name}`} aria-busy={(!commenting && !(draft && full)) || undefined}>
+          <aside className="design-inspector design-pane" aria-label={commenting ? "Comments on the sheet" : `${pickedKind}: ${where!.frame.name}`} aria-busy={(!commenting && !where?.frame.piece && !(draft && full)) || undefined}>
             <Tabs value={commenting ? "comments" : "frame"} onValueChange={(v) => comment(v === "comments")}
-              tabs={[...(where ? [{ value: "frame", label: "Frame" }] : []), { value: "comments", label: "Comments", count: openScoped || undefined }]}
+              tabs={[...(where ? [{ value: "frame", label: pickedKind }] : []), { value: "comments", label: "Comments", count: openScoped || undefined }]}
               end={<IconButton label={commenting ? "Close the comments" : "Close"} onClick={() => { comment(false); setSelected(null); }}><X size={16} /></IconButton>}>
               {where && (
                 <TabPanel value="frame" className="design-panel">
-                  {draft && full ? (
+                  {where.frame.piece ? (
+                    <PiecePane key={where.frame.id} design={design} projectId={projectId} section={where.section} frame={where.frame as FrameMeta & { piece: PieceNow }} things={things} change={change} onSelect={setSelected} />
+                  ) : draft && full ? (
                     <Inspector key={where.frame.id} design={design} projectId={projectId} section={where.section} frame={full} draft={draft} setDraft={setDraft} dirty={dirty}
                       onSave={save} onDiscard={() => { forget(where.frame.id); setPreview(null); }} change={change} onSelect={setSelected} />
                   ) : <>
@@ -924,7 +1005,14 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
           </aside>
         )}
       </div>
-      <AskModelDialog about={askingFrame && where ? aboutDesign(projectId, design, where.frame) : null} onOpenChange={(o) => { if (!o) setAskingFrame(false); }} />
+      <AskModelDialog about={askingFrame && where ? (where.frame.piece && aboutPiece(where.frame.piece, things, projectId)) || aboutDesign(projectId, design, where.frame) : null} onOpenChange={(o) => { if (!o) setAskingFrame(false); }} />
+      <PieceDialog adding={adding} things={things} thumbs={thumbs} swatch={swatch} projectId={projectId} onClose={() => setAdding(null)}
+        onPick={async (kind, id) => {
+          if (!adding) return;
+          const r = await change([{ op: "addPiece", section: adding.section.id, kind, id }]);
+          if (r?.made.frames[0]) { revealing.current = r.made.frames[0]; setSelected(r.made.frames[0]); }
+          setAdding(null);
+        }} />
 
       <p id="design-move-how" hidden>Drag it to place the section anywhere on the board, or move it with the arrow keys, further with Shift. A double-click zooms to it.</p>
       <p id="design-wrap-how" hidden>Drag it in, or press the left arrow key, to wrap the section&apos;s frames into rows; out, or the right arrow key, to put them back in one.</p>
@@ -982,8 +1070,8 @@ function BoardMap({ lay, box, onGo }: { lay: BoardLayout; box: React.RefObject<S
  * One frame on the board: its label, the frame drawn live (`doc`), as a picture (`pic`) or as its
  * outline, and the button that selects it. Drawn again only when something it shows changes.
  */
-const FrameView = memo(function FrameView({ f, x, y, h, rev, doc, pic, selected, mark, lead, act, pins, catching, lifted }: {
-  f: Pick<FrameMeta, "id" | "name" | "width" | "height" | "by">; x: number; y: number; h: number; rev: string; doc: string | null; pic: string | null;
+const FrameView = memo(function FrameView({ f, x, y, h, rev, doc, pic, selected, mark, lead, act, pins, catching, lifted, piece }: {
+  f: Pick<FrameMeta, "id" | "name" | "width" | "height" | "by" | "piece">; x: number; y: number; h: number; rev: string; doc: string | null; pic: string | null;
   selected: boolean; mark?: Mark; lead: boolean; act: { current: Act };
   /** The comments pinned to it. */
   pins?: ReactNode;
@@ -991,6 +1079,8 @@ const FrameView = memo(function FrameView({ f, x, y, h, rev, doc, pic, selected,
   catching: boolean;
   /** Being dragged somewhere else. */
   lifted?: boolean;
+  /** A piece, drawn from its thing: in place of the frame's own page. */
+  piece?: PieceShow;
 }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const measure = async () => { if (!f.height && ref.current) { const m = await frameHeight(ref.current); if (m) act.current.height(f.id, rev, m, true); } };
@@ -1003,9 +1093,10 @@ const FrameView = memo(function FrameView({ f, x, y, h, rev, doc, pic, selected,
   return (
     <figure className="design-frame" data-lifted={lifted || undefined} style={{ left: x, top: y, width: f.width }}>
       <figcaption title={`${f.name}, ${frameSize(f)}${f.by === "model" ? ", by your model" : ""}`}>{f.name}<span>{frameSize(f)}</span>{f.by === "model" && <span>by your model</span>}</figcaption>
-      <div className="design-frame-box" data-frame-box={f.id} data-drawn={doc ? "live" : pic ? "picture" : "outline"} style={{ width: f.width, height: h }}>
+      <div className="design-frame-box" data-frame-box={f.id} data-piece={f.piece?.kind} data-drawn={piece?.draw === "page" || doc ? "live" : piece || pic ? "picture" : "outline"} style={{ width: f.width, height: h }}>
         {/* Drawn and nothing more: no scripts run in it, and nothing in it can be focused or clicked. */}
-        {doc ? <iframe ref={ref} title={f.name} inert sandbox="allow-same-origin" srcDoc={doc} style={{ width: f.width, height: h }} onLoad={() => void measure()} />
+        {piece ? <PieceDrawn piece={piece} name={f.name} width={f.width} />
+          : doc ? <iframe ref={ref} title={f.name} inert sandbox="allow-same-origin" srcDoc={doc} style={{ width: f.width, height: h }} onLoad={() => void measure()} />
           : pic ? <img className="design-pic" src={pic} alt="" decoding="async" draggable={false}
             onLoad={(e) => { const i = e.currentTarget; if (!f.height && i.naturalWidth) act.current.height(f.id, rev, Math.round(i.naturalHeight * f.width / i.naturalWidth), false); }}
             onError={() => act.current.picFailed(f.id, pic)} /> : null}
@@ -1018,6 +1109,133 @@ const FrameView = memo(function FrameView({ f, x, y, h, rev, doc, pic, selected,
     </figure>
   );
 });
+
+/** A piece on the board: its thing's own page, by the renderer the editor uses; a picture; or a note that it has gone. */
+function PieceDrawn({ piece, name, width }: { piece: PieceShow; name: string; width: number }) {
+  if (piece.draw === "gone") return <p className="design-gone" style={{ fontSize: Math.max(16, Math.round(width / 28)) }}>This {piece.kind === "yarn" ? "file is not in Yarn" : `${piece.kind} is not in the project`} any more.</p>;
+  if (piece.draw === "img") return <img className="design-pic design-piece-pic" src={piece.src} alt="" decoding="async" draggable={false} />;
+  return <PiecePage pattern={piece.pattern} ctx={piece.ctx} w={piece.w} h={piece.h} scale={width / piece.w} title={name} />;
+}
+/**
+ * A pattern or a part, live: the page the editor draws, at its own size, made as wide as the piece.
+ * One that moves is shown at the moment everything is in. Drawn again only when the thing changes.
+ */
+function PiecePage({ pattern, ctx, w, h, scale, title }: { pattern: Pattern; ctx: ThumbContext; w: number; h: number; scale: number; title: string }) {
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const doc = useMemo(() => pageFor(pattern, ctx), [pattern.id, pattern.version, pattern.updatedAt, ctx]);
+  const at = stillMs(pattern);
+  return <iframe title={title} inert tabIndex={-1} srcDoc={doc}
+    onLoad={(e) => { if (at) (e.currentTarget.contentWindow as (Window & { __stage?: { seek(ms: number): void } }) | null)?.__stage?.seek(at); }}
+    style={{ width: w, height: h, transform: `scale(${scale})`, transformOrigin: "0 0", pointerEvents: "none", background: "transparent" }} />;
+}
+
+/** A piece, picked: what it is, where to change it, and what to do with it on the sheet. */
+function PiecePane({ design, projectId, section, frame, things, change, onSelect }: {
+  design: DesignMeta; projectId: string; section: SectionMeta; frame: FrameMeta & { piece: PieceNow }; things: Things | null;
+  change: (ops: DesignOp[], said?: string) => Promise<unknown>; onSelect: (id: string | null) => void;
+}) {
+  const router = useRouter();
+  const toast = useToast();
+  const [knitting, setKnitting] = useState(false);
+  const [note, setNote] = useState(frame.note ?? "");
+  const { kind, id, gone } = frame.piece;
+  const pattern = kind === "pattern" ? things?.patterns.find((x) => x.id === id) : undefined;
+  const yarn = kind === "yarn" ? things?.yarn.find((x) => x.id === id) : undefined;
+  const part = kind === "part" ? things?.parts.find((x) => x.id === id) : undefined;
+  const about = aboutPiece(frame.piece, things, projectId);
+  const editorHref = `/projects/${projectId}/patterns/${id}`;
+  const lead = gone ? `This ${kind === "yarn" ? "file is not in Yarn" : `${kind} is not in the project`} any more, so the sheet shows a note in its place.`
+    : kind === "pattern" ? "The pattern itself, drawn as it is now. Change it in the editor, or ask your model, and the sheet shows the change."
+    : kind === "part" ? "The part itself, drawn as it is now. A change to it shows here, and each pattern that uses it is offered the change."
+    : `A ${yarn?.kind ?? "file"} from Yarn, shown as it is.`;
+  const facts = gone ? [] : [
+    `${PIECE_NAMES[kind]} · ${frame.piece.w} x ${frame.piece.h}`,
+    ...(pattern ? [`${pattern.size.name}`, `${pattern.stitches.length} ${pattern.stitches.length === 1 ? "stitch" : "stitches"}${pattern.durationMs ? `, ${(pattern.durationMs / 1000).toFixed(1)} seconds` : ""}`] : []),
+    ...(part ? [`${part.slots.length} ${part.slots.length === 1 ? "slot" : "slots"}${part.builtin ? ", a starter part" : ""}`] : []),
+    ...(yarn?.tags.length ? [`Tagged ${yarn.tags.join(", ")}`] : []),
+  ];
+  const openPart = async () => {
+    if (!part) return;
+    try { const pat = await api.parts.edit(part.id, projectId); router.push(`/projects/${pat.projectId}/patterns/${pat.id}`); } catch (e) { toast.problem((e as Error).message); }
+  };
+  return (
+    <div className="design-frame-pane">
+      <h2 className="label" style={{ margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{frame.name}</h2>
+      <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>In {section.name}. {lead}</p>
+      {facts.length > 0 && <ul className="design-facts body-sm">{facts.map((x) => <li key={x}>{x}</li>)}</ul>}
+      {!gone && (
+        <div className="design-piece-acts">
+          {kind === "pattern" && <Link className="btn btn-sm btn-primary" href={editorHref}><ExternalLink size={14} aria-hidden /> Open in the editor</Link>}
+          {pattern && <Button size="sm" tip="Real files from the pattern as it is now, into Knits." onClick={() => setKnitting(true)}>Knit</Button>}
+          {kind === "yarn" && <Link className="btn btn-sm" href={`/projects/${projectId}/yarn?open=${id}`}><ExternalLink size={14} aria-hidden /> Open in Yarn</Link>}
+          {kind === "part" && (part && !part.builtin && part.kind !== "code"
+            ? <Button size="sm" variant="primary" tip="Every pattern that uses it is offered the change." onClick={() => void openPart()}><ExternalLink size={14} aria-hidden /> Open in the editor</Button>
+            : <Link className="btn btn-sm" href={`/projects/${projectId}/parts`}><ExternalLink size={14} aria-hidden /> Open in Parts</Link>)}
+          {about && <AskModelButton size="sm" about={about} />}
+        </div>
+      )}
+      <Field label="Note" htmlFor="piece-note" hint="What it is for, or what to do next. Your model reads it.">
+        <Textarea id="piece-note" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+      </Field>
+      {note !== (frame.note ?? "") && <div><Button size="sm" variant="primary" onClick={() => void change([{ op: "setFrame", section: section.id, frameId: frame.id, note }])}>Save the note</Button></div>}
+      <div style={{ display: "grid", gap: "var(--space-2)", borderTop: "1px solid var(--line)", paddingTop: "var(--space-4)" }}>
+        <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
+          <a className="btn btn-sm" href={api.designs.pictureUrl(design.id, { frame: frame.id, scale: 2 })}><Download size={14} aria-hidden /> Picture</a>
+          <Button size="sm" variant="ghost" tip={`The ${kind === "yarn" ? "file" : kind} itself stays where it is.`}
+            onClick={async () => { onSelect(null); await change([{ op: "removeFrame", frameId: frame.id }], `Took ${frame.name} off the sheet`); }}><Trash2 size={14} aria-hidden /> Take it off the sheet</Button>
+        </div>
+        {design.sections.length > 1 && (
+          <Field label="Section" htmlFor="piece-section">
+            <Select id="piece-section" value={section.id} onValueChange={(v) => void change([{ op: "moveFrame", frameId: frame.id, section: v }])} options={design.sections.map((s) => ({ value: s.id, label: s.name }))} />
+          </Field>
+        )}
+      </div>
+      {pattern && <KnitDialog open={knitting} onOpenChange={setKnitting} pattern={pattern} projectId={projectId} editorHref={editorHref} />}
+    </div>
+  );
+}
+
+/** Pick one of the project's patterns, Yarn pictures or parts to put on the sheet, by its picture and name. */
+function PieceDialog({ adding, things, thumbs, swatch, projectId, onClose, onPick }: {
+  adding: { kind: PieceKind; section: SectionMeta } | null; things: Things | null; thumbs: ThumbContext | null; swatch: Swatch; projectId: string;
+  onClose: () => void; onPick: (kind: PieceKind, id: string) => Promise<void>;
+}) {
+  const [q, setQ] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const kind = adding?.kind ?? "pattern";
+  const words = q.trim().toLowerCase();
+  const all: { id: string; name: string; aside: string; pic: ReactNode }[] = !things ? [] : kind === "pattern"
+    ? things.patterns.map((p) => ({ id: p.id, name: p.name, aside: `${p.size.w} x ${p.size.h}`, pic: <span className="piece-pick-fit" style={{ aspectRatio: `${p.size.w} / ${p.size.h}` }}><PatternThumb pattern={p} ctx={thumbs} /></span> }))
+    : kind === "yarn"
+      ? things.yarn.filter(placeable).map((y) => ({ id: y.id, name: y.name, aside: y.kind === "video" ? "Video" : y.width && y.height ? `${y.width} x ${y.height}` : "Picture", pic: y.meta.thumb || y.kind === "image" ? <img src={y.meta.thumb ? yarnThumbUrl(y) : yarnFileUrl(y)} alt="" loading="lazy" /> : null }))
+      : things.parts.map((p) => ({ id: p.id, name: p.name, aside: p.builtin ? "Starter" : `${p.slots.length} ${p.slots.length === 1 ? "slot" : "slots"}`, pic: <PartThumb part={p} swatch={swatch} projectId={projectId} width={200} /> }));
+  const found = words ? all.filter((x) => x.name.toLowerCase().includes(words)) : all;
+  const shown = found.slice(0, 48);
+  const pick = async (id: string) => { setBusy(id); try { await onPick(kind, id); } finally { setBusy(null); } };
+  return (
+    <Dialog open={!!adding} onOpenChange={(o) => { if (!o) { onClose(); setQ(""); } }} size="lg" title={`${PIECE_ADD[kind].title} to ${adding?.section.name ?? "the section"}`}
+      description="It goes on the sheet as it is now, not as a copy: a change to it shows on the sheet too."
+      actions={<Button variant="ghost" onClick={onClose}>Cancel</Button>}>
+      <div style={{ display: "grid", gap: "var(--space-3)" }}>
+        <Input type="search" aria-label="Find by name" placeholder="Find by name" value={q} onChange={(e) => setQ(e.target.value)} />
+        {!things ? <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>Loading...</p>
+          : !all.length ? <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>{PIECE_ADD[kind].empty}</p>
+          : !found.length ? <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>Nothing is called that.</p>
+          : <ul className="piece-picks" aria-label={PIECE_ADD[kind].title}>
+              {shown.map((x) => (
+                <li key={x.id}>
+                  <button type="button" className="piece-pick" disabled={!!busy} aria-busy={busy === x.id || undefined} onClick={() => void pick(x.id)}>
+                    <span className="piece-pick-pic" aria-hidden>{x.pic}</span>
+                    <span className="piece-pick-name">{x.name}</span><span className="piece-pick-aside">{x.aside}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>}
+        {found.length > shown.length && <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>Showing {shown.length} of {found.length}. Find one by name for the rest.</p>}
+      </div>
+    </Dialog>
+  );
+}
 
 function Inspector({ design, projectId, section, frame, draft, setDraft, dirty, onSave, onDiscard, change, onSelect }: {
   design: DesignMeta; projectId: string; section: SectionMeta; frame: DesignFrame; draft: Draft; setDraft: (d: Draft) => void; dirty: boolean;

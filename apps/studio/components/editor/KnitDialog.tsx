@@ -46,7 +46,8 @@ function split(line: string): string[] {
   return out;
 }
 
-export function KnitDialog({ open, onOpenChange, pattern, projectId }: { open: boolean; onOpenChange: (o: boolean) => void; pattern: Pattern; projectId: string }) {
+/** `editorHref`: opened outside the editor, a problem with a stitch links to the pattern there instead of showing the stitch. */
+export function KnitDialog({ open, onOpenChange, pattern, projectId, editorHref }: { open: boolean; onOpenChange: (o: boolean) => void; pattern: Pattern; projectId: string; editorHref?: string }) {
   const toast = useToast();
   const motion = pattern.durationMs > 0;
   const [format, setFormat] = useState<"png" | "jpeg" | "webp" | "mp4">(motion ? "mp4" : "png");
@@ -161,7 +162,7 @@ export function KnitDialog({ open, onOpenChange, pattern, projectId }: { open: b
                       </div>
                       {[...errs, ...warns].length > 0 && !keptAsIs(u) && (
                         <ul className="knit-file-issues">
-                          {[...errs, ...warns].slice(0, 3).map((i, n) => <li key={n} data-level={i.level}>{i.message}{i.stitchId && <> <button type="button" className="link" onClick={() => show(i.stitchId!)}>Show me</button></>}</li>)}
+                          {[...errs, ...warns].slice(0, 3).map((i, n) => <li key={n} data-level={i.level}>{i.message}{i.stitchId && <> {editorHref ? <Link className="link" href={editorHref}>Fix it in the editor</Link> : <button type="button" className="link" onClick={() => show(i.stitchId!)}>Show me</button>}</>}</li>)}
                         </ul>
                       )}
                     </li>

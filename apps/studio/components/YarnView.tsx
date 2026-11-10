@@ -118,7 +118,8 @@ function UploadTray({ items, onCancel, onClear }: { items: UploadItem[]; onCance
   );
 }
 
-export function YarnView({ projectId, shelf = "yarn", heading = true }: { projectId: string; shelf?: Shelf; heading?: boolean }) {
+/** `open`: a file to open on arriving, by its id. */
+export function YarnView({ projectId, shelf = "yarn", heading = true, open }: { projectId: string; shelf?: Shelf; heading?: boolean; open?: string }) {
   const toast = useToast();
   const words = SHELF[shelf];
   const router = useRouter();
@@ -135,7 +136,7 @@ export function YarnView({ projectId, shelf = "yarn", heading = true }: { projec
   const [kind, setKind] = useState<"all" | YarnKind>("all");
   const [q, setQ] = useState("");
   const [tag, setTag] = useState<string | undefined>();
-  const [detail, setDetail] = useState<string | null>(null);
+  const [detail, setDetail] = useState<string | null>(open ?? null);
   const [copyOpen, setCopyOpen] = useState(false);
   const [urlOpen, setUrlOpen] = useState(false);
   const [over, setOver] = useState(false);

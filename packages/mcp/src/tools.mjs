@@ -20,7 +20,7 @@
 import { applyCommand, claimTexts, findSection, frameSize, DESIGN_DEVICES, TOKEN_NAMES, instanceOf, joinFolder, motionLint, sceneChange, parentOf, partFromStitches, preflight, uniqueSlotName, checkPost, metricsLine, COLOR_ROLES, FOLDER_SECTIONS, PLATFORMS, PRESETS, SIZES, KNIT_SIZES, sizeNamed, CommandSchema } from "@knitted/core";
 import { GUIDE, GUIDE_TOPICS } from "./guide.mjs";
 import { LIBRARY_ID } from "@knitted/core";
-import { setYarnScope, activeSwatch, cancelPost, createPost, getAccount, getPost, listAccounts, listPosts, postInsights, validatePost, cleanFolder, cropToYarn, getBrief, pdfText, readWebsite, setProfile, viewVideo, viewYarn, createFolder, createPart, editPart, partUsage, createSwatch, createSwatchFromProposal, folderCounts, getKnit, getPart, getYarn, setKnitFavorite, setKnitPost, setKnitTags, importYarn, importYarnFromPath, importYarnFromUrl, searchStock, addStock, saveDrawing, drawSheet, planGeneration, startGeneration, createCopy, createDesign, changeDesign, getDesign, listDesigns, listComments, replyComment, knitPath, listFolders, listKnits, countKnits, changedSince, withVersions, listParts, listYarn, moveAllToFolder, proposeFromWebsite, renameFolder, setCopyText, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
+import { setYarnScope, activeSwatch, cancelPost, createPost, getAccount, getPost, listAccounts, listPosts, postInsights, validatePost, cleanFolder, cropToYarn, getBrief, pdfText, readWebsite, setProfile, viewVideo, viewYarn, createFolder, createPart, editPart, partUsage, createSwatch, createSwatchFromProposal, folderCounts, getKnit, getPart, getYarn, setKnitFavorite, setKnitPost, setKnitTags, importYarn, importYarnFromPath, importYarnFromUrl, searchStock, addStock, saveDrawing, drawSheet, planGeneration, startGeneration, createCopy, createDesign, changeDesign, getDesign, listDesigns, withPieces, listComments, replyComment, knitPath, listFolders, listKnits, countKnits, changedSince, withVersions, listParts, listYarn, moveAllToFolder, proposeFromWebsite, renameFolder, setCopyText, uploadTempPath, updateYarn, ensureBuiltinParts, SUPPORTED } from "@knitted/core/node";
 
 const obj = (properties, required = []) => ({ type: "object", properties, required, additionalProperties: false });
 const str = (description) => ({ type: "string", description });
@@ -67,14 +67,20 @@ const STARTED_AT = new Date(Date.now() - process.uptime() * 1000).toISOString();
 // ── design sheets ─────────────────────────────────────────────────────────────
 const DESIGN = str("The design id, like ds_01...");
 const DEVICE = { type: "string", enum: ["desktop", "tablet", "mobile"], description: "desktop is 1440 wide, tablet 834, mobile 390. Or give width." };
-/** A sheet as a model reads it: sections and frames by id, with each frame's code only when asked. */
-function designOut(d, { code = false, frameId } = {}) {
+/** A piece as a model reads it: what it is, by id, and how to change it. */
+const pieceOut = (p) => ({ kind: p.kind, id: p.id, ...(p.gone ? { gone: true } : {}),
+  change: p.gone ? "It is not in the project any more: take it off with removeFrame, or ask the person."
+    : p.kind === "pattern" ? "Change the pattern itself (describe_pattern, then update_stitch or apply_batch); the sheet shows it as it is."
+    : p.kind === "part" ? "Change the part itself with edit_part; the sheet shows it as it is." : "A file from Yarn, shown as it is." });
+/** A sheet as a model reads it: sections and frames by id, with each frame's code only when asked. A piece has no code: it says what it is. */
+function designOut(store, raw, { code = false, frameId } = {}) {
+  const d = withPieces(store, raw);
   return {
     id: d.id, name: d.name, version: d.version,
     sections: d.sections.map((s) => ({
       id: s.id, name: s.name, ...(s.note ? { note: s.note } : {}), ...(s.x != null ? { at: { x: s.x, y: s.y } } : {}), ...(s.width ? { width: s.width } : {}),
       frames: s.frames.map((f) => ({ id: f.id, name: f.name, size: frameSize(f), width: f.width, ...(f.height ? { height: f.height } : {}), ...(f.note ? { note: f.note } : {}), ...(f.by ? { by: f.by } : {}),
-        ...(code || f.id === frameId ? { html: f.html, css: f.css } : { codeChars: f.html.length + f.css.length }) })),
+        ...(f.piece ? { piece: pieceOut(f.piece) } : code || f.id === frameId ? { html: f.html, css: f.css } : { codeChars: f.html.length + f.css.length }) })),
     })),
   };
 }
@@ -100,7 +106,7 @@ function commentOut(t) {
   };
 }
 
-const DESIGN_OPS = ["rename", "addSection", "updateSection", "moveSection", "placeSection", "removeSection", "moveFrame", "duplicateFrame", "removeFrame"];
+const DESIGN_OPS = ["rename", "addSection", "updateSection", "moveSection", "placeSection", "removeSection", "addPiece", "moveFrame", "duplicateFrame", "removeFrame"];
 
 const tagList = (tags) => { if (tags !== undefined && !(Array.isArray(tags) && tags.every((t) => typeof t === "string"))) throw new Error("tags is a list of words, like [\"product\", \"shot\"]."); };
 /** What an import added. The same file twice is the same Yarn, so the tags asked for land on the one there, and it stays where it is filed. */
@@ -707,11 +713,11 @@ export const TOOLS = [
   // Filing a thing changes nothing about it. There is no tool to delete a folder: a person
   // does that in the studio, and what was in it moves up, so nothing is lost either way.
   { name: "list_designs", description: "A project's design sheets: whole sites on one board, like a Figma file, in labelled sections of frames. Each frame is a screen or a piece of one, in HTML and CSS.", inputSchema: obj({ projectId: PROJECT }, ["projectId"]),
-    async handler({ projectId }, { store }) { return listDesigns(store, projectId).map((d) => ({ ...designOut(d), updatedAt: d.updatedAt })); } },
+    async handler({ projectId }, { store }) { return listDesigns(store, projectId).map((d) => ({ ...designOut(store, d), updatedAt: d.updatedAt })); } },
   { name: "get_design", description: "Read a design sheet: its sections and frames by id. Give frameId for that frame's HTML and CSS, or code: true for every frame's. Look at it with view_design.", inputSchema: obj({ designId: DESIGN, frameId: str("A frame's id, like f7, for its code"), code: { type: "boolean", description: "Every frame's HTML and CSS. A sheet's code can be long: ask for one frame when that is enough." } }, ["designId"]),
-    async handler({ designId, frameId, code }, { store }) { return { ...designOut(getDesign(store, designId), { code, frameId }), tokens: TOKEN_NAMES, pictures: "yarn:<id> in src or url(), or yarn:logo for the brand's logo" }; } },
+    async handler({ designId, frameId, code }, { store }) { return { ...designOut(store, getDesign(store, designId), { code, frameId }), tokens: TOKEN_NAMES, pictures: "yarn:<id> in src or url(), or yarn:logo for the brand's logo" }; } },
   { name: "create_design", description: "START a design sheet for a whole site. start \"brand\" (the default) begins with Foundations (colours, type, buttons and fields), Components (header, footer) and Pages (a home page on desktop and mobile), all drawn with the brand's Swatch, to make into the business's own; \"blank\" begins with one empty Pages section. Then design with set_design_frame. Read get_guide designing first.", inputSchema: obj({ projectId: PROJECT, name: str("Like \"Website\" or \"Spring launch page\""), start: { type: "string", enum: ["brand", "blank"] } }, ["projectId", "name"]),
-    async handler({ projectId, name, start }, { store }) { const d = createDesign(store, projectId, { name, start }, "model"); return { ...designOut(d), next: "view_design to see it, then set_design_frame to make each frame the business's own." }; } },
+    async handler({ projectId, name, start }, { store }) { const d = createDesign(store, projectId, { name, start }, "model"); return { ...designOut(store, d), next: "view_design to see it, then set_design_frame to make each frame the business's own." }; } },
   { name: "set_design_frame", description: "DESIGN one frame of a sheet: a page, a screen or a piece of one, as HTML and CSS, and SEE it. Give frameId to change one, or leave it out to add one to the section (by id or name; a section that is not there yet is added). The brand is in CSS variables: var(--color-primary) and the other roles, var(--color-on-primary) for text on it, var(--font-display), var(--font-body), var(--radius). Pictures from Yarn are yarn:<id>, the logo yarn:logo. No scripts, and nothing from the web. It comes back drawn: look, and fix what is off.", inputSchema: obj({ designId: DESIGN, section: str("The section's id or name, like s3 or \"Pages\""), frameId: str("The frame to change, like f7. Leave out to add a frame"), name: str("Like \"Home\" or \"Pricing, mobile\""), device: DEVICE, width: { type: "number", description: "In pixels, 240 to 3840, when not a device's" }, height: { type: "number", description: "A fixed height, like one phone screen (844). Leave it out to keep the height it has; 0 for a frame as tall as what is in it." }, html: str("The frame's body, without <html>, <head> or <body>"), css: str("Its styles. They are its own: no other frame sees them"), note: str("What it is for, or what is still to do") }, ["designId", "section"]),
     async handler({ designId, section, frameId, name, device, width, height, html, css, note }, { store, engine }) {
       const d = getDesign(store, designId);
@@ -728,12 +734,12 @@ export const TOOLS = [
       const png = await lookAt(engine, store, designId, { frameId: id });
       return png ? { __image: png.toString("base64"), mime: "image/png", caption: `${said} This is it, drawn.${f.height ? "" : " A tall page is cut into columns, left to right."}`, id: designId, frameId: id } : { saved: said, frameId: id, note: "It could not be drawn here: knitted's browser is not ready, so look later with view_design." };
     } },
-  { name: "arrange_design", description: "ARRANGE a design sheet, all changes or none: rename it, add, rename, place, wrap, move or remove sections, and move, copy or remove frames. Each change is { op, ... }: rename {name}; addSection {name, note?, at?, x?, y?, width?}; updateSection {section, name?, note?, width?}; moveSection {section, to}; placeSection {section, x, y}; removeSection {section}; moveFrame {frameId, section, at?}; duplicateFrame {frameId, name?}; removeFrame {frameId}. at and to count from 0. The board is in the frames' pixels: placeSection puts a section's top left corner at x, y (multiples of 40 line up with the grid), and null for both puts it back in the column of sections not placed, which stands under the placed ones in order. A section's width wraps its frames into rows (null: one row). The person can undo it.", inputSchema: obj({ designId: DESIGN, changes: { type: "array", minItems: 1, maxItems: 50, items: { type: "object", properties: { op: { type: "string", enum: DESIGN_OPS } }, required: ["op"] } } }, ["designId", "changes"]),
+  { name: "arrange_design", description: "ARRANGE a design sheet, all changes or none: rename it, add, rename, place, wrap, move or remove sections, and move, copy or remove frames. Each change is { op, ... }: rename {name}; addSection {name, note?, at?, x?, y?, width?}; updateSection {section, name?, note?, width?}; moveSection {section, to}; placeSection {section, x, y}; removeSection {section}; addPiece {section, kind, id, width?, note?, at?}; moveFrame {frameId, section, at?}; duplicateFrame {frameId, name?}; removeFrame {frameId}. at and to count from 0. addPiece puts one of the project's own things on the sheet beside the pages, drawn as it is now: kind \"pattern\" (from list_patterns), \"yarn\" (a picture or video, from list_yarn) or \"part\" (from list_parts); at its own size, or width pixels wide in its own shape. A piece has no code: change the thing itself, and the sheet shows the change. The board is in the frames' pixels: placeSection puts a section's top left corner at x, y (multiples of 40 line up with the grid), and null for both puts it back in the column of sections not placed, which stands under the placed ones in order. A section's width wraps its frames into rows (null: one row). The person can undo it.", inputSchema: obj({ designId: DESIGN, changes: { type: "array", minItems: 1, maxItems: 50, items: { type: "object", properties: { op: { type: "string", enum: DESIGN_OPS } }, required: ["op"] } } }, ["designId", "changes"]),
     async handler({ designId, changes }, { store }) {
       const bad = changes.find((c) => !DESIGN_OPS.includes(c?.op));
       if (bad) throw new Error(`"${bad?.op}" is not a change arrange_design makes. Design a frame with set_design_frame.`);
       const r = changeDesign(store, designId, changes, "model");
-      return { ...designOut(r), made: r.made };
+      return { ...designOut(store, r), made: r.made };
     } },
   { name: "view_design", description: "LOOK at a design sheet as the person sees it: the whole board with its labelled sections, one section, or one frame. A whole sheet is small: look at a frame or a section to check the detail. A tall frame is cut into columns, left to right.", inputSchema: obj({ designId: DESIGN, sectionId: str("A section's id or name, for just that section"), frameId: str("A frame's id, for just that frame") }, ["designId"]),
     async handler({ designId, sectionId, frameId }, { store, engine }) {
@@ -751,12 +757,15 @@ export const TOOLS = [
     } },
   { name: "view_comment", description: "LOOK at a comment: the knit (at the comment's moment, in a video) or the frame, with the pin drawn where the person put it, beside a close-up of that spot. Says what is under the pin (the stitch in the knit's pattern, or the element in the frame's HTML), the whole thread, and how to change that part.", inputSchema: obj({ commentId: COMMENT }, ["commentId"]),
     async handler({ commentId }, { store, engine }) {
-      const { thread: t, png, under, patternId, frameGone } = await engine.lookAtComment(store, commentId);
+      const { thread: t, png, under, patternId, frameGone, piece } = await engine.lookAtComment(store, commentId);
       const thread = [`Comment ${t.n} on ${t.knitId ? `the knit "${t.on}"` : `the design "${t.on}"`}, by ${byWho(t.author)}: "${t.text}"`, ...t.replies.map((r) => `${byWho(r.author)} replied: "${r.text}"`)].join(" ");
       const there = Array.isArray(under) ? (under.length ? `Under the pin, top first: ${under.map((u) => `${u.kind} stitch ${u.stitchId}${u.slot ? ` (slot ${u.slot})` : ""}${u.text ? ` saying "${u.text}"` : ""}`).join("; ")}.` : "Under the pin there is only the background.")
         : under ? `Under the pin is ${under.tag}${under.text ? ` saying "${under.text}"` : ""}, in ${under.path}. Its HTML: ${under.html}` : "";
       const how = t.knitId
         ? patternId ? `The knit was made from the pattern ${patternId}: change that pattern (describe_pattern first), check it with check_pattern, then knit it again with knit_pattern at the same size. The old knit stays where it is.` : "The pattern it was knitted from is gone, so make the change in the closest pattern and knit a new version."
+        : piece?.kind === "pattern" ? `The frame is the pattern "${piece.name}" (${piece.id}) placed on the sheet, not code: change the pattern itself (describe_pattern first, then update_stitch or apply_batch), check it with check_pattern, and look again with view_design, which shows it as it is now. Knit it only if the person asks.`
+        : piece?.kind === "part" ? `The frame is the part "${piece.name}" (${piece.id}) placed on the sheet, not code: change the part itself with edit_part (list_parts shows it), and look again with view_design. Each pattern that uses it is offered the change.`
+        : piece ? `The frame is the Yarn file "${piece.name}" (${piece.id}) placed on the sheet: a file is not changed in place. Make a new one (crop_to_yarn, draw_svg or generate_image), add it with arrange_design addPiece beside or in place of this one, and say what you did.`
         : `Change the frame with set_design_frame (get_design with its frameId gives the code), and look again with view_design.`;
       const pinned = frameGone ? "The frame it was pinned to has been deleted since, so this is the whole sheet, without the pin: ask the person where it belongs now, or answer it if the deletion did what it asked."
         : t.x != null ? `The pin is the red ring numbered ${t.n}; on the right is a close-up of the spot.` : "It has no pin: it is about the whole thing.";

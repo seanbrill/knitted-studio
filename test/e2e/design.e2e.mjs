@@ -92,7 +92,8 @@ test("a section and a frame are added, and the frame opens to be written", async
   await s.getByLabel("Note").fill("What people buy");
   await s.getByRole("button", { name: "Add it" }).click();
   await page.getByRole("heading", { name: "Shop", exact: true }).waitFor();
-  await page.getByRole("button", { name: "Add a frame to Shop" }).click();
+  await page.getByRole("button", { name: "Add to Shop" }).click();
+  await page.getByRole("menuitem", { name: /^A frame/ }).click();
   const f = page.getByRole("dialog", { name: "Add a frame to Shop" });
   await f.getByLabel("Name").fill("Product");
   await f.getByRole("radio", { name: "Mobile 390" }).click();
@@ -369,9 +370,76 @@ test("the pane has a knit's tabs: a frame picked shows its comments first, a pin
   assert.equal(await page.locator(".design-pane").count(), 0);
 });
 
+test("a pattern and a Yarn picture go on the sheet as themselves: drawn live, changed where they are, and picked into a pane of their own", async () => {
+  // A pattern of the project's own, and a picture in its Yarn.
+  const post = (await j("POST", `/api/projects/${projectId}/patterns`, { name: "Launch post", size: { name: "Instagram post", w: 1080, h: 1350 } })).body;
+  for (const stitch of [
+    { id: "bg", kind: "shape", x: 0, y: 0, w: 1, h: 1, locked: false, style: { background: "#204060" } },
+    { id: "head", kind: "text", slot: "headline", x: 0.1, y: 0.1, w: 0.8, h: 0.2, locked: false, content: "Spring sale", style: { color: "#ffffff" } },
+  ]) assert.equal((await j("POST", `/api/patterns/${post.id}/commands`, { command: { type: "addStitch", stitch } })).status, 200);
+  const dir = mkdtempSync(join(tmpdir(), "knitted-piece-"));
+  await sharp({ create: { width: 900, height: 600, channels: 3, background: "#c03020" } }).png().toFile(join(dir, "Red wall.png"));
+  const added = await call("import_yarn_file", { projectId, path: join(dir, "Red wall.png") });
+  const redId = JSON.parse(added.content[0].text).id;
+
+  await page.goto(`${studio.url}/projects/${projectId}/designs/${designId}`);
+  // From a section's menu: a pattern, picked by its picture and name.
+  await page.getByRole("button", { name: "Add to Shop" }).click();
+  await page.getByRole("menuitem", { name: /^A pattern/ }).click();
+  const picker = page.getByRole("dialog", { name: "Add a pattern to Shop" });
+  await picker.getByRole("button", { name: /Launch post/ }).waitFor();
+  assert.deepEqual(await axeProblems(page), []);
+  await picker.getByRole("button", { name: /Launch post/ }).click();
+  await picker.waitFor({ state: "detached" });
+
+  // Picked as it lands: its own tab, and where to change it.
+  const pane = page.getByRole("complementary", { name: "Pattern: Launch post" });
+  await pane.getByRole("tab", { name: "Pattern" }).waitFor();
+  assert.equal(await pane.getByRole("link", { name: "Open in the editor" }).getAttribute("href"), `/projects/${projectId}/patterns/${post.id}`);
+  await pane.getByRole("button", { name: "Knit" }).waitFor();
+  await pane.getByText("1080 x 1350").waitFor();
+  const hit = page.getByRole("button", { name: "Launch post, Pattern 1080 x 1350" });
+  assert.equal(await hit.getAttribute("aria-pressed"), "true");
+
+  // Zoomed to, it is drawn live by the editor's renderer; changed anywhere, the sheet shows it.
+  await page.getByRole("toolbar", { name: "Launch post, picked" }).getByRole("button", { name: "Zoom to it" }).click();
+  await frame("Launch post").getByText("Spring sale").waitFor();
+  await j("POST", `/api/patterns/${post.id}/commands`, { command: { type: "updateStitch", id: "head", patch: { content: "Summer sale" } } });
+  await frame("Launch post").getByText("Summer sale").waitFor();
+  const box = await page.locator('[data-piece="pattern"]').boundingBox();
+  assert.ok(Math.abs(box.width / box.height - 1080 / 1350) < 0.01, "in its own shape");
+
+  // Ask your model is about the pattern itself.
+  await page.getByRole("toolbar", { name: "Launch post, picked" }).getByRole("button", { name: "Ask your model" }).click();
+  const ask = page.getByRole("dialog", { name: "Ask your model to change this pattern" });
+  await ask.getByText("Launch post").first().waitFor();
+  await page.keyboard.press("Escape");
+  await ask.waitFor({ state: "detached" });
+
+  // Yarn: a picture, as it is.
+  await page.getByRole("button", { name: "Add to Shop" }).click();
+  await page.getByRole("menuitem", { name: /^Yarn/ }).click();
+  await page.getByRole("dialog", { name: "Add from Yarn to Shop" }).getByRole("button", { name: /Red wall/ }).click();
+  const yarnPane = page.getByRole("complementary", { name: "Yarn: Red wall" });
+  assert.equal(await yarnPane.getByRole("link", { name: "Open in Yarn" }).getAttribute("href"), `/projects/${projectId}/yarn?open=${redId}`);
+  await page.locator('[data-piece="yarn"] img').waitFor();
+  assert.deepEqual(await axeProblems(page), []);
+
+  // Taken off the sheet, the picture stays in Yarn, and Undo puts it back.
+  await yarnPane.getByRole("button", { name: "Take it off the sheet" }).click();
+  await page.locator('[data-piece="yarn"]').waitFor({ state: "detached" });
+  await page.locator(".toast-action", { hasText: "Undo" }).click();
+  await page.locator('[data-piece="yarn"]').waitFor();
+
+  // A pattern deleted from the project leaves a note in its place.
+  assert.equal((await j("DELETE", `/api/patterns/${post.id}`)).status, 200);
+  await page.getByText("This pattern is not in the project any more.").waitFor();
+});
+
 test("a sheet is deleted from the list, and Undo brings it back", async () => {
   await page.goto(`${studio.url}/projects/${projectId}/designs`);
-  await page.getByText(/4 sections, 10 frames/).waitFor();
+  // The pattern and the picture from Yarn are counted as what they are.
+  await page.getByText(/4 sections, 10 frames, 2 pieces/).waitFor();
   await page.getByRole("button", { name: "Actions for Website" }).click();
   await page.getByRole("menuitem", { name: "Delete" }).click();
   await page.getByText("No designs yet").waitFor();

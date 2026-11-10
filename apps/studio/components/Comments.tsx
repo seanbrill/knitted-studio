@@ -56,7 +56,7 @@ export function fixPrompt(on: CommentsOn, threads: CommentThread[]): string {
     ? on.patternId
       ? `A knit is a finished file: change the pattern it was knitted from (${on.patternId}), check it with check_pattern, and knit it again with knit_pattern at the same size and format. That makes the next version of this knit, shown in its place, and the old one stays under its Versions.`
       : "The pattern it was knitted from is gone: make the change in the closest pattern and knit a new version."
-    : "Read get_guide designing first. Change the frame with set_design_frame, and look again with view_design.";
+    : "Read get_guide designing first. view_comment says what each frame is: a frame of HTML and CSS changes with set_design_frame; a pattern or a part placed on the sheet changes in the pattern or the part itself, and the sheet shows it as it is. Look again with view_design.";
   const list = threads.map((t) => `comment ${t.n} (${t.id})${t.frameName ? ` on the frame ${t.frameName}` : ""}${t.timeMs != null ? ` at ${clock(t.timeMs)}` : ""}: "${t.text}"`).join("; ");
   return `The person left ${threads.length === 1 ? "a comment" : `${threads.length} comments`} on ${what}, each pinned to the part that should change. Look at each with view_comment first: it shows the spot and says what is under the pin. ${how} When one is done, answer it with reply_comment, saying what you changed, with resolve: true. If one is not clear, ask in a reply instead, and leave it open.\n\nWhat I want: ${list}`;
 }
