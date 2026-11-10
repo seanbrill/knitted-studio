@@ -1,14 +1,16 @@
 {
-  "next": {
-    "title": "LinkedIn, as you or as your company page",
-    "items": [
-      "knitted can post to a LinkedIn company page you look after, not only to your own profile. In Settings, Social, LinkedIn now asks who posts: You, or Your company page, and walks through each.",
-      "A company page needs LinkedIn's Community Management API, which LinkedIn adds to an app once it approves your business. The steps say what LinkedIn asks for: a business email, the page verifying the app, and the request itself. Once it is approved, one sign-in adds each page you are an admin or a content admin of.",
-      "Your own LinkedIn stays as it was, through its own app, so you can post as yourself and as the page. A page shows as a company page when you pick where a post goes, and posts to anyone."
-    ]
-  },
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
   "entries": [
+    {
+      "version": "0.1.58",
+      "date": "2026-11-10",
+      "title": "LinkedIn, as you or as your company page",
+      "items": [
+        "knitted can post to a LinkedIn company page you look after, not only to your own profile. In Settings, Social, LinkedIn now asks who posts: You, or Your company page, and walks through each.",
+        "A company page needs LinkedIn's Community Management API, which LinkedIn adds to an app once it approves your business. The steps say what LinkedIn asks for: a business email, the page verifying the app, and the request itself. Once it is approved, one sign-in adds each page you are an admin or a content admin of.",
+        "Your own LinkedIn stays as it was, through its own app, so you can post as yourself and as the page. A page shows as a company page when you pick where a post goes, and posts to anyone."
+      ]
+    },
     {
       "version": "0.1.57",
       "date": "2026-11-10",
