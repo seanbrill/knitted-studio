@@ -95,7 +95,8 @@ export async function lookAtComment(store, commentId, { renderer: injected } = {
     if (piece) {
       let under = null;
       if (piece.kind === "pattern" && pinned) {
-        try { under = await stitchesAt(store, piece.id, { x: thread.x, y: thread.y, timeMs: stillMs(store.getPattern(piece.id)), renderer }); } catch { /* the picture says enough */ }
+        const size = frame.piece.size ? { name: frame.piece.size, w: frame.piece.w, h: frame.piece.h } : undefined;
+        try { under = await stitchesAt(store, piece.id, { x: thread.x, y: thread.y, timeMs: stillMs(store.getPattern(piece.id)), renderer, size }); } catch { /* the picture says enough */ }
       }
       return { thread, png: await withPin(png, thread), under, patternId: piece.kind === "pattern" ? piece.id : null, piece };
     }

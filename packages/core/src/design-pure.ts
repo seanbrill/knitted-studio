@@ -9,7 +9,7 @@
 
 import { readableOn } from "./contrast.ts";
 import { colorFor, fontFor } from "./tokens.ts";
-import { COLOR_ROLES, type Swatch } from "./types.ts";
+import { COLOR_ROLES, SIZES, type Swatch } from "./types.ts";
 
 export type DesignDevice = "desktop" | "tablet" | "mobile";
 export const DESIGN_DEVICES: Record<DesignDevice, { name: string; width: number; height: number }> = {
@@ -22,8 +22,11 @@ export const DESIGN_DEVICES: Record<DesignDevice, { name: string; width: number;
 export type PieceKind = "pattern" | "yarn" | "part";
 export const PIECE_KINDS: PieceKind[] = ["pattern", "yarn", "part"];
 export const PIECE_NAMES: Record<PieceKind, string> = { pattern: "Pattern", yarn: "Yarn", part: "Part" };
-/** Which of the project's things a piece is. */
-export interface DesignPiece { kind: PieceKind; id: string }
+/**
+ * Which of the project's things a piece is. A pattern can be shown at another of the sizes it
+ * knits at (`size`, a SIZES name): laid out again there on the sheet, the pattern itself unchanged.
+ */
+export interface DesignPiece { kind: PieceKind; id: string; size?: string }
 /** A piece as it is now: its own size, and whether it is still in the project. */
 export interface PieceNow extends DesignPiece { w: number; h: number; gone?: boolean }
 
@@ -197,12 +200,13 @@ export type DesignOp =
   /** To a place on the board, its top left corner at x, y; null for both puts it back in the column. */
   | { op: "placeSection"; section: string; x: number | null; y: number | null }
   | { op: "removeSection"; section: string }
-  | { op: "setFrame"; section: string; frameId?: string; name?: string; width?: number; height?: number | null; html?: string; css?: string; note?: string; at?: number }
+  /** On a pattern placed on the sheet, `size` shows it at one of SIZES (null: its own). */
+  | { op: "setFrame"; section: string; frameId?: string; name?: string; width?: number; height?: number | null; html?: string; css?: string; note?: string; at?: number; size?: string | null }
   /**
    * One of the project's patterns, Yarn pictures or videos, or parts, onto the sheet as it is. The
    * store fills in its name and its size from the thing itself; `width` draws it that wide instead.
    */
-  | { op: "addPiece"; section: string; kind: PieceKind; id: string; name?: string; width?: number; height?: number; note?: string; at?: number }
+  | { op: "addPiece"; section: string; kind: PieceKind; id: string; name?: string; width?: number; height?: number; note?: string; at?: number; size?: string }
   | { op: "moveFrame"; frameId: string; section: string; at?: number }
   | { op: "duplicateFrame"; frameId: string; name?: string }
   | { op: "removeFrame"; frameId: string };
@@ -271,11 +275,20 @@ function cleanPieceSize(width: unknown, height: unknown): { width: number; heigh
   if (!(h >= 1 && h <= DESIGN_LIMITS.maxHeight)) throw new DesignProblem(`At that width the piece would be ${h} pixels tall. Draw it narrower.`);
   return { width: w, height: h };
 }
-function cleanPiece(kind: unknown, id: unknown): DesignPiece {
+function cleanPiece(kind: unknown, id: unknown, size?: unknown): DesignPiece {
   if (!PIECE_KINDS.includes(kind as PieceKind)) throw new DesignProblem(`A piece is a pattern, yarn or a part, not "${String(kind)}".`);
   const i = String(id ?? "").trim();
   if (!i || i.length > 64) throw new DesignProblem(`Say which ${kind === "yarn" ? "Yarn file" : kind} to add, by its id.`);
-  return { kind: kind as PieceKind, id: i };
+  const p: DesignPiece = { kind: kind as PieceKind, id: i };
+  if (size != null) p.size = pieceSize(p, size).name;
+  return p;
+}
+/** One of the sizes a pattern knits at, to show it at on the sheet. Only a pattern has sizes. */
+function pieceSize(p: DesignPiece, size: unknown) {
+  if (p.kind !== "pattern") throw new DesignProblem(`Only a pattern can be shown at another size: this is ${p.kind === "yarn" ? "a file from Yarn" : "a part"}.`);
+  const sz = SIZES.find((x) => x.name.toLowerCase() === String(size).trim().toLowerCase());
+  if (!sz) throw new DesignProblem(`A pattern on the sheet is shown at its own size or one of: ${SIZES.map((x) => x.name).join(", ")}.`);
+  return sz;
 }
 /** What a piece is, in words for the one who asked to change its code. */
 const pieceWords = (f: DesignFrame) => `${f.name} (${f.id}) is ${f.piece!.kind === "yarn" ? "a file from Yarn" : `a ${f.piece!.kind}`} placed on the sheet, not code`;
@@ -325,6 +338,9 @@ export function applyDesignOps(design: { name: string; sections: DesignSection[]
             throw new DesignProblem(`${pieceWords(f)}: change the ${f.piece!.kind === "pattern" ? "pattern itself (describe_pattern, then update_stitch or apply_batch)" : f.piece!.kind === "part" ? "part itself (edit_part)" : "file in Yarn"}, and the sheet shows it as it is.`);
           }
           if (o.width !== undefined) { const size = cleanPieceSize(o.width, ((f.height ?? f.width) * Number(o.width)) / f.width); f.width = size.width; f.height = size.height; }
+          // Its own size again, or another: as tall as that shape makes it. The store fills in its own shape.
+          if (o.size === null) { if (f.piece!.kind !== "pattern") pieceSize(f.piece!, null); delete f.piece!.size; }
+          else if (o.size !== undefined) { const sz = pieceSize(f.piece!, o.size); f.piece = { ...f.piece!, size: sz.name }; f.height = cleanPieceSize(f.width, (f.width * sz.h) / sz.w).height; }
           if (o.note !== undefined) f.note = cleanNote(o.note);
           f.by = by; f.updatedAt = now;
           if (found.section !== s) { found.section.frames.splice(found.index, 1); place(s.frames, f, o.at); }
@@ -358,7 +374,7 @@ export function applyDesignOps(design: { name: string; sections: DesignSection[]
       }
       case "addPiece": {
         const s = findSection(sections, o.section);
-        const piece = cleanPiece(o.kind, o.id);
+        const piece = cleanPiece(o.kind, o.id, o.size);
         const size = cleanPieceSize(o.width, o.height);
         const f: DesignFrame = { id: nextId(sections, "f"), name: cleanName(o.name, "piece"), width: size.width, height: size.height, html: "", css: "", piece, by, updatedAt: now };
         const note = cleanNote(o.note); if (note) f.note = note;

@@ -332,3 +332,31 @@ test("a pattern, a Yarn picture or a part goes on a sheet as itself: named and s
   assert.deepEqual([gone.name, gone.width, gone.height, gone.piece.gone], ["Spring launch", 540, 960, true], "as it was at the sheet's last change");
   assert.equal(getDesign(store, d.id).sections[1].frames.length, 3, "still on the sheet");
 });
+
+test("a pattern on a sheet can be shown at another of its sizes, laid out there, while the pattern keeps its own", async () => {
+  const { listParts } = await import("../src/node.ts");
+  const post = store.createPattern(p.id, { name: "Sale post", size: { name: "Post", w: 1080, h: 1350 } });
+  const d = createDesign(store, p.id, { name: "Sizes", start: "blank" });
+  const s = d.sections[0].id;
+  // Added at a size: that shape, from the start.
+  const r = changeDesign(store, d.id, [{ op: "addPiece", section: s, kind: "pattern", id: post.id, size: "story" }]);
+  const f = r.sections[0].frames[0];
+  assert.deepEqual([f.width, f.height, f.piece], [1080, 1920, { kind: "pattern", id: post.id, size: "Story" }], "named as SIZES names it");
+  const meta = () => getDesignMeta(store, d.id).sections[0].frames[0];
+  assert.deepEqual([meta().piece.w, meta().piece.h, frameSize(meta())], [1080, 1920, "Pattern 1080 x 1920"]);
+  const story = meta().code;
+
+  // Switched: as tall as that shape at its width, drawn again; and back to its own.
+  changeDesign(store, d.id, [{ op: "setFrame", section: s, frameId: f.id, width: 540 }, { op: "setFrame", section: s, frameId: f.id, size: "Square" }]);
+  assert.deepEqual([meta().width, meta().height, meta().piece.size, meta().piece.h], [540, 540, "Square", 1080]);
+  assert.notEqual(meta().code, story, "drawn again at the new size");
+  changeDesign(store, d.id, [{ op: "setFrame", section: s, frameId: f.id, size: null }]);
+  assert.deepEqual([meta().height, meta().piece.size, meta().piece.h], [675, undefined, 1350]);
+  assert.equal(getDesign(store, d.id).sections[0].frames[0].height, 675, "kept at its own shape, not the last size's");
+  assert.deepEqual(store.getPattern(post.id).size, { name: "Post", w: 1080, h: 1350 }, "the pattern itself is unchanged");
+
+  // Only a pattern has sizes, and only the ones it knits at.
+  assert.throws(() => changeDesign(store, d.id, [{ op: "setFrame", section: s, frameId: f.id, size: "Poster" }]), /its own size or one of: Story, Post, Square, Landscape, Banner/);
+  const part = listParts(store, p.id)[0];
+  assert.throws(() => changeDesign(store, d.id, [{ op: "addPiece", section: s, kind: "part", id: part.id, size: "Story" }]), /Only a pattern can be shown at another size/);
+});

@@ -77,11 +77,14 @@ html,body{margin:0;width:${w}px;height:${h}px;overflow:hidden}${css}</style></he
       out.set(f.id, { w, h, still: 0, doc: page(url ? `<img src="${esc(url)}" alt="">` : "", "body{background:transparent}img{display:block;width:100%;height:100%;object-fit:contain}") });
       continue;
     }
-    const pattern = kind === "pattern" ? store.getPattern(id) : partPattern(getPart(store, id), w, h);
+    // A pattern shown at another of its sizes is laid out there: its stitches are fractions of it.
+    const pattern = kind === "pattern" ? atSize(store.getPattern(id), f.piece.size, w, h) : partPattern(getPart(store, id), w, h);
     out.set(f.id, { w, h, still: stillMs(pattern), doc: pageFor({ ...pattern, background: bg }, renderContext(store, projectId, pattern, swatch, files.yarn, yarnMap)) });
   }
   return out;
 }
+/** A pattern at the size a piece shows it at: its own, unless the piece names another. */
+const atSize = (p, size, w, h) => (size ? { ...p, size: { ...p.size, name: size, w, h } } : p);
 /** A part as a pattern of its own, filling it: how the editor shows a part. */
 const partPattern = (part, w, h) => ({ id: "piece", projectId: "", name: part.name, version: 1, updatedAt: "", durationMs: 0, size: { name: "piece", w, h },
   stitches: [{ id: "i", kind: "part", x: 0, y: 0, w: 1, h: 1, locked: false, partId: part.id, overrides: {}, partSlots: part.slots }] });

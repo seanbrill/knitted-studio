@@ -15,7 +15,7 @@ import { activeSwatch } from "./swatch.ts";
 import { applyDesignOps, designStarter, DESIGN_LIMITS, DesignProblem, frameRev, PIECE_KINDS, type Design, type DesignFrame, type DesignLint, type DesignMeta, type DesignOp, type DesignPiece, type DesignSection, type FrameCode, type FrameMeta, type PieceNow } from "./design-pure.ts";
 import { getPart } from "./parts.ts";
 import { getYarn } from "./yarn.ts";
-import { LIBRARY_ID, type Actor } from "./types.ts";
+import { LIBRARY_ID, SIZES, type Actor } from "./types.ts";
 
 type Row = Record<string, unknown>;
 /** How many earlier versions of a sheet are kept for Undo. */
@@ -58,8 +58,10 @@ export function pieceThing(store: Store, projectId: string, p: DesignPiece): Thi
   try {
     if (p.kind === "pattern") {
       const x = store.getPattern(p.id);
+      // Shown at another of its sizes, it is that shape on the sheet; the pattern keeps its own.
+      const sz = p.size ? SIZES.find((s) => s.name === p.size) : undefined;
       // A part open in the editor is a pattern too, but not one of the project's patterns.
-      return x.projectId === projectId && !x.partId ? { name: x.name, w: x.size.w, h: x.size.h, rev: `${x.version}` } : null;
+      return x.projectId === projectId && !x.partId ? { name: x.name, w: sz?.w ?? x.size.w, h: sz?.h ?? x.size.h, rev: `${x.version}${sz ? `:${sz.name}` : ""}` } : null;
     }
     if (p.kind === "part") {
       const x = getPart(store, p.id);
@@ -113,7 +115,7 @@ function fillPieces(store: Store, projectId: string, ops: DesignOp[]): DesignOp[
   return ops.map((o) => {
     if (o.op !== "addPiece") return o;
     if (!PIECE_KINDS.includes(o.kind)) throw new ValidationError(`A piece is a pattern, yarn or a part, not "${String(o.kind)}".`);
-    const t = pieceThing(store, projectId, { kind: o.kind, id: String(o.id ?? "") });
+    const t = pieceThing(store, projectId, { kind: o.kind, id: String(o.id ?? ""), ...(o.size && o.kind === "pattern" ? { size: SIZES.find((s) => s.name.toLowerCase() === String(o.size).trim().toLowerCase())?.name } : {}) });
     if (!t) throw new ValidationError(o.kind === "yarn"
       ? `There is no picture or video "${o.id}" in this project's Yarn. list_yarn shows what is.`
       : `There is no ${o.kind} "${o.id}" in this project. ${o.kind === "pattern" ? "list_patterns" : "list_parts"} shows what is.`);
@@ -254,7 +256,9 @@ export function changeDesign(store: Store, id: string, ops: DesignOp[], actor: A
   const d = getDesign(store, id);
   if (d.deletedAt) throw new ValidationError("That design is deleted. Bring it back first.");
   const t = now();
-  const out = run(() => applyDesignOps(freshPieces(store, d), fillPieces(store, d.projectId, ops), byOf(actor), t));
+  const applied = run(() => applyDesignOps(freshPieces(store, d), fillPieces(store, d.projectId, ops), byOf(actor), t));
+  // A piece shown at its own size again takes that shape now, not at the next change.
+  const out = { ...applied, sections: freshPieces(store, { ...d, sections: applied.sections }).sections };
   store.write(() => {
     keepVersion(store, d, actor, t);
     const trimmed = store.db.prepare("delete from design_versions where design_id = ? and version <= ?").run(id, d.version - KEEP).changes;

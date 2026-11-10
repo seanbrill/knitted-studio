@@ -56,6 +56,9 @@ A sheet can hold the project's own things beside its pages, such as a campaign's
 - What goes on the sheet is the thing itself, not a copy. A pattern or a part is drawn by the editor's own renderer, in your brand, so a change to it in the editor, by your model or anywhere else shows on the sheet. Big on screen it is drawn live; small, it is a picture of it.
 - It starts at its own size, in its own shape, and moves, zooms and sits in rows like any frame. Its label says what it is and how big, such as *Pattern 1080 x 1350*.
 - Select one, and the pane's first tab is named for it. A pattern has **Open in the editor**, **Knit** and **Ask your model**. Yarn has **Open in Yarn**. A part has **Open in the editor**, or **Open in Parts** for a starter part or one written in code. **Take it off the sheet** leaves the thing itself where it is.
+- A pattern's pane lists **Its words**, the ones you can fill: change one and leave the field (or press Ctrl+Enter), and it is saved into the pattern itself, so the editor, its knits and every sheet show it. **Undo** on the message that says so takes it back; the editor's own Undo does not reach a change made on the sheet. Words the brand locked are not on offer.
+- **Size on the sheet** shows a pattern at another of the sizes it knits at, such as a Story beside the Post, laid out there the way a knit at that size would be. The pattern keeps its own size, and **Knit** starts at the one the sheet shows. Put a pattern on the sheet twice to see it at two sizes.
+- A part's pane lists its slots.
 - Pin a comment to a pattern as to a frame. Your model is told which stitch is under the pin, and **Ask your model to do this** changes the pattern itself.
 - If the thing is deleted, the sheet shows a note in its place until you take it off.
 - **The code** download lists each one, but it has no page of code: it is in the picture of the sheet.

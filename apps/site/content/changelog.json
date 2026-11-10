@@ -1,5 +1,14 @@
 {
   "note": "Newest first. Each version's entry is added when main gives the app that version: what is under next, or else the commits that changed the app (docs/RELEASING.md).",
+  "next": {
+    "title": "A pattern's words and sizes, on a design sheet",
+    "items": [
+      "Pick a pattern on a design sheet, and its pane lists the words you can fill. Change one and leave the field, and it is saved into the pattern itself: the editor, its knits and every sheet show it. Undo on the message takes it back. Words the brand locked are not on offer.",
+      "Size on the sheet shows a pattern at another of the sizes it knits at, such as a Story beside the Post, laid out the way a knit at that size would be. The pattern keeps its own size, and Knit starts at the one the sheet shows.",
+      "A comment pinned on a pattern shown at another size tells your model the stitch under the pin at that size. Your model can set the size too, with arrange_design and set_design_frame.",
+      "A part's pane on the sheet lists its slots."
+    ]
+  },
   "entries": [
     {
       "version": "0.1.53",

@@ -769,6 +769,9 @@ body:has(.dialog, .viewer) .toasts { top: var(--space-4); bottom: auto; }
 .design-gone { margin: 0; width: 100%; height: 100%; display: grid; place-items: center; padding: 8%; text-align: center; background: var(--surface-sunken); color: var(--ink-muted); }
 .design-facts { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; color: var(--ink-muted); }
 .design-piece-acts { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.design-words { border: 0; margin: 0; padding: var(--space-4) 0 0; border-top: 1px solid var(--line); display: grid; gap: var(--space-3); min-width: 0; }
+.design-words > legend { float: left; width: 100%; margin: 0 0 var(--space-1); padding: 0; }
+.design-words-say { margin: 0; color: var(--ink-muted); }
 .piece-picks { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--space-3); max-height: min(56vh, 560px); overflow: auto; }
 .piece-pick { appearance: none; font: inherit; color: var(--ink); text-align: left; width: 100%; display: grid; gap: 4px; padding: 8px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-sunken); cursor: pointer; transition: border-color 120ms, background-color 120ms; }
 .piece-pick:hover { border-color: var(--line-strong); background: var(--surface-raised); }

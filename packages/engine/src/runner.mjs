@@ -257,8 +257,10 @@ export async function renderPreview(store, patternId, { timeMs = 0, scale = 1, r
  * has moved in by then is found where it is.
  * @returns {Promise<{ stitchId: string, kind: string, slot?: string, text?: string }[]>}
  */
-export async function stitchesAt(store, patternId, { x, y, timeMs = 0, renderer: injected } = {}) {
-  const pattern = store.getPattern(patternId);
+export async function stitchesAt(store, patternId, { x, y, timeMs = 0, renderer: injected, size } = {}) {
+  // `size`: laid out at another size than its own, as a piece on a design sheet shows it.
+  const own = store.getPattern(patternId);
+  const pattern = size ? { ...own, size: { ...own.size, ...size } } : own;
   const swatch = activeSwatch(store, pattern.projectId);
   const yarn = listYarn(store, pattern.projectId);
   const ctx = renderContext(store, pattern.projectId, pattern, swatch, yarn, Object.fromEntries(yarn.map((v) => [v.id, v])));

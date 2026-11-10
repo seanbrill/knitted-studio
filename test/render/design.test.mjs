@@ -103,4 +103,14 @@ test("a pattern and a Yarn picture on a sheet are drawn as they are, by the rend
   assert.equal(seen.patternId, post.id);
   assert.deepEqual(seen.piece, { kind: "pattern", id: post.id, name: "Launch post" });
   assert.deepEqual(seen.under.map((u) => u.stitchId), ["head", "bg"]);
+
+  // Shown as a Story, it is laid out at that size: a Story's shape, still the pattern's own colour.
+  changeDesign(store, d.id, [{ op: "setFrame", section: "Pages", frameId: made[0], size: "Story" }]);
+  const story = await share(await renderDesign(store, d.id, { frameId: made[0], renderer }), [0x20, 0x40, 0x60]);
+  assert.deepEqual([story.w, story.h], [540, 960]);
+  assert.ok(story.share > 0.6, `laid out at a Story's size: ${Math.round(story.share * 100)}%`);
+  // A pin low on the Story is on the background: the headline is a fifth of a taller frame now.
+  const low = addComment(store, { designId: d.id, frameId: made[0], x: 0.5, y: 0.6, text: "Something here" });
+  assert.deepEqual((await lookAtComment(store, low.id, { renderer })).under.map((u) => u.stitchId), ["bg"]);
+  assert.equal(store.getPattern(post.id).size.h, 1350, "the pattern keeps its own size");
 });

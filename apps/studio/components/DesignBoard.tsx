@@ -15,7 +15,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { api, ApiError, subscribeChanges, yarnFileUrl, yarnPictureUrl, yarnThumbUrl } from "@knitted/core/client";
-import { DESIGN_DEVICES, BOARD, PIECE_NAMES, deviceOf, dropIndex, frameRev, frameSize, guessHeight, layoutDesign, lintDesignCode, snapToGrid, stillMs, type BoardLayout, type DesignDevice, type DesignFrame, type DesignMeta, type DesignOp, type FrameCode, type FrameMeta, type LaidFrame, type LaidSection, type Part, type Pattern, type PieceKind, type PieceNow, type SectionMeta, type Swatch, type Yarn } from "@knitted/core";
+import { DESIGN_DEVICES, BOARD, PIECE_NAMES, SIZES, deviceOf, dropIndex, frameRev, frameSize, guessHeight, layoutDesign, lintDesignCode, snapToGrid, stillMs, type BoardLayout, type DesignDevice, type DesignFrame, type DesignMeta, type DesignOp, type FrameCode, type FrameMeta, type LaidFrame, type LaidSection, type Part, type Pattern, type PieceKind, type PieceNow, type SectionMeta, type Swatch, type Yarn } from "@knitted/core";
 import { pageFor } from "@knitted/render/pure";
 import { Button, ConfirmDialog, Dialog, Field, IconButton, Input, Menu, SegmentedControl, Select, TabPanel, Tabs, Textarea, Tip, icons, useToast } from "@knitted/ui";
 import { useLive } from "@/lib/hooks";
@@ -546,7 +546,9 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
       }
       if (mode !== "live" || !thumbs) continue;
       const part = p.kind === "part" ? parts.get(p.id) : undefined;
-      const pattern = p.kind === "pattern" ? patterns.get(p.id) : part ? partPattern(part, p.w, p.h) : undefined;
+      const own = p.kind === "pattern" ? patterns.get(p.id) : undefined;
+      // Shown at another of its sizes, a pattern is laid out there: its stitches are fractions of it.
+      const pattern = own ? (p.size ? { ...own, size: { ...own.size, name: p.size, w: p.w, h: p.h } } : own) : part ? partPattern(part, p.w, p.h) : undefined;
       if (pattern) out.set(f.id, { draw: "page", pattern, ctx: thumbs, w: p.w, h: p.h });
     }
     return out;
@@ -1122,7 +1124,7 @@ function PieceDrawn({ piece, name, width }: { piece: PieceShow; name: string; wi
  */
 function PiecePage({ pattern, ctx, w, h, scale, title }: { pattern: Pattern; ctx: ThumbContext; w: number; h: number; scale: number; title: string }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const doc = useMemo(() => pageFor(pattern, ctx), [pattern.id, pattern.version, pattern.updatedAt, ctx]);
+  const doc = useMemo(() => pageFor(pattern, ctx), [pattern.id, pattern.version, pattern.updatedAt, pattern.size.w, pattern.size.h, ctx]);
   const at = stillMs(pattern);
   return <iframe title={title} inert tabIndex={-1} srcDoc={doc}
     onLoad={(e) => { if (at) (e.currentTarget.contentWindow as (Window & { __stage?: { seek(ms: number): void } }) | null)?.__stage?.seek(at); }}
@@ -1145,15 +1147,21 @@ function PiecePane({ design, projectId, section, frame, things, change, onSelect
   const about = aboutPiece(frame.piece, things, projectId);
   const editorHref = `/projects/${projectId}/patterns/${id}`;
   const lead = gone ? `This ${kind === "yarn" ? "file is not in Yarn" : `${kind} is not in the project`} any more, so the sheet shows a note in its place.`
-    : kind === "pattern" ? "The pattern itself, drawn as it is now. Change it in the editor, or ask your model, and the sheet shows the change."
+    : kind === "pattern" ? "The pattern itself, drawn as it is now. Change its words here, or anything else in the editor or by asking your model, and the sheet shows it."
     : kind === "part" ? "The part itself, drawn as it is now. A change to it shows here, and each pattern that uses it is offered the change."
     : `A ${yarn?.kind ?? "file"} from Yarn, shown as it is.`;
   const facts = gone ? [] : [
     `${PIECE_NAMES[kind]} · ${frame.piece.w} x ${frame.piece.h}`,
-    ...(pattern ? [`${pattern.size.name}`, `${pattern.stitches.length} ${pattern.stitches.length === 1 ? "stitch" : "stitches"}${pattern.durationMs ? `, ${(pattern.durationMs / 1000).toFixed(1)} seconds` : ""}`] : []),
-    ...(part ? [`${part.slots.length} ${part.slots.length === 1 ? "slot" : "slots"}${part.builtin ? ", a starter part" : ""}`] : []),
+    ...(pattern ? [frame.piece.size ? `Shown as a ${frame.piece.size}. Its own size: ${pattern.size.name}, ${pattern.size.w} x ${pattern.size.h}` : `${pattern.size.name}`, `${pattern.stitches.length} ${pattern.stitches.length === 1 ? "stitch" : "stitches"}${pattern.durationMs ? `, ${(pattern.durationMs / 1000).toFixed(1)} seconds` : ""}`] : []),
+    ...(part ? [`${part.slots.length} ${part.slots.length === 1 ? "slot" : "slots"}${part.slots.length ? `: ${part.slots.map((x) => x.name).join(", ")}` : ""}${part.builtin ? ". A starter part" : ""}`] : []),
     ...(yarn?.tags.length ? [`Tagged ${yarn.tags.join(", ")}`] : []),
   ];
+  // The sizes it knits at, to show it at on the sheet; the pattern keeps its own.
+  const sizeOptions = pattern ? [
+    { value: OWN_SIZE, label: `Its own, ${pattern.size.name} ${pattern.size.w} x ${pattern.size.h}` },
+    ...SIZES.filter((x) => !(x.w === pattern.size.w && x.h === pattern.size.h)).map((x) => ({ value: x.name, label: `${x.name}, ${x.w} x ${x.h}` })),
+  ] : [];
+  const shownAs = frame.piece.size && sizeOptions.some((o) => o.value === frame.piece.size) ? frame.piece.size : OWN_SIZE;
   const openPart = async () => {
     if (!part) return;
     try { const pat = await api.parts.edit(part.id, projectId); router.push(`/projects/${pat.projectId}/patterns/${pat.id}`); } catch (e) { toast.problem((e as Error).message); }
@@ -1174,6 +1182,13 @@ function PiecePane({ design, projectId, section, frame, things, change, onSelect
           {about && <AskModelButton size="sm" about={about} />}
         </div>
       )}
+      {pattern && !gone && <PieceWords pattern={pattern} />}
+      {pattern && !gone && (
+        <Field label="Size on the sheet" htmlFor="piece-size" hint="Laid out at that size here, as a knit at that size would be. The pattern keeps its own, and Knit starts at this one.">
+          <Select id="piece-size" value={shownAs} options={sizeOptions}
+            onValueChange={(v) => v !== shownAs && void change([{ op: "setFrame", section: section.id, frameId: frame.id, size: v === OWN_SIZE ? null : v }], v === OWN_SIZE ? `Showing ${frame.name} at its own size` : `Showing ${frame.name} as a ${v}`)} />
+        </Field>
+      )}
       <Field label="Note" htmlFor="piece-note" hint="What it is for, or what to do next. Your model reads it.">
         <Textarea id="piece-note" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
       </Field>
@@ -1190,8 +1205,53 @@ function PiecePane({ design, projectId, section, frame, things, change, onSelect
           </Field>
         )}
       </div>
-      {pattern && <KnitDialog open={knitting} onOpenChange={setKnitting} pattern={pattern} projectId={projectId} editorHref={editorHref} />}
+      {pattern && <KnitDialog key={shownAs} open={knitting} onOpenChange={setKnitting} pattern={pattern} projectId={projectId} editorHref={editorHref} sizes={shownAs === OWN_SIZE ? undefined : [shownAs]} />}
     </div>
+  );
+}
+
+const OWN_SIZE = "own";
+/** Short slot names said as letters. */
+const LETTERS = new Set(["cta", "url", "faq", "id", "api", "cli", "seo", "sku"]);
+/** A slot's name in words: "small_print" as "small print", "cta" as "CTA". */
+const slotWords = (slot: string) => slot.replace(/[-_]+/g, " ").trim().split(" ").map((w) => (LETTERS.has(w.toLowerCase()) ? w.toUpperCase() : w.toLowerCase())).join(" ");
+/** A slot's name as a field's label: "Small print", "CTA". */
+const slotLabel = (slot: string) => { const t = slotWords(slot); return t.charAt(0).toUpperCase() + t.slice(1); };
+
+/**
+ * A pattern's words, changed where it is on the sheet: each is saved into the pattern itself, as
+ * one change, when its field is left, and the message that says so has Undo. The editor's own
+ * Undo does not reach a change made here. Words the brand locked are not on offer.
+ */
+function PieceWords({ pattern }: { pattern: Pattern }) {
+  const toast = useToast();
+  const free = pattern.stitches.filter((s) => s.kind === "text" && s.slot && !s.locked);
+  const locked = pattern.stitches.filter((s) => s.kind === "text" && s.slot && s.locked).length;
+  if (!free.length) return null;
+  const fill = async (slot: string, content: string) => {
+    try {
+      const r = await api.patterns.apply(pattern.id, { type: "fillSlot", slot, content }, { actor: "fill", label: `Fill ${slot}`.slice(0, 60) });
+      if (r.refusals.length) { toast.problem(`${slotLabel(slot)}: ${r.refusals[0].why}.`); return; }
+      const back = r.inverse;
+      if (r.changed && back) toast(`Changed the ${slotWords(slot)} in ${pattern.name}`, { label: "Undo", onClick: () => void api.patterns.apply(pattern.id, back, { actor: "fill", label: `Undo ${slot}`.slice(0, 60) }).catch((e) => toast.problem((e as Error).message)) });
+    } catch (e) { toast.problem((e as Error).message); }
+  };
+  return (
+    <fieldset className="design-words">
+      <legend className="field-label">Its words</legend>
+      {free.map((s) => {
+        const id = `piece-word-${s.id}`, was = s.content ?? "";
+        const leave = (v: string) => { if (v !== was) void fill(s.slot!, v); };
+        return (
+          <Field key={s.id} label={slotLabel(s.slot!)} htmlFor={id}>
+            {was.length > 40 || s.h > 0.12
+              ? <Textarea id={id} rows={3} defaultValue={was} key={`${s.id}-${was}`} onBlur={(e) => leave(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (e.metaKey || e.ctrlKey) && (e.target as HTMLTextAreaElement).blur()} />
+              : <Input id={id} defaultValue={was} key={`${s.id}-${was}`} onBlur={(e) => leave(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()} />}
+          </Field>
+        );
+      })}
+      <p className="body-sm design-words-say">Each is saved into the pattern as you leave it (or press Ctrl+Enter), so the editor, its knits and every sheet show it.{locked ? ` ${locked} locked by the brand ${locked === 1 ? "stays as it is" : "stay as they are"}.` : ""}</p>
+    </fieldset>
   );
 }
 

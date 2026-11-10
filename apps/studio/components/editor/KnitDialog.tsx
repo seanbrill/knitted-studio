@@ -47,13 +47,14 @@ function split(line: string): string[] {
 }
 
 /** `editorHref`: opened outside the editor, a problem with a stitch links to the pattern there instead of showing the stitch. */
-export function KnitDialog({ open, onOpenChange, pattern, projectId, editorHref }: { open: boolean; onOpenChange: (o: boolean) => void; pattern: Pattern; projectId: string; editorHref?: string }) {
+/** `sizes`: the sizes picked to start with (the pattern's own, unless given), such as the size a design sheet shows it at. */
+export function KnitDialog({ open, onOpenChange, pattern, projectId, editorHref, sizes: startSizes }: { open: boolean; onOpenChange: (o: boolean) => void; pattern: Pattern; projectId: string; editorHref?: string; sizes?: string[] }) {
   const toast = useToast();
   const motion = pattern.durationMs > 0;
   const [format, setFormat] = useState<"png" | "jpeg" | "webp" | "mp4">(motion ? "mp4" : "png");
   const [scale, setScale] = useState<1 | 2>(1);
   const [fps, setFps] = useState<30 | 60>(30);
-  const [sizes, setSizes] = useState<string[]>([pattern.size.name]);
+  const [sizes, setSizes] = useState<string[]>(startSizes ?? [pattern.size.name]);
   const [reuse, setReuse] = useState(true);
   const [batch, setBatch] = useState(false);
   const [text, setText] = useState("");

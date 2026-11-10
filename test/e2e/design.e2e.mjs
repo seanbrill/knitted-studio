@@ -397,7 +397,7 @@ test("a pattern and a Yarn picture go on the sheet as themselves: drawn live, ch
   await pane.getByRole("tab", { name: "Pattern" }).waitFor();
   assert.equal(await pane.getByRole("link", { name: "Open in the editor" }).getAttribute("href"), `/projects/${projectId}/patterns/${post.id}`);
   await pane.getByRole("button", { name: "Knit" }).waitFor();
-  await pane.getByText("1080 x 1350").waitFor();
+  await pane.getByText("Pattern · 1080 x 1350").waitFor();
   const hit = page.getByRole("button", { name: "Launch post, Pattern 1080 x 1350" });
   assert.equal(await hit.getAttribute("aria-pressed"), "true");
 
@@ -430,6 +430,37 @@ test("a pattern and a Yarn picture go on the sheet as themselves: drawn live, ch
   await page.locator('[data-piece="yarn"]').waitFor({ state: "detached" });
   await page.locator(".toast-action", { hasText: "Undo" }).click();
   await page.locator('[data-piece="yarn"]').waitFor();
+
+  // Its words, changed where it is: saved into the pattern itself, and Undo on the message takes it back.
+  await page.getByRole("button", { name: "Launch post, Pattern 1080 x 1350" }).click();
+  await page.getByRole("toolbar", { name: "Launch post, picked" }).getByRole("button", { name: "Zoom to it" }).click();
+  const again = page.getByRole("complementary", { name: "Pattern: Launch post" });
+  const headline = again.getByRole("group", { name: "Its words" }).getByLabel("Headline");
+  assert.equal(await headline.inputValue(), "Summer sale");
+  await headline.fill("Autumn sale");
+  // A headline's field is as tall as its stitch: Ctrl+Enter saves it, as leaving it does.
+  await headline.press("Control+Enter");
+  await frame("Launch post").getByText("Autumn sale").waitFor();
+  const words = async () => (await j("GET", `/api/patterns/${post.id}`)).body.stitches.find((x) => x.id === "head").content;
+  assert.equal(await words(), "Autumn sale");
+  await page.locator(".toast", { hasText: "Changed the headline in Launch post" }).locator(".toast-action", { hasText: "Undo" }).click();
+  await frame("Launch post").getByText("Summer sale").waitFor();
+  assert.equal(await words(), "Summer sale");
+  assert.deepEqual(await axeProblems(page), []);
+
+  // Shown as a Story beside the pages, laid out there, while the pattern keeps its own size.
+  await again.getByLabel("Size on the sheet").click();
+  await page.getByRole("option", { name: /^Story, 1080 x 1920/ }).click();
+  await page.getByRole("button", { name: "Launch post, Pattern 1080 x 1920" }).waitFor();
+  const tall = await page.locator('[data-piece="pattern"]').boundingBox();
+  assert.ok(Math.abs(tall.width / tall.height - 1080 / 1920) < 0.01, "a Story's shape");
+  assert.equal((await j("GET", `/api/patterns/${post.id}`)).body.size.h, 1350, "the pattern keeps its own");
+  // Knit starts at the size the sheet shows.
+  await again.getByRole("button", { name: "Knit" }).click();
+  const knit = page.getByRole("dialog", { name: "Knit Launch post" });
+  assert.equal(await knit.getByRole("button", { name: "Story 1080x1920" }).getAttribute("aria-pressed"), "true");
+  await page.keyboard.press("Escape");
+  await knit.waitFor({ state: "detached" });
 
   // A pattern deleted from the project leaves a note in its place.
   assert.equal((await j("DELETE", `/api/patterns/${post.id}`)).status, 200);

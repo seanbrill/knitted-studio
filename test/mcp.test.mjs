@@ -842,6 +842,15 @@ test("a model puts a pattern on a sheet beside the pages, reads it as a piece wi
   await assert.rejects(tools.arrange_design({ designId: d.id, changes: [{ op: "addPiece", section: "Pages", kind: "pattern", id: "pt_nonesuch" }] }), /no pattern "pt_nonesuch" in this project\. list_patterns/);
   store.apply(post.id, { type: "setMeta", name: "Spring launch" }, "human");
   assert.equal((await tools.get_design({ designId: d.id })).sections[0].frames.at(-1).name, "Spring launch", "read as it is now");
+  // Shown as a Story beside the pages, the pattern keeping its own size; and back.
+  await t.set_design_frame.handler({ designId: d.id, section: "Pages", frameId: f.id, size: "Story" }, { store, engine });
+  const story = (await tools.get_design({ designId: d.id })).sections[0].frames.at(-1);
+  assert.deepEqual([story.size, story.height, story.piece.size], ["Pattern 1080 x 1920", 1920, "Story"]);
+  assert.equal(store.getPattern(post.id).size.h, 1350);
+  await t.set_design_frame.handler({ designId: d.id, section: "Pages", frameId: f.id, size: "own" }, { store, engine });
+  assert.equal((await tools.get_design({ designId: d.id })).sections[0].frames.at(-1).piece.size, undefined);
+  const b = await tools.arrange_design({ designId: d.id, changes: [{ op: "addPiece", section: "Pages", kind: "pattern", id: post.id, size: "Square" }] });
+  assert.deepEqual([b.sections[0].frames.at(-1).height, b.sections[0].frames.at(-1).piece.size], [1080, "Square"]);
 });
 
 test("a model reads the person's comments, looks at the spot each is pinned to, and answers them", async () => {
