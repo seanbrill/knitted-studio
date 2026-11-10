@@ -15,19 +15,20 @@ import Link from "next/link";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { api, ApiError, subscribeChanges } from "@knitted/core/client";
 import { DESIGN_DEVICES, BOARD, deviceOf, dropIndex, frameRev, frameSize, guessHeight, layoutDesign, lintDesignCode, snapToGrid, type BoardLayout, type DesignDevice, type DesignFrame, type DesignMeta, type DesignOp, type FrameCode, type FrameMeta, type LaidFrame, type LaidSection, type SectionMeta, type Swatch } from "@knitted/core";
-import { Button, ConfirmDialog, Dialog, Field, IconButton, Input, Menu, SegmentedControl, Select, Textarea, Tip, icons, useToast } from "@knitted/ui";
+import { Button, ConfirmDialog, Dialog, Field, IconButton, Input, Menu, SegmentedControl, Select, TabPanel, Tabs, Textarea, Tip, icons, useToast } from "@knitted/ui";
 import { useLive } from "@/lib/hooks";
 import { brandKey, frameDoc, frameHeight, framePicUrl, hashOf } from "@/lib/design";
-import { AskModelButton, aboutDesign } from "./AskModel";
+import { AskModelButton, AskModelDialog, aboutDesign } from "./AskModel";
 import { ModelPresence } from "./ModelPresence";
 import { ModelAtWork } from "./ModelAtWork";
 import { ModelMark } from "./ModelMark";
 import { leadOf, useMarks, type Mark } from "@/lib/agent";
 import { ZoomControls } from "./ZoomControls";
 import { CommentThreads, PinCatch, Pins, shownThreads, useCommentState, useComments, type CommentsOn } from "./Comments";
+import type { CommentThread } from "@knitted/core";
 import { stepZoom, typingIn, useSpaceHeld, wheelZoom, zoomKey } from "@/lib/zoom";
 
-const { ArrowLeft, ArrowUp, ArrowDown, ChevronRight, Copy, Download, FileCode, LayoutGrid, MessageSquare, MoreHorizontal, Package, Pencil, Plus, Trash2, Undo2, X, AlertTriangle } = icons;
+const { ArrowLeft, ArrowUp, ArrowDown, ChevronRight, Copy, Download, FileCode, LayoutGrid, Maximize2, MessageSquare, MoreHorizontal, Package, Pencil, Plus, Sparkles, Trash2, Undo2, X, AlertTriangle } = icons;
 const ZOOM_MIN = 0.02;
 const ZOOM_MAX = 4;
 // Round a frame zoomed to: room to see it is the whole frame, and its label.
@@ -36,7 +37,7 @@ const FRAME_ROOM = 48;
 const EDGE = 40;
 const EDGE_TOP = 64;
 // Somewhere on the board that is not a frame or a control: a drag there moves the board.
-const NOT_EMPTY = ".design-frame-box, button, a, input, textarea, select, [role=menu]";
+const NOT_EMPTY = ".design-frame-box, .design-acts, button, a, input, textarea, select, [role=menu]";
 // What is drawn live: a frame at least this wide on screen, while pictures can be had, and no
 // more than so many at once. Without pictures (no browser to draw them), more are live, and the
 // rest are outlines.
@@ -239,24 +240,37 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
   const full: DesignFrame | null = where && selectedCode ? { ...where.frame, html: selectedCode.html, css: selectedCode.css } : null;
   useEffect(() => { if (selected) need([selected]); }, [selected, need, design]);
 
-  // Comments: pinned to a spot on a frame, or on the sheet as a whole. With the panel open, a
-  // click on a frame places one; the pins of the open ones show on the board all the time.
+  // Comments: pinned to a spot on a frame, or on the sheet as a whole. The pane beside the board
+  // has a knit's tabs: Frame, for the frame picked, and Comments. With a frame picked, its comments
+  // come first and the rest of the sheet's are a press away. The pins show on the board all the time.
   const commentsOn: CommentsOn = { kind: "design", projectId, designId: design.id, name: design.name };
   const { threads, refresh: refreshComments } = useComments(commentsOn);
   const cs = useCommentState();
-  const [commenting, setCommenting] = useState(false);
+  const [tab, setTab] = useState<"frame" | "comments">("frame");
+  const commenting = tab === "comments";
+  // The frame whose pane shows all of the sheet's comments, not only its own.
+  const [wideFor, setWideFor] = useState<string | null>(null);
+  const [askingFrame, setAskingFrame] = useState(false);
   const pinsOf = useMemo(() => {
     const m = new Map<string, typeof threads>();
     for (const t of shownThreads(threads, cs)) if (t.frameId) m.set(t.frameId, [...(m.get(t.frameId) ?? []), t]);
     return m;
   }, [threads, cs]);
   const openComments = threads.filter((t) => !t.resolvedAt).length;
+  /** The comments, shown or not. With none yet, shown is ready to place the first. */
   const comment = (on: boolean) => {
-    setCommenting(on);
-    cs.setPicking(on);
-    if (on) setSelected(null); else { cs.setDraft(null); cs.setActive(null); }
+    setTab(on ? "comments" : "frame");
+    if (on && !threads.length) { cs.setPicking(true); cs.setActive(null); }
+    if (!on) { cs.setPicking(false); cs.setDraft(null); cs.setActive(null); }
   };
-  const pickComment = (id: string) => { setCommenting(true); setSelected(null); cs.setActive(id); };
+  /** Pin a comment: the next press on a frame places it. */
+  const pinOne = () => { setTab("comments"); cs.setDraft(null); cs.setActive(null); cs.setPicking(true); };
+  /** A pin pressed: its frame picked and its thread open. */
+  const pickComment = (t: CommentThread) => {
+    if (t.frameId && metaOf.has(t.frameId)) setSelected(t.frameId);
+    setWideFor(null); setTab("comments"); cs.setPicking(false); cs.setDraft(null); cs.setActive(t.id);
+  };
+  const next = threads.length ? Math.max(...threads.map((t) => t.n)) + 1 : 1;
 
   // ── the layout: where every section and frame is, in the frames' pixels ──
   // What is written in the inspector shows on the board a moment after the typing stops, at its size.
@@ -645,7 +659,7 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
 
   /** A frame dragged to another place in its section, or into another. */
   const frameDown = (e: React.PointerEvent, id: string) => {
-    if (e.button !== 0 || handy || commenting) return;
+    if (e.button !== 0 || handy || cs.picking) return;
     const from = layRef.current.sections.find((x) => x.frames.some((f) => f.id === id)); if (!from) return;
     const fb = from.frames.find((f) => f.id === id)!, index = from.frames.indexOf(fb);
     const p0 = boardAt(e.clientX, e.clientY), keep = boxNow();
@@ -742,7 +756,7 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
   // A frame's handlers, the same from one drawing to the next, so a frame that has not changed is not drawn again.
   const act = useRef<Act>({ select: () => {}, zoom: () => {}, height: onHeight, comment: () => {}, picFailed, down: () => {} });
   useLayoutEffect(() => {
-    act.current.select = (id) => { setSelected(id); if (commenting) comment(false); };
+    act.current.select = (id) => setSelected(id);
     act.current.zoom = zoomToFrame;
     act.current.height = onHeight;
     act.current.picFailed = picFailed;
@@ -761,7 +775,15 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
     { label: "Download everything, with a style guide", icon: <Package size={14} />, disabled: !s.frames.length, onSelect: () => { toast(`Putting ${s.name} together. It takes a moment to draw.`); window.location.href = api.designs.bundleUrl(design.id, { section: s.id }); } },
     { label: "Delete the section", icon: <Trash2 size={14} />, danger: true, onSelect: () => (s.frames.length ? setAsking({ kind: "delete-section", section: s }) : void change([{ op: "removeSection", section: s.id }], `Deleted ${s.name}`)) },
   ];
-  const catching = commenting && cs.picking && !cs.draft;
+  const catching = cs.picking && !cs.draft;
+  // With a frame picked, the comments on it, or all of the sheet's when asked.
+  const wide = !where || wideFor === where.frame.id;
+  const scoped = wide ? threads : threads.filter((t) => t.frameId === where.frame.id);
+  const openScoped = scoped.filter((t) => !t.resolvedAt).length;
+  // Under the frame picked, while nothing moves and no comment is being placed: what can be done with it.
+  const pickedBox = where ? boxOf.get(where.frame.id) : undefined;
+  const picked = where && pickedBox && !moving && !cs.picking
+    ? { id: where.frame.id, name: where.frame.name, section: where.section.id, x: pickedBox.x + pickedBox.w / 2, y: pickedBox.y + pickedBox.h } : null;
   const barSection = moving?.kind === "frame" && moving.to ? lay.sections.find((x) => x.id === moving.to!.section) : undefined;
   const bar = moving?.kind === "frame" && moving.to && barSection ? dropBar(barSection, moving.id, moving.to.at, moving.to.py) : null;
   // The map shows while the board is bigger than the view.
@@ -819,7 +841,7 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
           onPointerDownCapture={panDownCapture} onPointerDown={panDown} onPointerMove={panMove} onPointerUp={panUp} onPointerCancel={panUp}
           onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
           onClickCapture={(e) => { if (quiet.current) { quiet.current = false; e.stopPropagation(); e.preventDefault(); } }}
-          onClick={(e) => { if (!handy && !(e.target as HTMLElement).closest(".design-frame, button, a, [role=menu]")) setSelected(null); }}
+          onClick={(e) => { if (!handy && !(e.target as HTMLElement).closest(".design-frame, .design-acts, button, a, [role=menu]")) setSelected(null); }}
           onDoubleClick={(e) => { if (!handy && !(e.target as HTMLElement).closest(NOT_EMPTY)) zoomTo("fit"); }}>
           <div ref={wrap} className="design-wrap" style={{ visibility: ready ? undefined : "hidden", ...dotsAt(z, lay.x, lay.y, mx, my) } as CSSProperties}>
             <div ref={boardEl} className="design-board" data-small={z < LABELS_MIN || undefined} style={{ left: mx, top: my, width: lay.w, height: lay.h, transform: `scale(${z})`, "--z": z, "--hz": Math.max(z, HEAD_Z), "--az": Math.max(z, ADD_Z) } as CSSProperties}>
@@ -845,9 +867,16 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
                         rev={p ? previewRev! : frameRev(c ? { ...m, code: c.code } : m)} doc={c ? frameDoc({ ...f, html: c.html, css: c.css }, swatch, projectId) : null}
                         pic={mode === "pic" || (mode === "live" && !c && pics && !noPic.has(m.id)) ? framePicUrl(design.id, m, swatchKey) : null}
                         selected={selected === m.id} mark={marks.get(m.id)} lead={leadFrame === m.id} act={act}
-                        pins={(pins.length > 0 || cs.draft?.frameId === m.id) ? <Pins threads={pins} draft={cs.draft?.frameId === m.id ? cs.draft : null} active={cs.active} onPick={(t) => pickComment(t.id)} /> : null}
+                        pins={(pins.length > 0 || cs.draft?.frameId === m.id) ? <Pins threads={pins} draft={cs.draft?.frameId === m.id ? cs.draft : null} active={cs.active} onPick={pickComment} /> : null}
                         catching={catching} lifted={moving?.kind === "frame" && moving.id === m.id} />;
                     })}
+                    {picked && picked.section === s.id && (
+                      <div className="design-acts" role="toolbar" aria-label={`${picked.name}, picked`} style={{ left: picked.x - b.x, top: picked.y - b.y }}>
+                        <button type="button" onClick={() => zoomToFrame(picked.id)}><Maximize2 size={14} aria-hidden /> Zoom to it</button>
+                        <button type="button" onClick={pinOne}><MessageSquare size={14} aria-hidden /> Pin a comment</button>
+                        <button type="button" onClick={() => setAskingFrame(true)}><Sparkles size={14} aria-hidden /> Ask your model</button>
+                      </div>
+                    )}
                     {s.frames.length > 1 && <button type="button" className="design-wrap-handle" aria-label={`Wrap ${s.name} into rows`} aria-describedby="design-wrap-how" data-on={s.width != null || undefined}
                       onPointerDown={(e) => wrapDown(e, s)} onKeyDown={(e) => wrapKeys(e, s)} />}
                     {!s.frames.length && <button type="button" className="design-add" style={{ left: BOARD.pad, top: BOARD.pad }} onClick={() => setAsking({ kind: "frame", section: s })}><Plus aria-hidden /> Add a frame</button>}
@@ -864,30 +893,38 @@ export function DesignBoard({ projectId, initial, swatch }: { projectId: string;
         {showMap && <BoardMap lay={lay} box={mapView} onGo={(bx, by) => { const v = view.current; if (!v) return; stopGlide(); bring({ bx, by, sx: v.clientWidth / 2, sy: v.clientHeight / 2 }); lookSoon(); mapSoon(); }} />}
         </div>
 
-        {commenting && (
-          <aside className="design-inspector" aria-label="Comments on the sheet">
-            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
-              <h2 className="label" style={{ margin: 0, flex: 1 }}>Comments on {design.name}</h2>
-              <IconButton label="Close the comments" onClick={() => comment(false)}><X size={16} /></IconButton>
-            </div>
-            <CommentThreads on={commentsOn} threads={threads} c={cs} refresh={refreshComments} wholeWords="sheet" hint="Click the spot on a frame that should change." heading={false}
-              onGo={(t) => { if (t.frameId && metaOf.has(t.frameId)) zoomToFrame(t.frameId); }} />
+        {(commenting || where) && (
+          <aside className="design-inspector design-pane" aria-label={commenting ? "Comments on the sheet" : `Frame: ${where!.frame.name}`} aria-busy={(!commenting && !(draft && full)) || undefined}>
+            <Tabs value={commenting ? "comments" : "frame"} onValueChange={(v) => comment(v === "comments")}
+              tabs={[...(where ? [{ value: "frame", label: "Frame" }] : []), { value: "comments", label: "Comments", count: openScoped || undefined }]}
+              end={<IconButton label={commenting ? "Close the comments" : "Close"} onClick={() => { comment(false); setSelected(null); }}><X size={16} /></IconButton>}>
+              {where && (
+                <TabPanel value="frame" className="design-panel">
+                  {draft && full ? (
+                    <Inspector key={where.frame.id} design={design} projectId={projectId} section={where.section} frame={full} draft={draft} setDraft={setDraft} dirty={dirty}
+                      onSave={save} onDiscard={() => { forget(where.frame.id); setPreview(null); }} change={change} onSelect={setSelected} />
+                  ) : <>
+                    <h2 className="label" style={{ margin: 0 }}>{where.frame.name}</h2>
+                    <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>Loading its code...</p>
+                  </>}
+                </TabPanel>
+              )}
+              <TabPanel value="comments" className="design-panel">
+                {where && threads.length > 0 && (
+                  <p className="body-sm design-scope">
+                    {wide
+                      ? <>All {threads.length} on the sheet · <button type="button" className="link" onClick={() => setWideFor(null)}>only those on {where.frame.name}</button></>
+                      : <><b>On {where.frame.name}</b> · <button type="button" className="link" onClick={() => setWideFor(where.frame.id)}>all {threads.length} on the sheet</button></>}
+                  </p>
+                )}
+                <CommentThreads on={commentsOn} threads={scoped} c={cs} refresh={refreshComments} wholeWords="sheet" hint="Click the spot on a frame that should change." heading={false} nextN={next}
+                  onGo={(t) => { if (t.frameId && metaOf.has(t.frameId)) zoomToFrame(t.frameId); }} />
+              </TabPanel>
+            </Tabs>
           </aside>
         )}
-        {!commenting && where && (draft && full ? (
-          <Inspector key={where.frame.id} design={design} projectId={projectId} section={where.section} frame={full} draft={draft} setDraft={setDraft} dirty={dirty}
-            onSave={save} onDiscard={() => { forget(where.frame.id); setPreview(null); }} onClose={() => setSelected(null)}
-            change={change} onSelect={setSelected} />
-        ) : (
-          <aside className="design-inspector" aria-label={`Frame: ${where.frame.name}`} aria-busy>
-            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
-              <h2 className="label" style={{ margin: 0, flex: 1 }}>{where.frame.name}</h2>
-              <IconButton label="Close" onClick={() => setSelected(null)}><X size={16} /></IconButton>
-            </div>
-            <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>Loading its code...</p>
-          </aside>
-        ))}
       </div>
+      <AskModelDialog about={askingFrame && where ? aboutDesign(projectId, design, where.frame) : null} onOpenChange={(o) => { if (!o) setAskingFrame(false); }} />
 
       <p id="design-move-how" hidden>Drag it to place the section anywhere on the board, or move it with the arrow keys, further with Shift. A double-click zooms to it.</p>
       <p id="design-wrap-how" hidden>Drag it in, or press the left arrow key, to wrap the section&apos;s frames into rows; out, or the right arrow key, to put them back in one.</p>
@@ -982,9 +1019,9 @@ const FrameView = memo(function FrameView({ f, x, y, h, rev, doc, pic, selected,
   );
 });
 
-function Inspector({ design, projectId, section, frame, draft, setDraft, dirty, onSave, onDiscard, onClose, change, onSelect }: {
+function Inspector({ design, projectId, section, frame, draft, setDraft, dirty, onSave, onDiscard, change, onSelect }: {
   design: DesignMeta; projectId: string; section: SectionMeta; frame: DesignFrame; draft: Draft; setDraft: (d: Draft) => void; dirty: boolean;
-  onSave: () => void; onDiscard: () => void; onClose: () => void; change: (ops: DesignOp[], said?: string) => Promise<{ made: { frames: string[] } } | null>; onSelect: (id: string | null) => void;
+  onSave: () => void; onDiscard: () => void; change: (ops: DesignOp[], said?: string) => Promise<{ made: { frames: string[] } } | null>; onSelect: (id: string | null) => void;
 }) {
   const lint = useMemo(() => lintDesignCode(draft.html, draft.css), [draft.html, draft.css]);
   const errors = lint.filter((l) => l.level === "error");
@@ -992,11 +1029,8 @@ function Inspector({ design, projectId, section, frame, draft, setDraft, dirty, 
   const set = (p: Partial<Draft>) => setDraft({ ...draft, ...p });
   const changedByModel = dirty && frame.by === "model";
   return (
-    <aside className="design-inspector" aria-label={`Frame: ${frame.name}`} onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); if (dirty && !errors.length) onSave(); } }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
-        <h2 className="label" style={{ margin: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{frame.name}</h2>
-        <IconButton label="Close" onClick={onClose}><X size={16} /></IconButton>
-      </div>
+    <div className="design-frame-pane" onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); if (dirty && !errors.length) onSave(); } }}>
+      <h2 className="label" style={{ margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{frame.name}</h2>
       <p className="body-sm" style={{ margin: 0, color: "var(--ink-muted)" }}>In {section.name}{frame.by === "model" ? ", last changed by your model" : ""}. Colours, fonts and corners are the Swatch&apos;s, as CSS variables like var(--color-primary). A picture from Yarn is yarn:&lt;its id&gt;.</p>
       <Field label="Name" htmlFor="frame-name"><Input id="frame-name" value={draft.name} onChange={(e) => set({ name: e.target.value })} /></Field>
       <div className="field">
@@ -1035,7 +1069,7 @@ function Inspector({ design, projectId, section, frame, draft, setDraft, dirty, 
           </Field>
         )}
       </div>
-    </aside>
+    </div>
   );
 }
 

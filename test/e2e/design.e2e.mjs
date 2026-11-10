@@ -300,6 +300,75 @@ test("a comment is pinned to a spot on a frame, shows on the board, and the shee
   await page.getByRole("link", { name: "Open Website, 1 open comment" }).waitFor();
 });
 
+test("the pane has a knit's tabs: a frame picked shows its comments first, a pin opens its thread, and under the frame are Zoom to it, Pin a comment and Ask your model", async () => {
+  const meta = (await j("GET", `/api/designs/${designId}/board`)).body;
+  const frames = meta.sections.flatMap((x) => x.frames);
+  const home = frames.find((f) => f.name === "Home"), menu = frames.find((f) => f.name === "Menu");
+  assert.equal((await j("POST", "/api/comments", { designId, frameId: menu.id, x: 0.5, y: 0.5, text: "The menu needs prices" })).status, 201);
+  await page.goto(`${studio.url}/projects/${projectId}/designs/${designId}`);
+  const hit = page.getByRole("button", { name: /^Home, / }).first();
+  await hit.click();
+  const pane = page.getByRole("complementary", { name: "Frame: Home" });
+  await pane.getByRole("tab", { name: "Frame" }).waitFor();
+  assert.equal(await pane.getByRole("tab", { name: "Frame" }).getAttribute("aria-selected"), "true");
+  assert.match(await pane.getByRole("tab", { name: /^Comments/ }).innerText(), /1/, "the comments on Home, open, counted on its tab");
+
+  // Under the frame picked: what can be done with it, the same size on screen whatever the zoom.
+  const bar = page.getByRole("toolbar", { name: "Home, picked" });
+  const fb = await page.locator(`[data-frame-box="${home.id}"]`).boundingBox(), bb = await bar.boundingBox();
+  assert.ok(bb.y > fb.y + fb.height && bb.y < fb.y + fb.height + 30, "just under the frame");
+  assert.ok(Math.abs(bb.x + bb.width / 2 - (fb.x + fb.width / 2)) < 2, "in the middle of it");
+  assert.ok(bb.height > 28 && bb.height < 48, `its own size on screen: ${bb.height}`);
+
+  // Ask your model is about this frame.
+  await bar.getByRole("button", { name: "Ask your model" }).click();
+  const ask = page.getByRole("dialog", { name: "Ask your model to change this frame" });
+  await ask.getByText("Home in Website").waitFor();
+  await page.keyboard.press("Escape");
+  await ask.waitFor({ state: "detached" });
+
+  // Comments: Home's first, and the rest of the sheet's a press away.
+  await pane.getByRole("tab", { name: /^Comments/ }).click();
+  const panel = page.getByRole("complementary", { name: "Comments on the sheet" });
+  await panel.getByText("On Home").waitFor();
+  assert.equal(await panel.locator(".comment-list > li").count(), 1);
+  await panel.getByRole("button", { name: "all 2 on the sheet" }).click();
+  await panel.getByText("All 2 on the sheet").waitFor();
+  assert.equal(await panel.locator(".comment-list > li").count(), 2);
+  await panel.getByRole("button", { name: "only those on Home" }).click();
+  await panel.getByText("On Home").waitFor();
+
+  // Pin a comment, from under the frame: the next press on a frame places it, numbered after the sheet's.
+  await bar.getByRole("button", { name: "Pin a comment" }).click();
+  await bar.waitFor({ state: "detached" });
+  const target = page.getByRole("button", { name: "Place a comment on Home" }).first();
+  const tb = await target.boundingBox();
+  await target.click({ position: { x: tb.width * 0.3, y: tb.height * 0.2 } });
+  await panel.getByRole("textbox", { name: "Comment 3" }).fill("Bigger buttons");
+  await panel.getByRole("button", { name: "Add the comment" }).click();
+  await serverHas(studio, `/api/comments?design=${designId}`, (l) => l.length === 3);
+
+  // A pin opens its thread, and picks its frame.
+  await page.getByRole("button", { name: "Comment 2: The menu needs prices" }).click();
+  await panel.getByText("On Menu").waitFor();
+  await panel.getByRole("textbox", { name: "Reply to comment 2" }).waitFor();
+  await page.getByRole("toolbar", { name: "Menu, picked" }).waitFor();
+  assert.deepEqual(await axeProblems(page), []);
+
+  // Zoom to it brings the whole frame into view.
+  await page.getByRole("toolbar", { name: "Menu, picked" }).getByRole("button", { name: "Zoom to it" }).click();
+  let m = await page.locator(`[data-frame-box="${menu.id}"]`).boundingBox();
+  for (let i = 0; i < 40; i++) { await page.waitForTimeout(60); const n = await page.locator(`[data-frame-box="${menu.id}"]`).boundingBox(); if (Math.abs(n.x - m.x) < 0.5 && Math.abs(n.width - m.width) < 0.5) break; m = n; }
+  const v = await page.locator(".design-view").boundingBox();
+  assert.ok(m.x >= v.x - 1 && m.y >= v.y - 1 && m.x + m.width <= v.x + v.width + 1 && m.y + m.height <= v.y + v.height + 1, "the whole frame in view");
+
+  // The Frame tab is the frame's name, size and code; Close shuts the pane.
+  await panel.getByRole("tab", { name: "Frame" }).click();
+  await page.getByRole("complementary", { name: "Frame: Menu" }).getByLabel("Name").waitFor();
+  await page.getByRole("complementary", { name: "Frame: Menu" }).getByRole("button", { name: "Close" }).click();
+  assert.equal(await page.locator(".design-pane").count(), 0);
+});
+
 test("a sheet is deleted from the list, and Undo brings it back", async () => {
   await page.goto(`${studio.url}/projects/${projectId}/designs`);
   await page.getByText(/4 sections, 10 frames/).waitFor();

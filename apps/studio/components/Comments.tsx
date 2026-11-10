@@ -104,8 +104,10 @@ export function PinCatch({ label, onSpot }: { label: string; onSpot: (x: number,
  * The threads: a new one being written, then each with its replies and what can be done with it.
  * `wholeWords` names the whole thing for a comment with no pin: "knit", "video" or "sheet".
  */
-export function CommentThreads({ on, threads, c, refresh, wholeWords, hint, onGo, moment, heading = true }: {
+export function CommentThreads({ on, threads, c, refresh, wholeWords, hint, onGo, moment, heading = true, nextN }: {
   on: CommentsOn; threads: CommentThread[]; c: CommentState; refresh: () => unknown; wholeWords: string;
+  /** The number a new comment gets, where `threads` are only some of them. */
+  nextN?: number;
   /** Its own "Comments" heading; off where the panel round it has one. */
   heading?: boolean;
   /** What to do while placing a pin. */
@@ -125,7 +127,7 @@ export function CommentThreads({ on, threads, c, refresh, wholeWords, hint, onGo
   const open = threads.filter((t) => !t.resolvedAt);
   const resolved = threads.length - open.length;
   const shown = shownThreads(threads, c);
-  const next = threads.length ? Math.max(...threads.map((t) => t.n)) + 1 : 1;
+  const next = nextN ?? (threads.length ? Math.max(...threads.map((t) => t.n)) + 1 : 1);
 
   const start = (d: Draft) => { c.setDraft(d); c.setActive(null); setErr(null); };
   const cancel = () => { c.setDraft(null); c.setPicking(false); setText(""); setErr(null); };

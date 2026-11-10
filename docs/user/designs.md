@@ -35,9 +35,9 @@ The board is a canvas on a grid of dots, like a Figma file. Sections stand in a 
 - Sections never cover one another. One that grows, by wrapping or by more frames, pushes those under it down. Put a section down over another and it stays where you put it, while the other moves under it.
 - Drag a frame to move it along its section, or into another section. A bar shows where it will go.
 - **Tidy up**, on the board's bar once a section is placed, puts every section back in one column, in their order. **Undo** puts them back where they were.
+- **Undo** takes back the last change to the sheet, whether you made it or your model did. Press it again to go further back.
 
 Your model can place sections too, with `arrange_design`.
-- **Undo** takes back the last change to the sheet, whether you made it or your model did. Press it again to go further back.
 
 ## Changing a frame
 
@@ -68,7 +68,12 @@ Each section downloads on its own from its menu, in the same three ways: **Downl
 
 ## Comments
 
-Press **Comments** on the board's bar, click the spot on a frame that should change, and say what. For a comment about the sheet as a whole, choose **the whole sheet** instead. The pins stay on the board when the panel is closed, the same size at any zoom; press one to open its comment. Pressing a comment in the panel brings its frame into view.
+The pane beside the board has two tabs, as a knit's does: **Frame**, for the frame you picked, and **Comments**, with how many are open. **Comments** on the board's bar opens it.
+
+- Under the frame you pick are **Zoom to it**, **Pin a comment** and **Ask your model**. Press **Pin a comment** (or **Add a comment** in the Comments tab), click the spot on a frame that should change, and say what. For a comment about the sheet as a whole, choose **the whole sheet** instead.
+- With a frame picked, its comments come first, and **all on the sheet** shows the rest.
+- The pins stay on the board when the pane is closed, the same size at any zoom. Press one to pick its frame and open its comment. Pressing a comment in the pane brings its frame into view.
+- **Ask your model** under a frame starts a chat about that frame, so your model changes that one.
 
 A comment can be replied to, resolved, opened again or deleted. **Comments** on the bar shows how many are open, and so does the sheet's card in the list of designs.
 

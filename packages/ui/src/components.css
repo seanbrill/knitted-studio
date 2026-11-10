@@ -754,6 +754,22 @@ body:has(.dialog, .viewer) .toasts { top: var(--space-4); bottom: auto; }
 .design-add:hover { color: var(--ink); border-color: var(--ink-muted); }
 .design-add svg { width: calc(18px / var(--az)); height: calc(18px / var(--az)); }
 .design-inspector { width: 420px; flex: none; border-left: 1px solid var(--line); background: var(--surface); overflow: auto; display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-4); }
+/* The pane beside the board: a knit's tabs, Frame and Comments, with Close at the end of their bar. */
+.design-pane { padding: 0; gap: 0; }
+.design-pane .tabs-bar { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-2) 0 var(--space-2); background: var(--surface); border-bottom: 1px solid var(--line); }
+.design-pane .tabs-bar > .tabs-list { flex: 1; min-width: 0; border-bottom: 0; }
+.design-pane .tab { padding: var(--space-3) 10px; }
+.design-panel { padding: var(--space-4); display: grid; gap: var(--space-4); align-content: start; }
+.design-panel:focus-visible { outline: none; }
+.design-panel[hidden] { display: none; }
+.design-frame-pane { display: flex; flex-direction: column; gap: var(--space-4); }
+.design-scope { margin: 0; color: var(--ink-muted); }
+.design-scope b { color: var(--ink); font-weight: 600; }
+/* Under the frame picked: what can be done with it, the same size on screen at any zoom. */
+.design-acts { position: absolute; z-index: 4; display: flex; gap: 2px; padding: 4px; border-radius: 10px; background: var(--surface-raised); box-shadow: var(--shadow-lift), 0 0 0 1px var(--line); white-space: nowrap; transform-origin: 0 0; transform: scale(calc(1 / var(--z))) translate(-50%, 12px); }
+.design-acts button { all: unset; box-sizing: border-box; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; line-height: 1; padding: 7px 10px; border-radius: 7px; color: var(--ink); cursor: pointer; }
+.design-acts button:hover { background: var(--surface-sunken); }
+.design-acts button:focus-visible { outline: 2px solid var(--ember); outline-offset: 1px; }
 .design-inspector .code { font-family: var(--font-mono); font-size: 12px; line-height: 1.5; tab-size: 2; white-space: pre; }
 
 /* Comments: numbered pins over a knit or a frame, and the threads about them. On the board the
